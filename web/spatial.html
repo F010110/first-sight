@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101510">
+  <title>空间记录 · Field Lab</title>
+  <link rel="stylesheet" href="/spatial.css">
+  <script src="/spatial.js" defer></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <a class="wordmark" href="/" aria-label="Field Lab 首页"><span class="wordmark-mark">F</span><span>FIELD LAB <small>空间感知实验</small></span></a>
+      <a class="quiet-link" href="/vlm">VLM 助理 <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <section class="intro">
+      <div class="eyebrow"><span class="live-dot"></span> MOBILE SPATIAL CAPTURE / 01</div>
+      <h1>把手机移动<br><em>变成空间模型。</em></h1>
+      <p>同步记录相机画面、陀螺仪和加速度计。采集结束后，服务器会尝试恢复手机轨迹与稀疏三维点云。</p>
+    </section>
+
+    <section id="login-panel" class="panel login-panel">
+      <div class="panel-heading"><span class="step-index">01</span><div><h2>连接实验记录</h2><p>输入试用口令，结果会自动保存到后台。</p></div></div>
+      <div class="login-row">
+        <input id="passcode" type="password" autocomplete="current-password" placeholder="试用口令" aria-label="试用口令">
+        <button id="login-button" class="button button-dark">进入</button>
+      </div>
+      <p id="login-status" class="message" aria-live="polite"></p>
+    </section>
+
+    <section id="workspace" hidden>
+      <section class="panel capture-panel">
+        <div class="panel-heading"><span class="step-index">02</span><div><h2>采集一段空间运动</h2><p>保持画面有纹理，慢慢平移并转动手机，走一个小弧线。</p></div></div>
+        <div class="camera-frame">
+          <video id="camera" autoplay muted playsinline></video>
+          <div id="camera-placeholder" class="camera-placeholder"><span class="camera-glyph">◉</span><span>开启相机后在这里取景</span></div>
+          <div id="recording-badge" class="recording-badge" hidden><span></span>记录中</div>
+          <div class="camera-meta"><span id="camera-resolution">等待相机</span><span id="frame-count">0 帧</span></div>
+        </div>
+        <div class="capture-controls">
+          <button id="camera-button" class="button button-dark">开启相机与运动传感器</button>
+          <button id="record-button" class="button button-accent" disabled>开始 25 秒空间扫描</button>
+          <button id="stop-button" class="button button-stop" hidden>结束并分析</button>
+        </div>
+        <div class="record-progress" aria-live="polite"><span id="progress-fill"></span></div>
+        <p id="capture-status" class="message" aria-live="polite">准备中。建议在光线充足、物体纹理清晰的室内测试。</p>
+      </section>
+
+      <section class="panel sensor-panel">
+        <div class="panel-heading"><span class="step-index">03</span><div><h2>输入信号诊断</h2><p>状态会自动记录；不需要导出或手动发送诊断文件。</p></div></div>
+        <div class="signal-grid">
+          <article class="signal-card"><span class="signal-icon">▧</span><div><span class="signal-label">相机图像</span><strong id="camera-state">未连接</strong><small id="camera-detail">等待授权</small></div></article>
+          <article class="signal-card"><span class="signal-icon">↻</span><div><span class="signal-label">陀螺仪</span><strong id="gyro-state">等待数据</strong><small id="gyro-detail">旋转手机后检查角速度</small></div></article>
+          <article class="signal-card"><span class="signal-icon">⌖</span><div><span class="signal-label">加速度计</span><strong id="accel-state">等待数据</strong><small id="accel-detail">记录线性加速度与重力加速度</small></div></article>
+          <article class="signal-card"><span class="signal-icon">⏱</span><div><span class="signal-label">时间对齐</span><strong id="sync-state">未检查</strong><small id="sync-detail">帧时间与传感器时间</small></div></article>
+        </div>
+        <div class="sensor-meter"><div><span>运动信号</span><b id="sample-rate">0 Hz</b></div><canvas id="motion-chart" width="720" height="90" aria-label="实时运动信号图"></canvas></div>
+        <div class="sensor-test">
+          <div class="sensor-test-heading"><div><strong>独立传感器测试</strong><p>无需开启相机。点击后平稳转动手机约 6 秒，自动检查浏览器提供的旋转与方向数据。</p></div><button id="sensor-test-button" class="button button-light">开始测试</button></div>
+          <p id="sensor-test-status" class="message" aria-live="polite">测试结果会自动保存到后台，可区分权限、浏览器接口和传感器读数情况。</p>
+          <pre id="sensor-test-output" class="sensor-test-output" hidden></pre>
+        </div>
+      </section>
+
+      <section id="result-panel" class="panel result-panel" hidden>
+        <div class="panel-heading result-title"><span class="step-index">04</span><div><h2>本次空间重建</h2><p id="result-caption">后台处理完成</p></div><span id="model-badge" class="model-badge">等待模型</span></div>
+        <div class="model-view"><canvas id="model-canvas" width="900" height="540" aria-label="稀疏三维点云模型预览"></canvas><div id="model-empty" class="model-empty">点云预览将在分析后显示</div><div class="model-axis"><span>X</span><span>Y</span><span>Z</span></div></div>
+        <div id="result-metrics" class="metric-grid"></div>
+        <p id="result-note" class="result-note"></p>
+        <div class="result-actions"><button id="download-model" class="button button-dark" disabled>下载 PLY 点云</button><button id="new-capture" class="button button-light">再采一段</button></div>
+        <details class="diagnostic-details"><summary>查看本次诊断数据</summary><pre id="diagnostic-output"></pre></details>
+      </section>
+
+      <section class="privacy-note"><span>数据记录</span><p>空间采集的图像帧与手机运动读数会上传并保存在试验服务器，用于评估图像和 IMU 能否恢复空间结构。独立传感器测试会保存浏览器信息、权限状态和少量汇总读数，不保存完整传感器轨迹。模型使用单目视觉，尺度和尺寸精度会在结果中标明。</p></section>
+      <p id="global-status" class="global-status" aria-live="polite"></p>
+    </section>
+    <footer><span>FIELD LAB · SENSOR STUDY</span><span>图像 + IMU → 空间估计</span></footer>
+  </main>
+</body>
+</html>

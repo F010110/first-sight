@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <title>手机空间能力检查</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/spatial-probe.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="eyebrow">LOCAL SENSOR PROBE</div>
+      <h1>手机空间能力检查</h1>
+      <p class="muted">检查浏览器能否通过 AR session 读取手机位姿和深度。</p>
+      <p class="probe-link"><a href="/">返回 VLM 体验</a></p>
+    </header>
+
+    <section class="card">
+      <h2>检查步骤</h2>
+      <p class="probe-note">先运行基础位姿检查，确认最小 AR session 能否启动；再单独运行深度检查，判断深度能力是否可用。成功启动后 session 会在 12 秒后自动结束，期间缓慢移动手机、观察有纹理的室内物体。此页不请求 DOM overlay，不拍照、不上传照片、不调用 Qwen。登录试用口令后，浏览器与传感器诊断信息会自动保存到后台。</p>
+      <div class="probe-buttons">
+        <button id="check-button" class="primary">检查浏览器支持</button>
+        <button id="start-button" disabled>检查基础 AR 位姿</button>
+        <button id="depth-start-button" disabled>单独检查深度</button>
+        <button id="stop-button" disabled>停止</button>
+        <button id="export-button" disabled>导出诊断 JSON</button>
+      </div>
+      <div id="probe-login-panel" hidden>
+        <p class="probe-note">登录试用服务后，检查结果会自动保存到后台。只上传浏览器与传感器诊断信息，不上传照片。</p>
+        <div class="inline">
+          <input id="probe-passcode" type="password" autocomplete="current-password" placeholder="体验口令">
+          <button id="probe-login-button" class="primary">登录并保存</button>
+        </div>
+      </div>
+      <p id="save-status" class="status" aria-live="polite">检查结果将自动保存到后台试验记录。</p>
+      <p id="probe-status" class="status" aria-live="polite">尚未检查。</p>
+    </section>
+
+    <section class="card probe-grid" aria-live="polite">
+      <p id="secure-status" class="status">安全上下文：未检查</p>
+      <p id="xr-status" class="status">immersive-ar：未检查</p>
+      <p id="depth-status" class="status">深度数据：未检查</p>
+      <p id="pose-status" class="status">相机位姿：未检查</p>
+      <p id="rgb-status" class="status">RGB 同步：本探针尚未检查</p>
+      <p id="gpu-status" class="status">GPU：不需要</p>
+    </section>
+
+    <section class="card">
+      <h2>诊断记录（自动保存到后台）</h2>
+      <p class="probe-note">记录包括浏览器能力、深度采样数量、相机位移和追踪状态。坐标只在当前 AR session 内有效。</p>
+      <pre id="probe-output">等待检查。</pre>
+    </section>
+
+    <footer>下一步需要验证 RGB 截图与此页深度/位姿能否时间对齐；本探针的成功不代表该配对已完成。</footer>
+  </main>
+  <canvas id="xr-canvas" aria-hidden="true"></canvas>
+  <div id="xr-overlay">
+    <div id="xr-hud"><span id="xr-hud-status">AR 传感器检查运行中</span><button id="xr-stop">结束</button></div>
+  </div>
+</body>
+</html>

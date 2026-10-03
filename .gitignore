@@ -1,0 +1,16 @@
+# Local runtime environments and dependencies
+.venv/
+node_modules/
+.npm-cache/
+reference-code/
+
+# Generated application output
+dist/
+__pycache__/
+*.py[cod]
+
+# Local datasets, screenshots, and experiments
+datasets/
+run/
+frames/
+observations/

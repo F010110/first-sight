@@ -1,0 +1,33 @@
+{
+  "name": "vlm-scene-agent-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc --noEmit false --outDir dist",
+    "harness:sample": "npm run build && node --use-env-proxy dist/run-sample.js",
+    "harness:cases": "npm run build && node --use-env-proxy dist/run-cases.js",
+    "harness:feedback": "npm run build && node dist/record-feedback.js",
+    "harness:summary": "npm run build && node dist/summarize.js",
+    "trial:web": "npm run build && node --use-env-proxy dist/trial-server.js",
+    "trial:qr": "npm run build && node --use-env-proxy dist/start-mobile-trial.js",
+    "motion:replay": "npm run build && node dist/motion-replay.js",
+    "motion:plot": "npm run build && node dist/plot-trajectory.js",
+    "vio:plot": "npm run build && node dist/plot-vio.js",
+    "motion:import": "npm run build && node dist/import-local-recording.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.85.1",
+    "@earendil-works/pi-ai": "0.85.1"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "cloudflared": "^0.7.3",
+    "qrcode": "^1.5.4",
+    "typescript": "5.9.3"
+  }
+}

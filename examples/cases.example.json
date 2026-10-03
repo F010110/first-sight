@@ -1,0 +1,17 @@
+[
+  {
+    "caseId": "find-blue-lid",
+    "goal": "帮我找蓝色盖子的容器",
+    "frames": [
+      { "id": "frame_000020", "timestampMs": 100000, "path": "../run/frames/frame_000020.jpg" },
+      { "id": "frame_000021", "timestampMs": 105000, "path": "../run/frames/frame_000021.jpg" },
+      { "id": "frame_000022", "timestampMs": 110000, "path": "../run/frames/frame_000022.jpg" },
+      { "id": "frame_000023", "timestampMs": 115000, "path": "../run/frames/frame_000023.jpg" }
+    ],
+    "expected": {
+      "decision": "answer",
+      "targetFound": true,
+      "positionCorrect": false
+    }
+  }
+]

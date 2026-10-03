@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VIO-lite 探测</title>
+  <link rel="stylesheet" href="./vio.css">
+</head>
+<body>
+  <h3>VIO-lite 探测（本地光流 + 陀螺）</h3>
+  <div class="row">
+    <button id="start">开启摄像头</button>
+    <button id="stop">停止</button>
+    <button id="record">录制 12 秒</button>
+  </div>
+  <video id="video" playsinline muted></video>
+  <div class="row big" id="label">未开始</div>
+  <div class="row" id="status"></div>
+  <div class="row">前后(expansion)：<code id="expansion">-</code>　全局位移：<code id="global">-</code></div>
+  <div class="row">一致性：<code id="coherence">-</code>　边界占比：<code id="edge">-</code>　纹理方差：<code id="variance">-</code></div>
+  <div class="row">旋转(度/帧)：<code id="rotation">-</code></div>
+  <div class="row muted">前后=画面扩张/收缩（前进为正、后退为负）；全局位移≈旋转+横向移动；边界占比高=运动超过搜索范围；纹理方差低=白墙/模糊。</div>
+  <script type="module" src="./vio.js"></script>
+</body>
+</html>

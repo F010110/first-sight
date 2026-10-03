@@ -1,0 +1,8 @@
+body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; background: #111; color: #eee; }
+h3 { font-size: 17px; }
+video { width: 100%; max-width: 360px; border-radius: 8px; background: #000; display: block; }
+button { font-size: 16px; padding: 10px 14px; border-radius: 8px; border: 0; background: #2d7; color: #012; font-weight: 700; }
+.row { margin: 8px 0; }
+.big { font-size: 20px; font-weight: 700; }
+code { color: #9cf; }
+.muted { color: #aaa; font-size: 13px; line-height: 1.5; }
