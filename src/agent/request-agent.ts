@@ -1,0 +1,170 @@
+import { readFile } from "node:fs/promises";
+import { extname } from "node:path";
+import { Agent } from "@earendil-works/pi-agent-core";
+import type { ImageContent, Model } from "@earendil-works/pi-ai";
+import { createQwenModel } from "./qwen-provider.js";
+import type { FrameRef } from "./types.js";
+
+/**
+ * RequestAgent (role 3 of 3): handles the user's *explicit* requirement.
+ *
+ * It only runs when the user actually asked for something (a question, a goal,
+ * or a condition to watch). It receives the current frames plus the same
+ * auxiliary context as the other agents (motion-mode in natural language, and
+ * the current scene label) and answers / decides whether to speak.
+ *
+ * This is deliberately a plain VLM agent with a small amount of state: the model
+ * is not fine-tuned, so the reply is natural language and only the control flags
+ * (kind/shouldSpeak/done/confidence) are structured.
+ */
+
+export type RequestMode = "ask" | "watch";
+export type RequestKind = "question" | "goal" | "watch";
+
+export interface RequestTurn {
+	atMs: number;
+	kind: RequestKind;
+	answer: string;
+	shouldSpeak: boolean;
+	done: boolean;
+	confidence: number;
+}
+
+export interface RequestState {
+	mode: RequestMode | null;
+	kind: RequestKind | null;
+	text: string | null;
+	status: "idle" | "active" | "done";
+	/** True once a watch condition has been reported, so it is never repeated. */
+	spoken: boolean;
+	lastAnswer: string | null;
+	turns: RequestTurn[];
+	startedAtMs: number | null;
+	updatedAtMs: number | null;
+}
+
+export interface RequestResult {
+	kind: RequestKind;
+	answer: string;
+	shouldSpeak: boolean;
+	done: boolean;
+	confidence: number;
+	frameIds: string[];
+	raw: string;
+}
+
+const SYSTEM_PROMPT = [
+	"You are the user-request agent of a first-person visual assistant.",
+	"The user has given ONE explicit requirement. Read the current camera frames and respond helpfully, in the user's own language.",
+	"Classify the requirement as one of: QUESTION (something to answer), GOAL (something to achieve or find), WATCH (a condition to report when it actually happens).",
+	"A 'MOTION' line (how the phone moved, natural language) and a 'SCENE' line (current place) are approximate context; use them to help interpret the frames.",
+	"For a WATCH condition be conservative: shouldSpeak must be true only when the current frames clearly show the condition is happening now. Never set shouldSpeak for a condition that was already reported.",
+	"For a QUESTION answer once and set done=true. For a GOAL give brief, actionable help; set done=true only when it is clearly achieved or impossible.",
+	"Keep 'answer' to one or two short sentences. If there is nothing useful to say, make 'answer' the reason and shouldSpeak=false.",
+	'Reply with ONLY JSON: {"kind": "question|goal|watch", "answer": string, "shouldSpeak": boolean, "done": boolean, "confidence": number}. No markdown.',
+].join(" ");
+
+function mimeTypeFor(path: string): string {
+	switch (extname(path).toLowerCase()) {
+		case ".jpg": case ".jpeg": return "image/jpeg";
+		case ".png": return "image/png";
+		case ".webp": return "image/webp";
+		default: return "image/jpeg";
+	}
+}
+
+function parseRequest(text: string, fallbackKind: RequestKind | null): Omit<RequestResult, "frameIds" | "raw"> {
+	const jsonText = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+	const root = JSON.parse(jsonText) as Record<string, unknown>;
+	const rawKind = typeof root.kind === "string" ? root.kind.toLowerCase() : "";
+	const kind: RequestKind = rawKind === "question" || rawKind === "goal" || rawKind === "watch" ? rawKind : fallbackKind ?? "question";
+	if (typeof root.answer !== "string" || !root.answer.trim()) throw new Error("request.answer must be a non-empty string");
+	const confidence = typeof root.confidence === "number" && root.confidence >= 0 && root.confidence <= 1 ? root.confidence : 0.5;
+	return {
+		kind,
+		answer: root.answer.trim().slice(0, 400),
+		shouldSpeak: typeof root.shouldSpeak === "boolean" ? root.shouldSpeak : kind === "question",
+		done: typeof root.done === "boolean" ? root.done : kind === "question",
+		confidence,
+	};
+}
+
+export class RequestAgent {
+	private readonly model: Model<"openai-completions">;
+	private readonly streamFn: Agent["streamFunction"];
+	private state: RequestState = {
+		mode: null, kind: null, text: null, status: "idle", spoken: false, lastAnswer: null, turns: [], startedAtMs: null, updatedAtMs: null,
+	};
+
+	constructor() {
+		const configured = createQwenModel(512);
+		this.model = configured.model;
+		this.streamFn = configured.streamFn;
+	}
+
+	getState(): RequestState {
+		return { ...this.state, turns: this.state.turns.slice(-10) };
+	}
+
+	set(mode: RequestMode, text: string): RequestState {
+		this.state = {
+			mode,
+			kind: mode === "watch" ? "watch" : null,
+			text,
+			status: "active",
+			spoken: false,
+			lastAnswer: null,
+			turns: [],
+			startedAtMs: Date.now(),
+			updatedAtMs: Date.now(),
+		};
+		return this.getState();
+	}
+
+	stop(): RequestState {
+		this.state = { ...this.state, mode: null, kind: null, text: null, status: "idle", spoken: false, lastAnswer: null, turns: [] };
+		this.state.updatedAtMs = Date.now();
+		return this.getState();
+	}
+
+	async observe(frames: FrameRef[], motionDescription: string | null, sceneLabel: string | null): Promise<RequestResult> {
+		if (this.state.status !== "active" || !this.state.text) throw new Error("No active user requirement");
+		if (frames.length === 0) throw new Error("RequestAgent needs at least one frame");
+		const ordered = frames.slice().sort((a, b) => a.timestampMs - b.timestampMs).slice(-3);
+		const imageContents: ImageContent[] = await Promise.all(ordered.map(async (frame) => ({
+			type: "image" as const, data: (await readFile(frame.path)).toString("base64"), mimeType: mimeTypeFor(frame.path),
+		})));
+
+		const recent = this.state.turns.slice(-3).map((turn) => ({ kind: turn.kind, answer: turn.answer, spoke: turn.shouldSpeak }));
+		const prompt = [
+			"Answer the user's requirement using the current frames. Image blocks are in chronological order.",
+			`MODE: ${this.state.mode ?? "ask"}`,
+			`REQUIREMENT: ${this.state.text}`,
+			`SCENE: ${sceneLabel ?? "unknown"}`,
+			`MOTION (approximate, how the phone moved recently): ${motionDescription ?? "none"}`,
+			`ALREADY_REPORTED (do not repeat these): ${JSON.stringify(recent)}${this.state.spoken ? " (a watch condition has already been reported; do not report it again)" : ""}`,
+			"Reply with only the JSON object.",
+		].join("\n\n");
+
+		const agent = new Agent({ initialState: { systemPrompt: SYSTEM_PROMPT, model: this.model, tools: [] }, streamFn: this.streamFn });
+		await agent.prompt(prompt, imageContents);
+		if (agent.state.errorMessage) throw new Error(`RequestAgent request failed: ${agent.state.errorMessage}`);
+		const assistant = [...agent.state.messages].reverse().find((message) => message.role === "assistant");
+		if (!assistant || assistant.role !== "assistant") throw new Error("RequestAgent returned no assistant message");
+		const raw = assistant.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+		const parsed = parseRequest(raw, this.state.mode === "watch" ? "watch" : null);
+
+		// A watch condition fires once; a question is done after answering.
+		const shouldSpeak = parsed.kind === "watch" ? parsed.shouldSpeak && !this.state.spoken : parsed.shouldSpeak;
+		const done = parsed.done || (parsed.kind === "watch" && shouldSpeak) || parsed.kind === "question";
+		const turn: RequestTurn = { atMs: Date.now(), kind: parsed.kind, answer: parsed.answer, shouldSpeak, done, confidence: parsed.confidence };
+		this.state.kind = parsed.kind;
+		this.state.lastAnswer = parsed.answer;
+		if (shouldSpeak) this.state.spoken = true;
+		this.state.turns.push(turn);
+		if (done) this.state.status = "done";
+		this.state.updatedAtMs = Date.now();
+
+		return { ...parsed, shouldSpeak, done, frameIds: [ordered[ordered.length - 1]!.id], raw };
+	}
+}

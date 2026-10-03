@@ -40,7 +40,7 @@ function emptyRouterStats() {
 	return { capturedFrames: 0, movingFramesSkipped: 0, sensorMotionGatedFrames: 0, noChangeFramesSkipped: 0, familiarSceneFramesSkipped: 0, stabilityWaits: 0, frameChangeScore: null, visualNoveltyScore: null, motionContext: null };
 }
 
-const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
+const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", sceneLabel: null, request: { mode: null, kind: null, status: "idle", text: null, lastAnswer: null, spoken: false, lastStepMs: 0 }, live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
 
 async function post(path, payload, authenticated = true, timeoutMs = 25_000) {
   const headers = { "Content-Type": "application/json" };
@@ -476,7 +476,7 @@ async function login() {
   } finally { button.disabled = false; }
 }
 
-async function startCamera({ autoObserve = true } = {}) {
+async function startCamera({ autoObserve = false } = {}) {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前页面无法访问摄像头；请使用 HTTPS 地址并在手机浏览器中打开。");
   const [motionPermission, orientationPermission] = await Promise.all([requestDeviceMotionPermission(), requestDeviceOrientationPermission()]);
   state.motion.motionPermission = motionPermission;
@@ -544,22 +544,25 @@ function stopCamera() {
 }
 
 function updateActionState() {
-  const askButton = $("ask-button");
   const hasGoal = $("goal").value.trim().length > 0;
-  askButton.disabled = state.frames.length === 0 || !hasGoal || state.busy;
-  askButton.textContent = state.pendingDeepGoal ? "更新已排队目标" : state.activeTask?.status === "active" ? "更新任务" : "提问 / 设定目标";
+  const ready = state.frames.length > 0 && !state.busy;
+  const active = state.request.status === "active";
+  const mode = state.request.mode;
+  const askButton = $("ask-button");
+  askButton.disabled = !ready || !hasGoal;
+  askButton.textContent = active && mode === "ask" ? "更新要求" : "提问 / 设定目标";
   const watchButton = $("watch-button");
-  const watching = state.activeWatch?.status !== "idle" && Boolean(state.activeWatch?.condition);
-  watchButton.disabled = state.busy || (watching ? false : !hasGoal || !state.stream || Boolean(state.activeTask?.status === "active"));
-  watchButton.textContent = watching ? "停止关注" : "关注这个情况";
+  watchButton.disabled = !ready || !hasGoal;
+  watchButton.textContent = active && mode === "watch" ? "重新关注" : "关注这个情况";
   $("auto-observe-button").disabled = !state.stream;
   $("auto-observe-button").textContent = $("auto-analyze").checked ? "暂停后台记录" : "恢复后台记录";
-  $("stop-task-button").disabled = !(state.activeTask?.status === "active") && !watching;
-  $("stop-task-button").textContent = state.pendingTaskStop ? "等待分析结束…" : "结束任务/关注";
-  const taskPhases = { searching: "正在寻找", possible_target: "发现候选目标", need_better_view: "需要更清晰的视角", confirmed: "已确认目标", guiding: "正在提供帮助", lost: "暂时未看到目标", reacquired: "重新发现目标", historical_match: "找到历史画面线索", done: "已结束" };
-  const taskText = state.activeTask?.status === "active" ? `任务：${state.activeTask.goal}（${taskPhases[state.activeTask.phase] || "进行中"}）` : "";
-  const watchText = watching ? `关注：${state.activeWatch.condition}（${state.activeWatch.status === "suspected" ? "疑似发生，正在复核" : state.activeWatch.status === "confirmed" ? "已确认并提示过" : "等待发生"}）` : "";
-  $("task-status").textContent = [taskText, watchText].filter(Boolean).join("\n") || "当前没有任务或关注条件。";
+  $("stop-task-button").disabled = !active;
+  $("stop-task-button").textContent = state.pendingTaskStop ? "等待结束…" : "结束要求";
+  const kindLabel = { question: "提问", goal: "目标", watch: "关注" };
+  const fallbackLabel = mode === "watch" ? "关注" : "提问";
+  const reqText = active && state.request.text ? `要求（${kindLabel[state.request.kind] || fallbackLabel}）：${state.request.text}` : "";
+  const answerText = state.request.lastAnswer ? `→ ${state.request.lastAnswer}` : "";
+  $("task-status").textContent = [reqText, answerText].filter(Boolean).join("\n") || "当前没有用户要求。";
   $("buffer-count").textContent = `${state.frames.length} / ${FRAME_BUFFER_MAX}`;
   $("scene-status").textContent = state.sceneStatus;
   $("change-status").textContent = state.changeStatus;
@@ -769,7 +772,7 @@ function startVio() {
   state.vio.prevAlpha = null;
   state.vio.lastPlaceMs = 0;
   state.vio.timer = window.setInterval(vioTick, VIO_INTERVAL_MS);
-  state.vio.placeTimer = window.setInterval(() => { void maybeObserveScene(); void maybeObserveSceneChange(); }, 5_000);
+  state.vio.placeTimer = window.setInterval(() => { void maybeObserveScene(); void maybeObserveSceneChange(); void stepRequest(); }, 5_000);
 }
 
 function stopVio() {
@@ -785,6 +788,39 @@ function currentMotionDescription() {
   return segments.length ? window.VioMotion.describeMotion(segments) : null;
 }
 
+/**
+ * Picks a small, non-redundant set of frames that still *covers* the recent
+ * window: always the oldest and newest, then greedily the frames most different
+ * from everything chosen so far (farthest-point over the visual signature).
+ */
+function selectObservationFrames(maxCount = 4, windowMs = 12_000) {
+  const now = Date.now();
+  let pool = state.frames.filter((frame) => now - frame.timestampMs <= windowMs);
+  if (!pool.length) pool = state.frames.slice(-maxCount);
+  if (pool.length <= maxCount) return pool.slice();
+  const chosen = [pool[0], pool[pool.length - 1]];
+  const remaining = pool.slice(1, -1);
+  while (chosen.length < maxCount && remaining.length) {
+    let bestIndex = 0;
+    let bestScore = -Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      let minDiff = Infinity;
+      for (const picked of chosen) {
+        const diff = signatureDifference(remaining[i].signature, picked.signature) ?? 0;
+        if (diff < minDiff) minDiff = diff;
+      }
+      if (minDiff > bestScore) { bestScore = minDiff; bestIndex = i; }
+    }
+    chosen.push(remaining.splice(bestIndex, 1)[0]);
+  }
+  return chosen.sort((a, b) => a.timestampMs - b.timestampMs);
+}
+
+/** The selected frames in the upload payload shape. */
+function framesForUpload(maxCount = 4, windowMs = 12_000) {
+  return selectObservationFrames(maxCount, windowMs).map((frame) => ({ id: frame.id, timestampMs: frame.timestampMs, mimeType: frame.mimeType, dataBase64: frame.dataBase64, quality: frame.quality }));
+}
+
 /** Role 1: scene recording. Runs only when the phone actually moved, at most once per 10s. */
 async function maybeObserveScene() {
   const vio = state.vio;
@@ -794,12 +830,13 @@ async function maybeObserveScene() {
   const now = Date.now();
   if (now - vio.lastPlaceMs < 10_000) return;
   vio.lastPlaceMs = now;
-  const frames = state.frames.slice(-2).map((frame) => ({ id: frame.id, timestampMs: frame.timestampMs, mimeType: frame.mimeType, dataBase64: frame.dataBase64, quality: frame.quality }));
+  const frames = framesForUpload(4, 12_000);
   if (!frames.length) return;
   try {
     const result = await post("/api/scene", { frames, motionDescription: currentMotionDescription() });
     const tag = result.isNew ? "，新场景" : result.revisited ? "，回到已知场景" : "，同一场景";
     state.sceneStatus = `${result.label}${tag}`;
+    state.sceneLabel = result.label ?? null;
     setStatus($("app-status"), `场景：${state.sceneStatus}`);
     updateActionState();
   } catch (error) {
@@ -827,7 +864,7 @@ async function maybeObserveSceneChange() {
   vio.lastSceneSignature = latest.signature ?? null;
   const frames = [{ id: latest.id, timestampMs: latest.timestampMs, mimeType: latest.mimeType, dataBase64: latest.dataBase64, quality: latest.quality }];
   try {
-    const result = await post("/api/scene-change", { frames, motionDescription: currentMotionDescription() });
+    const result = await post("/api/scene-change", { frames, motionDescription: currentMotionDescription(), ...(state.sceneLabel ? { sceneLabel: state.sceneLabel } : {}) });
     state.changeStatus = result.baselineSet ? "已建立基线" : result.changed ? (result.what ?? "有变化") : "无变化";
     if (result.changed) setStatus($("app-status"), `场景内变化：${state.changeStatus}`);
     updateActionState();
@@ -1221,6 +1258,66 @@ async function stopCurrentTask() {
   await finishCurrentTask();
 }
 
+/** Role 3: the user's explicit requirement. */
+async function submitRequest(mode) {
+  const text = $("goal").value.trim();
+  if (!text) { setStatus($("app-status"), "请先填写要求或关注条件。"); return; }
+  if (state.busy) { setStatus($("app-status"), "当前还有分析在进行，稍后再试。"); return; }
+  state.busy = true;
+  try {
+    const motion = currentMotionDescription();
+    const result = await post("/api/request", {
+      action: mode === "watch" ? "watch" : "ask",
+      text,
+      frames: framesForUpload(3, 10_000),
+      ...(motion ? { motionDescription: motion } : {}),
+      ...(state.sceneLabel ? { sceneLabel: state.sceneLabel } : {}),
+    });
+    state.request = { ...state.request, ...result.request, lastStepMs: Date.now() };
+    if (result.result) showRequestResult(result.result);
+    else setStatus($("app-status"), `已设定要求：${text}`);
+  } catch (error) {
+    setStatus($("app-status"), `用户要求失败：${error.message}`, true);
+  } finally { state.busy = false; updateActionState(); }
+}
+
+async function stepRequest() {
+  if (state.busy || state.request.status !== "active") return;
+  if (!state.stream || !state.frames.length) return;
+  const now = Date.now();
+  if (now - (state.request.lastStepMs || 0) < 8_000) return;
+  state.busy = true;
+  state.request.lastStepMs = now;
+  try {
+    const motion = currentMotionDescription();
+    const result = await post("/api/request", {
+      action: "step",
+      frames: framesForUpload(3, 10_000),
+      ...(motion ? { motionDescription: motion } : {}),
+      ...(state.sceneLabel ? { sceneLabel: state.sceneLabel } : {}),
+    });
+    state.request = { ...state.request, ...result.request, lastStepMs: now };
+    if (result.result) showRequestResult(result.result);
+  } catch { /* a periodic re-check failing is not worth interrupting the user */ }
+  finally { state.busy = false; updateActionState(); }
+}
+
+function showRequestResult(result) {
+  const kindLabel = { question: "回答", goal: "建议", watch: "关注" }[result.kind] || "回答";
+  state.request.lastAnswer = result.answer;
+  if (result.shouldSpeak) setStatus($("app-status"), `◉ ${kindLabel}：${result.answer}`);
+  else setStatus($("app-status"), `${kindLabel}：${result.answer}（未提示）`);
+}
+
+async function stopRequest() {
+  try {
+    const result = await post("/api/request", { action: "stop" });
+    state.request = { ...state.request, ...result.request, lastStepMs: 0 };
+    setStatus($("app-status"), "已结束用户要求。");
+  } catch (error) { setStatus($("app-status"), error.message, true); }
+  finally { updateActionState(); }
+}
+
 $("login-button").addEventListener("click", () => void login());
 $("passcode").addEventListener("keydown", (event) => { if (event.key === "Enter") void login(); });
 $("camera-button").addEventListener("click", () => {
@@ -1228,15 +1325,9 @@ $("camera-button").addEventListener("click", () => {
   else void startCamera().catch((error) => setStatus($("app-status"), error.message, true));
 });
 $("capture-button").addEventListener("click", () => void captureFrame().catch((error) => setStatus($("app-status"), error.message, true)));
-$("ask-button").addEventListener("click", () => {
-  if (state.stream && !$("auto-analyze").checked) {
-    $("auto-analyze").checked = true;
-    updateAutoAnalyze();
-  }
-  void analyzeFrames("deep", false, null, "user_request");
-});
-$("watch-button").addEventListener("click", () => void toggleWatch());
-$("stop-task-button").addEventListener("click", () => void stopCurrentTask());
+$("ask-button").addEventListener("click", () => void submitRequest("ask"));
+$("watch-button").addEventListener("click", () => void submitRequest("watch"));
+$("stop-task-button").addEventListener("click", () => void stopRequest());
 $("goal").addEventListener("input", updateActionState);
 $("auto-observe-button").addEventListener("click", () => {
   $("auto-analyze").checked = !$("auto-analyze").checked;

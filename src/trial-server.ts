@@ -12,6 +12,7 @@ import type { MotionCalibration } from "./dead-reckoning.js";
 import { VlmHarness, type AnalysisMode, type AttentionMode, type FrameRef, type MotionContext } from "./vlm-harness.js";
 import { SceneAgent } from "./agent/scene-agent.js";
 import { SceneChangeAgent } from "./agent/scene-change-agent.js";
+import { RequestAgent } from "./agent/request-agent.js";
 
 const PORT = Number(process.env.VLM_TRIAL_PORT || "8765");
 /** LAN IPv4 captured by scripts/setup-lan-tls.ps1, used only for console hints. */
@@ -41,6 +42,7 @@ const sessions = new Map<string, { id: string; expiresAt: number; requests: numb
 const harnesses = new Map<string, VlmHarness>();
 const sceneAgents = new Map<string, SceneAgent>();
 const sceneChangeAgents = new Map<string, SceneChangeAgent>();
+const requestAgents = new Map<string, RequestAgent>();
 const badLogins = new Map<string, number[]>();
 const experimentRoot = resolve(process.env.VLM_EXPERIMENT_ROOT || "run/experiments");
 
@@ -550,13 +552,16 @@ async function handleScene(req: IncomingMessage, res: ServerResponse, session: {
 	}
 	let agent = sceneAgents.get(session.id);
 	if (!agent) {
-		agent = new SceneAgent();
+		agent = new SceneAgent(resolve(experimentRoot, session.id, "scene-memory"));
 		if (sceneAgents.size >= MAX_SESSIONS) sceneAgents.delete(sceneAgents.keys().next().value!);
 		sceneAgents.set(session.id, agent);
 	}
 	const result = await agent.observe(frames, motionDescription);
-	await appendSessionEvent(experimentRoot, session.id, { type: "scene_recorded", details: { sceneId: result.sceneId, label: result.label, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, motion: motionDescription } });
-	json(res, 200, { sceneId: result.sceneId, label: result.label, summary: result.summary, objects: result.objects, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, frameIds: result.frameIds, scene: agent.getState() });
+	// The scene-change agent compares within a place; when the place itself
+	// changes its baseline view belongs to the old place, so reset it.
+	if (result.changed) sceneChangeAgents.get(session.id)?.resetBaseline();
+	await appendSessionEvent(experimentRoot, session.id, { type: "scene_recorded", details: { sceneId: result.sceneId, label: result.label, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, match: result.match, motion: motionDescription } });
+	json(res, 200, { sceneId: result.sceneId, label: result.label, summary: result.summary, objects: result.objects, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, match: result.match, frameIds: result.frameIds, scene: agent.getState() });
 }
 
 async function handleSceneChange(req: IncomingMessage, res: ServerResponse, session: { id: string }): Promise<void> {
@@ -590,6 +595,66 @@ async function handleSceneChange(req: IncomingMessage, res: ServerResponse, sess
 	const result = await agent.observe(frames, motionDescription, sceneLabel);
 	if (result.changed) await appendSessionEvent(experimentRoot, session.id, { type: "scene_changed", details: { what: result.what, candidateUtterance: result.candidateUtterance, confidence: result.confidence } });
 	json(res, 200, { changed: result.changed, what: result.what, candidateUtterance: result.candidateUtterance, confidence: result.confidence, frameIds: result.frameIds, baselineSet: result.baselineSet, state: agent.getState() });
+}
+
+async function handleRequest(req: IncomingMessage, res: ServerResponse, session: { id: string }): Promise<void> {
+	const input = await bodyJson(req);
+	const action = typeof input.action === "string" ? input.action : "step";
+	let agent = requestAgents.get(session.id);
+	if (!agent) {
+		agent = new RequestAgent();
+		if (requestAgents.size >= MAX_SESSIONS) requestAgents.delete(requestAgents.keys().next().value!);
+		requestAgents.set(session.id, agent);
+	}
+
+	if (action === "stop") {
+		const previous = agent.getState();
+		const state = agent.stop();
+		if (previous.status === "active") await appendSessionEvent(experimentRoot, session.id, { type: "request_stopped", goal: previous.text });
+		json(res, 200, { request: state });
+		return;
+	}
+
+	if (action === "ask" || action === "watch") {
+		const text = typeof input.text === "string" ? input.text.trim() : "";
+		if (!text || text.length > 500) throw new Error("请提供 1 到 500 字的要求或关注条件");
+		const mode = action === "watch" ? "watch" : "ask";
+		agent.set(mode, text);
+		await appendSessionEvent(experimentRoot, session.id, { type: "request_set", goal: text, details: { mode } });
+	} else if (action !== "step") {
+		throw new Error("Unsupported request action");
+	}
+
+	const current = agent.getState();
+	if (current.status !== "active") { json(res, 200, { request: current }); return; }
+
+	if (!Array.isArray(input.frames) || input.frames.length < 1 || input.frames.length > 6) throw new Error("request 需要 1 到 6 张截图");
+	const motionDescription = typeof input.motionDescription === "string" ? input.motionDescription.slice(0, 1200) : null;
+	const sceneLabel = typeof input.sceneLabel === "string" ? input.sceneLabel.slice(0, 120) : null;
+	const runId = randomUUID();
+	const stagingDir = resolve("run/mobile-staging", session.id, `request-${runId}`);
+	await mkdir(stagingDir, { recursive: true });
+	const frames: FrameRef[] = [];
+	for (const [index, item] of input.frames.entries()) {
+		if (typeof item !== "object" || item === null || Array.isArray(item)) throw new Error(`截图 ${index + 1} 格式错误`);
+		const row = item as Record<string, unknown>;
+		if (typeof row.dataBase64 !== "string" || typeof row.timestampMs !== "number") throw new Error(`截图 ${index + 1} 缺少图像或时间戳`);
+		const mime = row.mimeType;
+		const extension = mime === "image/jpeg" ? ".jpg" : mime === "image/png" ? ".png" : mime === "image/webp" ? ".webp" : null;
+		if (!extension) throw new Error("截图只支持 JPEG、PNG 或 WebP");
+		const bytes = Buffer.from(row.dataBase64, "base64");
+		if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) throw new Error("每张截图最大为 1.5 MB");
+		const path = resolve(stagingDir, `frame-${String(index + 1).padStart(2, "0")}${extension}`);
+		await writeFile(path, bytes, { flag: "wx" });
+		frames.push({ id: `request-${index + 1}-${Math.round(row.timestampMs)}`, timestampMs: Math.round(row.timestampMs), path });
+	}
+
+	const result = await agent.observe(frames, motionDescription, sceneLabel);
+	await appendSessionEvent(experimentRoot, session.id, { type: "request_answered", goal: current.text, details: { kind: result.kind, answer: result.answer, shouldSpeak: result.shouldSpeak, done: result.done, confidence: result.confidence } });
+	json(res, 200, {
+		request: agent.getState(),
+		result: { kind: result.kind, answer: result.answer, shouldSpeak: result.shouldSpeak, done: result.done, confidence: result.confidence, frameIds: result.frameIds },
+	});
 }
 
 function parseMotionCalibration(value: unknown): MotionCalibration | undefined {
@@ -1115,6 +1180,11 @@ async function main(): Promise<void> {
 			if (pathname === "/api/scene-change") {
 				if (!process.env.QWEN_API_KEY || !process.env.QWEN_BASE_URL) { json(res, 503, { error: "VLM API is not configured" }); return; }
 				await handleSceneChange(req, res, session);
+				return;
+			}
+			if (pathname === "/api/request") {
+				if (!process.env.QWEN_API_KEY || !process.env.QWEN_BASE_URL) { json(res, 503, { error: "VLM API is not configured" }); return; }
+				await handleRequest(req, res, session);
 				return;
 			}
 			if (pathname === "/api/spatial/capture") { await handleSpatialCapture(req, res, session); return; }
