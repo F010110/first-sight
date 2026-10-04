@@ -474,6 +474,12 @@ async function login() {
   const button = $("login-button");
   button.disabled = true;
   setStatus($("login-status"), "正在验证…");
+  // Ask for the motion sensors now, while we are still inside the click gesture
+  // (iOS requires requestPermission to be called from a gesture); the camera
+  // prompt follows right after login.
+  void requestDeviceMotionPermission().then((value) => { state.motion.motionPermission = value; });
+  void requestDeviceOrientationPermission().then((value) => { state.motion.orientationPermission = value; });
+  primeSpeech();
   try {
     const result = await post("/api/login", { passcode: $("passcode").value }, false);
     state.token = result.token;
@@ -483,7 +489,8 @@ async function login() {
     $("passcode").value = "";
     showApp();
     void syncTaskState().catch((error) => setStatus($("app-status"), error.message, true));
-    setStatus($("app-status"), "口令验证成功。请开启摄像头并授予浏览器权限。");
+    setStatus($("app-status"), "验证成功，正在开启摄像头并请求权限…");
+    void startCamera().catch((error) => setStatus($("app-status"), error.message, true));
   } catch (error) {
     setStatus($("login-status"), error.message, true);
   } finally { button.disabled = false; }
@@ -491,7 +498,10 @@ async function login() {
 
 async function startCamera({ autoObserve = false } = {}) {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前页面无法访问摄像头；请使用 HTTPS 地址并在手机浏览器中打开。");
-  const [motionPermission, orientationPermission] = await Promise.all([requestDeviceMotionPermission(), requestDeviceOrientationPermission()]);
+  const [motionPermission, orientationPermission] = await Promise.all([
+    state.motion.motionPermission === "unknown" ? requestDeviceMotionPermission() : Promise.resolve(state.motion.motionPermission),
+    state.motion.orientationPermission === "unknown" ? requestDeviceOrientationPermission() : Promise.resolve(state.motion.orientationPermission),
+  ]);
   state.motion.motionPermission = motionPermission;
   state.motion.orientationPermission = orientationPermission;
   state.motion.samples = [];
@@ -568,7 +578,7 @@ function updateActionState() {
   const mode = state.request.mode;
   const askButton = $("ask-button");
   askButton.disabled = !ready || !hasGoal;
-  askButton.textContent = active && mode === "ask" ? "更新要求" : "提问 / 设定目标";
+  askButton.textContent = active && mode === "ask" ? "更新" : "发送";
   const watchButton = $("watch-button");
   watchButton.disabled = !ready || !hasGoal;
   watchButton.textContent = active && mode === "watch" ? "重新关注" : "关注这个情况";
@@ -1315,6 +1325,17 @@ async function stopCurrentTask() {
 let voiceRecognition = null;
 let voiceListening = false;
 
+/** Unlock speech synthesis on a user gesture (iOS/Chrome block the first unsolicited speak). */
+function primeSpeech() {
+  if (typeof speechSynthesis === "undefined") return;
+  try {
+    const utterance = new SpeechSynthesisUtterance(" ");
+    utterance.volume = 0;
+    speechSynthesis.speak(utterance);
+    speechSynthesis.resume();
+  } catch { /* ignore */ }
+}
+
 function speak(text) {
   if (!$("speak-toggle")?.checked || !text || typeof speechSynthesis === "undefined") return;
   try {
@@ -1357,6 +1378,7 @@ async function submitRequest(mode) {
   const text = $("goal").value.trim();
   if (!text) { setStatus($("app-status"), "请先填写要求或关注条件。"); return; }
   if (state.busy) { setStatus($("app-status"), "当前还有分析在进行，稍后再试。"); return; }
+  primeSpeech();
   state.busy = true;
   try {
     const motion = currentMotionDescription();
@@ -1400,6 +1422,7 @@ function showRequestResult(result) {
   const kindLabel = { question: "回答", goal: "建议", watch: "关注" }[result.kind] || "回答";
   state.request.lastAnswer = result.answer;
   const frameHint = hasFrameRelativeDirection(result.answer) ? "（模型用了画面方位；实际方位以你身体为准）" : "";
+  if ($("output")) $("output").textContent = `${kindLabel}：${result.answer}${frameHint}`;
   if (result.shouldSpeak) {
     setStatus($("app-status"), `◉ ${kindLabel}：${result.answer}${frameHint}`);
     speak(result.answer);
@@ -1437,6 +1460,7 @@ $("save-feedback-button").addEventListener("click", () => void saveFeedback());
 if (state.token && state.sessionId) {
   showApp();
   void syncTaskState().catch((error) => setStatus($("app-status"), error.message, true));
+  void startCamera().catch((error) => setStatus($("app-status"), error.message, true));
 }
 
 window.addEventListener("pagehide", () => {

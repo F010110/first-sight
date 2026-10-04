@@ -11,11 +11,9 @@
 </head>
 <body>
   <main class="shell">
-    <header>
-      <div class="eyebrow">FIRST SIGHT · FIELD TRIAL</div>
-      <h1>First Sight · 视觉助手</h1>
-      <p class="muted">开启摄像头后，系统自动记录场景、检测场景变化；你也可以提问或设定关注条件。</p>
-      <p class="probe-link"><a href="/spatial-probe">实验：检查浏览器空间跟踪与深度能力</a></p>
+    <header class="app-header">
+      <h1>First Sight</h1>
+      <span class="muted">视觉助手</span>
     </header>
 
     <section id="login-panel" class="card">
@@ -25,6 +23,7 @@
         <button id="login-button" class="primary">进入</button>
       </div>
       <p id="login-status" class="status" aria-live="polite"></p>
+      <p class="muted">进入后会依次请求摄像头与运动传感器权限。</p>
     </section>
 
     <section id="app-panel" hidden>
@@ -34,74 +33,74 @@
           <div id="camera-placeholder" class="placeholder">摄像头尚未开启</div>
           <div id="live-badge" class="live-badge" hidden>LIVE</div>
         </div>
-        <div class="button-row">
-          <button id="camera-button" class="primary">开启摄像头</button>
-          <button id="capture-button" disabled>抓拍一帧</button>
-        </div>
       </section>
 
-      <section class="card">
-        <h2>观察线</h2>
-        <p class="muted">系统独立运行三条线：场景记录、场景变化、用户要求。无需选择模式。</p>
-        <div class="settings-grid">
-          <div><label>场景</label><div id="scene-status" class="setting-value">未开始</div></div>
-          <div><label>场景变化</label><div id="change-status" class="setting-value">未开始</div></div>
+      <section class="card ask-card">
+        <div class="ask-row">
+          <button id="mic-button" class="primary icon" disabled title="按一下开始说话">🎤</button>
+          <input id="goal" type="text" maxlength="2000" placeholder="问点什么，或按 🎤 说话">
+          <button id="ask-button" class="primary" disabled>发送</button>
         </div>
-        <label for="goal" class="mode-input-label">用户要求（提问 / 目标 / 关注条件）</label>
-        <textarea id="goal" rows="2" maxlength="2000" placeholder="例如：我的手机在哪里？；或：水壶开始沸腾时告诉我"></textarea>
-        <input id="auto-analyze" type="checkbox" hidden>
-        <div class="button-row">
-          <button id="mic-button" class="secondary" disabled>🎤 语音提问</button>
-          <label class="inline" style="gap:6px"><input type="checkbox" id="speak-toggle" checked> 语音播报</label>
+        <div id="output" class="output" aria-live="polite">回答会显示在这里。</div>
+        <div class="ask-tools">
+          <label class="inline"><input type="checkbox" id="speak-toggle" checked> 🔊 语音播报</label>
+          <button id="watch-button" class="secondary" disabled>关注这个情况</button>
+          <button id="stop-task-button" class="secondary" disabled>结束</button>
         </div>
-        <div class="button-row">
-          <button id="ask-button" class="primary" disabled>提问 / 设定目标</button>
-          <button id="watch-button" disabled>关注这个情况</button>
-          <button id="stop-task-button" class="secondary" disabled>结束要求</button>
+        <div class="scene-lines">
+          <span>场景 <b id="scene-status">未开始</b></span>
+          <span>变化 <b id="change-status">未开始</b></span>
         </div>
         <p id="voice-status" class="muted" aria-live="polite"></p>
-        <p id="task-status" class="muted" aria-live="polite">当前没有用户要求。</p>
+        <p id="task-status" class="muted" aria-live="polite"></p>
+        <input id="auto-analyze" type="checkbox" hidden>
+        <div class="button-row">
+          <button id="camera-button" class="secondary">开启/关闭摄像头</button>
+          <button id="capture-button" class="secondary" disabled>抓拍一帧</button>
+        </div>
+
         <details class="advanced-settings">
-          <summary>采集设置</summary>
+          <summary>更多</summary>
           <div class="settings-grid">
-            <label>自动抓拍频率
-              <span class="setting-value">每秒 1 帧</span>
-            </label>
             <label>手动分析帧数
               <select id="frame-count"><option value="1">1 帧</option><option value="4" selected>4 帧</option><option value="8">8 帧</option></select>
             </label>
           </div>
           <button id="auto-observe-button" class="advanced-toggle" disabled>暂停后台记录</button>
+          <div class="buffer-line"><span>最近截图缓冲区</span><span id="buffer-count">0 / 32</span></div>
+          <div id="thumbnails" class="thumbnails"></div>
+          <p class="probe-link"><a href="/spatial-probe">实验：浏览器空间/深度探针</a> · <a href="/vio">VIO 探针</a> · <a href="/report">轨迹报告</a></p>
         </details>
-        <div class="buffer-line"><span>最近截图缓冲区</span><span id="buffer-count">0 / 32</span></div>
-        <div id="thumbnails" class="thumbnails"></div>
       </section>
 
-      <section id="result-card" class="card" hidden>
-        <div class="result-heading"><h2>本次结果</h2><span id="latency" class="pill"></span></div>
-        <div id="decision" class="decision"></div>
-        <p id="response" class="response"></p>
-        <div id="observations" class="observations"></div>
-        <section id="motion-timeline" class="motion-timeline" hidden>
-          <h3>运动时间段（传感器估计）</h3>
-          <div id="motion-timeline-items"></div>
-          <p class="timeline-note">位移与方向是估计线索；浏览器没有提供绝对位置。请结合对应截图判断，无法确认时保留未知。</p>
+      <details class="card result-details">
+        <summary>本次结果 / 反馈</summary>
+        <section id="result-card" hidden>
+          <div class="result-heading"><h2>本次结果</h2><span id="latency" class="pill"></span></div>
+          <div id="decision" class="decision"></div>
+          <p id="response" class="response"></p>
+          <div id="observations" class="observations"></div>
+          <section id="motion-timeline" class="motion-timeline" hidden>
+            <h3>运动时间段（传感器估计）</h3>
+            <div id="motion-timeline-items"></div>
+            <p class="timeline-note">位移与方向是估计线索；浏览器没有提供绝对位置。</p>
+          </section>
+          <details><summary>模型原始决策</summary><pre id="raw-decision"></pre></details>
+          <div class="feedback-grid">
+            <label>识图正确<select data-feedback="perceptionCorrect"><option value="">未标注</option><option value="true">是</option><option value="false">否</option></select></label>
+            <label>位置正确<select data-feedback="positionCorrect"><option value="">未标注</option><option value="true">是</option><option value="false">否</option></select></label>
+            <label>该不该回答<select data-feedback="decisionCorrect"><option value="">未标注</option><option value="true">是</option><option value="false">否</option></select></label>
+            <label>回答内容正确<select data-feedback="responseCorrect"><option value="">未标注</option><option value="true">是</option><option value="false">否</option></select></label>
+            <label>对用户有帮助<select data-feedback="useful"><option value="">未标注</option><option value="true">是</option><option value="false">否</option></select></label>
+          </div>
+          <textarea id="feedback-notes" rows="2" maxlength="1000" placeholder="备注（可选）"></textarea>
+          <button id="save-feedback-button">保存反馈</button>
+          <p id="feedback-status" class="status" aria-live="polite"></p>
         </section>
-        <details><summary>模型原始决策</summary><pre id="raw-decision"></pre></details>
-        <div class="feedback-grid">
-          <label>识图正确<select data-feedback="perceptionCorrect"><option value="">未标注</option><option value="true">是</option><option value="false">否</option></select></label>
-          <label>位置正确<select data-feedback="positionCorrect"><option value="">未标注</option><option value="true">是</option><option value="false">否</option></select></label>
-          <label>该不该回答<select data-feedback="decisionCorrect"><option value="">未标注</option><option value="true">是</option><option value="false">否</option></select></label>
-          <label>回答内容正确<select data-feedback="responseCorrect"><option value="">未标注</option><option value="true">是</option><option value="false">否</option></select></label>
-          <label>对用户有帮助<select data-feedback="useful"><option value="">未标注</option><option value="true">是</option><option value="false">否</option></select></label>
-        </div>
-        <textarea id="feedback-notes" rows="2" maxlength="1000" placeholder="备注（可选）"></textarea>
-        <button id="save-feedback-button">保存反馈</button>
-        <p id="feedback-status" class="status" aria-live="polite"></p>
-      </section>
+      </details>
+
       <p id="app-status" class="status" aria-live="polite"></p>
     </section>
-    <footer>摄像头开启后，截图先在本机短时缓冲；自动触发或手动分析时，选中的截图会发送到试验服务并写入实验记录。</footer>
   </main>
 </body>
 </html>
