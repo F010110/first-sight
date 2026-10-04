@@ -557,9 +557,9 @@ async function handleScene(req: IncomingMessage, res: ServerResponse, session: {
 		sceneAgents.set(session.id, agent);
 	}
 	const result = await agent.observe(frames, motionDescription);
-	// The scene-change agent compares within a place; when the place itself
-	// changes its baseline view belongs to the old place, so reset it.
-	if (result.changed) sceneChangeAgents.get(session.id)?.resetBaseline();
+	// Kept as a safety net: the scene-change agent keeps one baseline per scene,
+	// so a new place simply has no baseline yet and returning to a known scene
+	// reuses its stored baseline (so changes that happened while away are found).
 	await appendSessionEvent(experimentRoot, session.id, { type: "scene_recorded", details: { sceneId: result.sceneId, label: result.label, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, match: result.match, motion: motionDescription } });
 	json(res, 200, { sceneId: result.sceneId, label: result.label, summary: result.summary, objects: result.objects, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, match: result.match, frameIds: result.frameIds, scene: agent.getState() });
 }
@@ -569,6 +569,7 @@ async function handleSceneChange(req: IncomingMessage, res: ServerResponse, sess
 	if (!Array.isArray(input.frames) || input.frames.length < 1 || input.frames.length > 6) throw new Error("scene-change 需要 1 到 6 张截图");
 	const motionDescription = typeof input.motionDescription === "string" ? input.motionDescription.slice(0, 1200) : null;
 	const sceneLabel = typeof input.sceneLabel === "string" ? input.sceneLabel.slice(0, 120) : null;
+	const sceneId = typeof input.sceneId === "string" ? input.sceneId.slice(0, 60) : null;
 	const runId = randomUUID();
 	const stagingDir = resolve("run/mobile-staging", session.id, `scene-change-${runId}`);
 	await mkdir(stagingDir, { recursive: true });
@@ -588,13 +589,13 @@ async function handleSceneChange(req: IncomingMessage, res: ServerResponse, sess
 	}
 	let agent = sceneChangeAgents.get(session.id);
 	if (!agent) {
-		agent = new SceneChangeAgent();
+		agent = new SceneChangeAgent(resolve(experimentRoot, session.id, "change-staging"));
 		if (sceneChangeAgents.size >= MAX_SESSIONS) sceneChangeAgents.delete(sceneChangeAgents.keys().next().value!);
 		sceneChangeAgents.set(session.id, agent);
 	}
-	const result = await agent.observe(frames, motionDescription, sceneLabel);
-	if (result.changed) await appendSessionEvent(experimentRoot, session.id, { type: "scene_changed", details: { what: result.what, candidateUtterance: result.candidateUtterance, confidence: result.confidence } });
-	json(res, 200, { changed: result.changed, what: result.what, candidateUtterance: result.candidateUtterance, confidence: result.confidence, frameIds: result.frameIds, baselineSet: result.baselineSet, state: agent.getState() });
+	const result = await agent.observe(frames, motionDescription, sceneId, sceneLabel);
+	if (result.changed) await appendSessionEvent(experimentRoot, session.id, { type: "scene_changed", details: { sceneId: result.sceneId, what: result.what, candidateUtterance: result.candidateUtterance, confidence: result.confidence, detection: result.detection } });
+	json(res, 200, { changed: result.changed, what: result.what, candidateUtterance: result.candidateUtterance, confidence: result.confidence, sceneId: result.sceneId, detection: result.detection, reason: result.reason, frameIds: result.frameIds, baselineSet: result.baselineSet, state: agent.getState() });
 }
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse, session: { id: string }): Promise<void> {

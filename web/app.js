@@ -40,7 +40,7 @@ function emptyRouterStats() {
 	return { capturedFrames: 0, movingFramesSkipped: 0, sensorMotionGatedFrames: 0, noChangeFramesSkipped: 0, familiarSceneFramesSkipped: 0, stabilityWaits: 0, frameChangeScore: null, visualNoveltyScore: null, motionContext: null };
 }
 
-const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", sceneLabel: null, request: { mode: null, kind: null, status: "idle", text: null, lastAnswer: null, spoken: false, lastStepMs: 0 }, live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, prevTickMs: 0, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, lastAbsoluteMs: 0, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
+const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", sceneLabel: null, sceneId: null, request: { mode: null, kind: null, status: "idle", text: null, lastAnswer: null, spoken: false, lastStepMs: 0 }, live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, prevTickMs: 0, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, lastAbsoluteMs: 0, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
 
 async function post(path, payload, authenticated = true, timeoutMs = 25_000) {
   const headers = { "Content-Type": "application/json" };
@@ -847,12 +847,19 @@ function framesForUpload(maxCount = 4, windowMs = 12_000) {
   return selectObservationFrames(maxCount, windowMs).map((frame) => ({ id: frame.id, timestampMs: frame.timestampMs, mimeType: frame.mimeType, dataBase64: frame.dataBase64, quality: frame.quality }));
 }
 
-/** Role 1: scene recording. Runs only when the phone actually moved, at most once per 10s. */
+/** Role 1: scene recording. Runs when the phone moved, or once to establish the first stable scene. */
 async function maybeObserveScene() {
   const vio = state.vio;
   if (!state.token || state.busy || !window.VioMotion || vio.features.length < 20) return;
   const segments = window.VioMotion.fuseMotion(vio.features);
-  if (!segments.some((segment) => segment.kind !== "still")) return;
+  const hasMotion = segments.some((segment) => segment.kind !== "still");
+  if (!hasMotion) {
+    // No motion: only allow the very first, stable view so the scene-change line
+    // has a scene to compare against.
+    if (state.sceneId !== null || state.frames.length < 3) return;
+    const recent = state.frames.slice(-3);
+    if (!recent.every((frame) => (signatureDifference(frame.signature, recent[0].signature) ?? 1) <= 0.03)) return;
+  }
   const now = Date.now();
   if (now - vio.lastPlaceMs < 10_000) return;
   vio.lastPlaceMs = now;
@@ -863,6 +870,7 @@ async function maybeObserveScene() {
     const tag = result.isNew ? "，新场景" : result.revisited ? "，回到已知场景" : "，同一场景";
     state.sceneStatus = `${result.label}${tag}`;
     state.sceneLabel = result.label ?? null;
+    state.sceneId = result.sceneId ?? null;
     setStatus($("app-status"), `场景：${state.sceneStatus}`);
     updateActionState();
   } catch (error) {
@@ -870,10 +878,11 @@ async function maybeObserveScene() {
   }
 }
 
-/** Role 2: in-scene change, especially changes not caused by movement. Static + stable only. */
+/** Role 2: in-scene change. Only after the scene agent has decided the place; the detector finds real local changes. */
 async function maybeObserveSceneChange() {
   const vio = state.vio;
   if (!state.token || state.busy) return;
+  if (!state.sceneId) return; // wait until the scene agent has decided which place this is
   if (state.frames.length < 3) return;
   const now = Date.now();
   if (now - vio.lastSceneChangeMs < 10_000) return;
@@ -890,8 +899,14 @@ async function maybeObserveSceneChange() {
   vio.lastSceneSignature = latest.signature ?? null;
   const frames = [{ id: latest.id, timestampMs: latest.timestampMs, mimeType: latest.mimeType, dataBase64: latest.dataBase64, quality: latest.quality }];
   try {
-    const result = await post("/api/scene-change", { frames, motionDescription: currentMotionDescription(), ...(state.sceneLabel ? { sceneLabel: state.sceneLabel } : {}) });
-    state.changeStatus = result.baselineSet ? "已建立基线" : result.changed ? (result.what ?? "有变化") : "无变化";
+    const result = await post("/api/scene-change", {
+      frames,
+      motionDescription: currentMotionDescription(),
+      sceneId: state.sceneId,
+      ...(state.sceneLabel ? { sceneLabel: state.sceneLabel } : {}),
+    });
+    const detail = result.detection ? `（对齐 ${result.detection.overlapRatio}，变化 ${(result.detection.changedRatio * 100).toFixed(1)}%，${result.detection.regionCount} 区）` : "";
+    state.changeStatus = result.baselineSet ? "已建立基线" : result.changed ? `${result.what ?? "有变化"}${detail}` : `${result.reason ?? "无变化"}${detail}`;
     if (result.changed) setStatus($("app-status"), `场景内变化：${state.changeStatus}`);
     updateActionState();
   } catch (error) {
