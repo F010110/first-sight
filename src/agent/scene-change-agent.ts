@@ -4,23 +4,25 @@ import { extname, resolve } from "node:path";
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { createQwenModel } from "./qwen-provider.js";
-import { detectChanges, type ChangeRegion } from "./image-change.js";
+import { detectChanges } from "./image-change.js";
 import type { FrameRef } from "./types.js";
 
 /**
  * SceneChangeAgent (role 2 of 3): detects *new changes inside a place*.
  *
- * The SceneAgent decides which place the user is in. Only when that place is a
- * known scene (same or revisited) does this agent compare the current view with
- * that scene's stored baseline. The comparison is registration-based: feature
- * matching aligns the two views, so differences in framing / camera angle do
- * NOT count; only content that actually changed (an object added/removed/moved,
- * a screen/light changed state) shows up as a local residual blob.
+ * The SceneAgent decides which place the user is in. When that place is a known
+ * scene, this agent compares the current view with the scene's *canonical first
+ * view* (its first stored representative), not with a continuously-updated view —
+ * otherwise a change would be absorbed into the baseline and forgotten.
  *
- * The local-change detector is the trigger and the filter. The VLM is called
- * only when real candidate blobs are found, and is shown the baseline plus the
- * current view with those blobs boxed; it decides whether they are a genuine
- * scene change or just parallax / reflection / exposure.
+ * Two paths:
+ *  - Pixel path (preferred): register baseline/current with a homography and look
+ *    for significant local residual blobs. Framing/angle differences are removed
+ *    by the registration, so only real content changes remain.
+ *  - VLM fallback: when the two views cannot be registered well (large pose
+ *    change, texture-poor scene), the pixel diff is untrustworthy; ask the VLM to
+ *    compare the two views semantically instead (rate-limited), ignoring
+ *    viewpoint/framing.
  */
 
 export interface SceneChangeEvent {
@@ -32,6 +34,7 @@ export interface SceneChangeEvent {
 	frameId: string;
 	regionCount: number;
 	changedRatio: number;
+	via: "pixels" | "vlm-fallback";
 }
 
 export interface SceneChangeResult {
@@ -43,6 +46,7 @@ export interface SceneChangeResult {
 	baselineSet: boolean;
 	sceneId: string | null;
 	detection: { aligned: boolean; inliers: number; overlapRatio: number; changedRatio: number; regionCount: number } | null;
+	via: "pixels" | "vlm-fallback" | null;
 	reason: string | null;
 	raw: string;
 }
@@ -52,19 +56,22 @@ interface Baseline {
 	timestampMs: number;
 	frameId: string;
 	label: string | null;
+	/** Last time the VLM fallback ran for this scene (to rate-limit it). */
+	lastFallbackMs?: number;
 }
 
 const MIN_OVERLAP_RATIO = 0.5;
+const MIN_INLIERS = 25;
 const MIN_CHANGE_RATIO = 0.005;
 const MIN_REGION_FRACTION = 0.004;
 const VLM_MIN_CONFIDENCE = 0.6;
+const FALLBACK_INTERVAL_MS = 20_000;
 
 const SYSTEM_PROMPT = [
 	"You compare an EARLIER view of a place with the CURRENT view of the SAME place.",
-	"The two images are already geometrically aligned by feature matching, and a local-change detector has flagged the listed regions as different; the boxes on the current image mark them.",
-	"These flags are candidates, not proof: parallax, reflections, blur or exposure changes can cause them.",
 	"Decide whether the SCENE ITSELF changed: an object was added, removed or moved, a person appeared or left, or a door / light / screen changed state.",
-	"Do NOT report pure viewpoint, framing, camera-angle or exposure differences — those are already accounted for by the alignment.",
+	"Do NOT report pure viewpoint, framing, camera-angle or exposure differences — the two views may be from different angles, that is not a change.",
+	"When regions are boxed on the current image, a local-change detector already flagged them; they are candidates only (parallax, reflections or blur can cause them).",
 	"Be conservative: only changed=true when the evidence is clear.",
 	'Reply with ONLY JSON: {"changed": boolean, "what": string|null, "candidateUtterance": string|null, "confidence": number}. candidateUtterance is one short sentence the assistant could say, or null. No markdown.',
 ].join(" ");
@@ -98,10 +105,6 @@ function parseChange(text: string): ParsedChange {
 	};
 }
 
-function describeRegions(regions: ChangeRegion[]): string {
-	return regions.slice(0, 5).map((region, index) => `#${index + 1} ${region.w}x${region.h}px area=${region.area} diff=${region.meanDiff}`).join("; ");
-}
-
 export class SceneChangeAgent {
 	private readonly model: Model<"openai-completions">;
 	private readonly streamFn: Agent["streamFunction"];
@@ -121,22 +124,30 @@ export class SceneChangeAgent {
 		};
 	}
 
-	/** Drops a scene's baseline (e.g. after that scene was re-created). */
 	resetBaseline(sceneId?: string): void {
 		if (sceneId) this.baselines.delete(sceneId);
 		else this.baselines.clear();
 	}
 
-	async observe(frames: FrameRef[], motionDescription: string | null, sceneId: string | null, sceneLabel: string | null = null): Promise<SceneChangeResult> {
+	/**
+	 * @param sceneBaselinePath the scene's canonical first view (from the scene
+	 * memory). Used when this agent has no baseline for the scene yet, so the very
+	 * first comparison is against the *pre-change* state.
+	 */
+	async observe(frames: FrameRef[], motionDescription: string | null, sceneId: string | null, sceneLabel: string | null = null, sceneBaselinePath: string | null = null): Promise<SceneChangeResult> {
 		if (frames.length === 0) throw new Error("SceneChangeAgent needs at least one frame");
 		const ordered = frames.slice().sort((a, b) => a.timestampMs - b.timestampMs).slice(-3);
 		const latest = ordered[ordered.length - 1]!;
 		const key = sceneId ?? "default";
-		const baseline = this.baselines.get(key);
 
+		let baseline = this.baselines.get(key);
+		if (!baseline && sceneBaselinePath) {
+			baseline = { framePath: sceneBaselinePath, timestampMs: 0, frameId: "scene-baseline", label: sceneLabel };
+			this.baselines.set(key, baseline);
+		}
 		if (!baseline) {
 			this.baselines.set(key, { framePath: latest.path, timestampMs: latest.timestampMs, frameId: latest.id, label: sceneLabel });
-			return { changed: false, what: null, candidateUtterance: null, confidence: 0, frameIds: [latest.id], baselineSet: true, sceneId: key, detection: null, reason: "baseline established", raw: "" };
+			return { changed: false, what: null, candidateUtterance: null, confidence: 0, frameIds: [latest.id], baselineSet: true, sceneId: key, detection: null, via: null, reason: "baseline established", raw: "" };
 		}
 
 		let boxesPath: string | null = null;
@@ -146,49 +157,58 @@ export class SceneChangeAgent {
 		}
 		const detection = await detectChanges(baseline.framePath, latest.path, { minArea: 250, maxDim: 640, ...(boxesPath ? { boxesPath } : {}) });
 		const summary = { aligned: detection.aligned, inliers: detection.inliers, overlapRatio: detection.overlapRatio, changedRatio: detection.changedRatio, regionCount: detection.regions.length };
-		const quiet = (reason: string): SceneChangeResult => ({ changed: false, what: null, candidateUtterance: null, confidence: 0, frameIds: [latest.id], baselineSet: false, sceneId: key, detection: summary, reason, raw: "" });
+		const quiet = (reason: string): SceneChangeResult => ({ changed: false, what: null, candidateUtterance: null, confidence: 0, frameIds: [latest.id], baselineSet: false, sceneId: key, detection: summary, via: null, reason, raw: "" });
 
-		// Cannot compare reliably: the view/framing differs too much. This is NOT a
-		// scene change; move the baseline forward so we compare like with like next.
-		if (!detection.ok || !detection.aligned || detection.overlapRatio < MIN_OVERLAP_RATIO) {
-			this.baselines.set(key, { framePath: latest.path, timestampMs: latest.timestampMs, frameId: latest.id, label: sceneLabel });
-			if (boxesPath) await unlink(boxesPath).catch(() => {});
-			return quiet(detection.reason ?? (detection.aligned ? "insufficient overlap" : "views could not be aligned"));
-		}
-
-		// Same scene: only proceed when a change is *significant* (a large-enough
-		// blob). This filters the small parallax/edge residue left after alignment
-		// so camera movement inside the place is not mistaken for a scene change.
+		const aligned = detection.ok && detection.aligned && detection.inliers >= MIN_INLIERS && detection.overlapRatio >= MIN_OVERLAP_RATIO;
 		const compareArea = detection.compareArea ?? 0;
 		const largest = detection.regions[0]?.area ?? 0;
 		const significant = compareArea > 0 && largest >= MIN_REGION_FRACTION * compareArea && detection.changedRatio >= MIN_CHANGE_RATIO;
-		if (!detection.regions.length || !significant) {
+
+		// Good alignment + no significant blob => definitely no change: stay quiet
+		// without spending a VLM call. This is the common, cheap path.
+		if (aligned && (!detection.regions.length || !significant)) {
 			if (boxesPath) await unlink(boxesPath).catch(() => {});
 			return quiet("no significant local change");
 		}
 
-		// Candidate local changes -> let the VLM confirm and name them.
-		const images = await this.buildImages(baseline.framePath, boxesPath ?? latest.path);
+		// Otherwise the pixel evidence is either a candidate change (good alignment)
+		// or untrustworthy (weak alignment). Ask the VLM; rate-limit the weak-
+		// alignment case so a permanently hard-to-align view does not spam calls.
+		if (!aligned) {
+			const now = Date.now();
+			if (baseline.lastFallbackMs && now - baseline.lastFallbackMs < FALLBACK_INTERVAL_MS) {
+				if (boxesPath) await unlink(boxesPath).catch(() => {});
+				return quiet("views could not be aligned reliably; fallback rate-limited");
+			}
+			baseline.lastFallbackMs = now;
+		}
+
+		const useBoxes = aligned && boxesPath;
+		const images = await this.buildImages(baseline.framePath, useBoxes ? boxesPath! : latest.path);
 		if (boxesPath) await unlink(boxesPath).catch(() => {});
-		const prompt = [
-			"The first image is the EARLIER aligned view of the place; the second is the CURRENT view (flagged regions boxed).",
+		const via: "pixels" | "vlm-fallback" = aligned ? "pixels" : "vlm-fallback";
+		const promptLines = [
+			"The first image is an EARLIER view of the place; the second is the CURRENT view. They are the same place but may be from different angles.",
 			`SCENE: ${sceneLabel ?? key}`,
 			`MOTION (approximate, how the phone moved between the two views): ${motionDescription ?? "none"}`,
-			`FLAGGED_REGIONS (${detection.regions.length}, changed ${(detection.changedRatio * 100).toFixed(1)}% of the compared area): ${describeRegions(detection.regions)}`,
-			"Did the scene itself change, or are these just parallax / reflection / exposure? Reply with only the JSON object.",
-		].join("\n\n");
-		const parsed = await this.ask(prompt, images);
+		];
+		if (via === "pixels") {
+			promptLines.push(`FLAGGED_REGIONS (${detection.regions.length}, changed ${(detection.changedRatio * 100).toFixed(1)}% of the compared area; boxed on the current image): ${detection.regions.slice(0, 5).map((region, index) => `#${index + 1} ${region.w}x${region.h}px area=${region.area} diff=${region.meanDiff}`).join("; ")}`);
+			promptLines.push("Did the scene itself change, or are these just parallax / reflection / exposure? Reply with only the JSON object.");
+		} else {
+			promptLines.push("The two views could not be registered reliably (different angle / little shared texture), so ignore viewpoint, framing and exposure. Did the content of the place itself change (e.g. an object moved, or a screen / light changed)? Reply with only the JSON object.");
+		}
+		const parsed = await this.ask(promptLines.join("\n\n"), images);
 		const changed = parsed.changed && parsed.confidence >= VLM_MIN_CONFIDENCE;
 		if (changed) {
-			this.events.push({ atMs: Date.now(), sceneId: key, what: parsed.what ?? "unspecified change", candidateUtterance: parsed.candidateUtterance, confidence: parsed.confidence, frameId: latest.id, regionCount: detection.regions.length, changedRatio: detection.changedRatio });
+			this.events.push({ atMs: Date.now(), sceneId: key, what: parsed.what ?? "unspecified change", candidateUtterance: parsed.candidateUtterance, confidence: parsed.confidence, frameId: latest.id, regionCount: detection.regions.length, changedRatio: detection.changedRatio, via });
+			// The new state becomes the reference for the next comparison.
+			this.baselines.set(key, { framePath: latest.path, timestampMs: latest.timestampMs, frameId: latest.id, label: sceneLabel, ...(baseline.lastFallbackMs !== undefined ? { lastFallbackMs: baseline.lastFallbackMs } : {}) });
 		}
-		// Advance the baseline after a comparison with candidates so the same
-		// flags are not re-examined on every tick.
-		this.baselines.set(key, { framePath: latest.path, timestampMs: latest.timestampMs, frameId: latest.id, label: sceneLabel });
 		return {
 			changed, what: changed ? parsed.what : null, candidateUtterance: changed ? parsed.candidateUtterance : null,
 			confidence: parsed.confidence, frameIds: [latest.id], baselineSet: false, sceneId: key,
-			detection: summary, reason: changed ? null : "flagged regions judged not a scene change", raw: parsed.raw,
+			detection: summary, via, reason: changed ? null : "compared, judged not a scene change", raw: parsed.raw,
 		};
 	}
 

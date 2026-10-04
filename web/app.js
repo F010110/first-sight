@@ -871,14 +871,37 @@ async function maybeObserveScene() {
     state.sceneStatus = `${result.label}${tag}`;
     state.sceneLabel = result.label ?? null;
     state.sceneId = result.sceneId ?? null;
+    state.vio.lastSceneChangeMs = Date.now();
     setStatus($("app-status"), `场景：${state.sceneStatus}`);
     updateActionState();
+    // Coupled: the scene agent just confirmed the place, so check it for changes
+    // now, using the same frames (no separate still window needed).
+    if (!result.isNew && state.sceneId) void runSceneChange(frames, state.sceneId);
   } catch (error) {
     setStatus($("app-status"), `场景记录失败：${error.message}`, true);
   }
 }
 
-/** Role 2: in-scene change. Only after the scene agent has decided the place; the detector finds real local changes. */
+/** Sends one current view to the change agent and records the result. */
+async function runSceneChange(frames, sceneId) {
+  try {
+    const result = await post("/api/scene-change", {
+      frames,
+      sceneId,
+      motionDescription: currentMotionDescription(),
+      ...(state.sceneLabel ? { sceneLabel: state.sceneLabel } : {}),
+    });
+    const via = result.via ? (result.via === "pixels" ? "像素" : "VLM") : "";
+    const detail = result.detection ? `（对齐 ${result.detection.overlapRatio}，变化 ${(result.detection.changedRatio * 100).toFixed(1)}%，${result.detection.regionCount} 区）` : "";
+    state.changeStatus = result.baselineSet ? "已建立基线" : result.changed ? `${result.what ?? "有变化"}${via ? `·${via}` : ""}${detail}` : `${result.reason ?? "无变化"}${detail}`;
+    if (result.changed) setStatus($("app-status"), `场景内变化：${state.changeStatus}`);
+    updateActionState();
+  } catch (error) {
+    setStatus($("app-status"), `场景变化检测失败：${error.message}`, true);
+  }
+}
+
+/** Role 2 periodic check: while still and stable, look for in-scene changes. */
 async function maybeObserveSceneChange() {
   const vio = state.vio;
   if (!state.token || state.busy) return;
@@ -898,20 +921,7 @@ async function maybeObserveSceneChange() {
   vio.lastSceneChangeMs = now;
   vio.lastSceneSignature = latest.signature ?? null;
   const frames = [{ id: latest.id, timestampMs: latest.timestampMs, mimeType: latest.mimeType, dataBase64: latest.dataBase64, quality: latest.quality }];
-  try {
-    const result = await post("/api/scene-change", {
-      frames,
-      motionDescription: currentMotionDescription(),
-      sceneId: state.sceneId,
-      ...(state.sceneLabel ? { sceneLabel: state.sceneLabel } : {}),
-    });
-    const detail = result.detection ? `（对齐 ${result.detection.overlapRatio}，变化 ${(result.detection.changedRatio * 100).toFixed(1)}%，${result.detection.regionCount} 区）` : "";
-    state.changeStatus = result.baselineSet ? "已建立基线" : result.changed ? `${result.what ?? "有变化"}${detail}` : `${result.reason ?? "无变化"}${detail}`;
-    if (result.changed) setStatus($("app-status"), `场景内变化：${state.changeStatus}`);
-    updateActionState();
-  } catch (error) {
-    setStatus($("app-status"), `场景变化检测失败：${error.message}`, true);
-  }
+  await runSceneChange(frames, state.sceneId);
 }
 
 function hasFrameRelativeDirection(text) {

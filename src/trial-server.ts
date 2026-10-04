@@ -593,9 +593,13 @@ async function handleSceneChange(req: IncomingMessage, res: ServerResponse, sess
 		if (sceneChangeAgents.size >= MAX_SESSIONS) sceneChangeAgents.delete(sceneChangeAgents.keys().next().value!);
 		sceneChangeAgents.set(session.id, agent);
 	}
-	const result = await agent.observe(frames, motionDescription, sceneId, sceneLabel);
-	if (result.changed) await appendSessionEvent(experimentRoot, session.id, { type: "scene_changed", details: { sceneId: result.sceneId, what: result.what, candidateUtterance: result.candidateUtterance, confidence: result.confidence, detection: result.detection } });
-	json(res, 200, { changed: result.changed, what: result.what, candidateUtterance: result.candidateUtterance, confidence: result.confidence, sceneId: result.sceneId, detection: result.detection, reason: result.reason, frameIds: result.frameIds, baselineSet: result.baselineSet, state: agent.getState() });
+	// Use the scene's canonical first view as the change baseline, so the very
+	// first comparison is against the pre-change state.
+	const scene = sceneAgents.get(session.id)?.getState().scenes.find((entry) => entry.id === (sceneId ?? ""));
+	const sceneBaselinePath = scene?.frames[0]?.path ?? null;
+	const result = await agent.observe(frames, motionDescription, sceneId, sceneLabel, sceneBaselinePath);
+	if (result.changed) await appendSessionEvent(experimentRoot, session.id, { type: "scene_changed", details: { sceneId: result.sceneId, what: result.what, candidateUtterance: result.candidateUtterance, confidence: result.confidence, via: result.via, detection: result.detection } });
+	json(res, 200, { changed: result.changed, what: result.what, candidateUtterance: result.candidateUtterance, confidence: result.confidence, sceneId: result.sceneId, via: result.via, detection: result.detection, reason: result.reason, frameIds: result.frameIds, baselineSet: result.baselineSet, state: agent.getState() });
 }
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse, session: { id: string }): Promise<void> {
