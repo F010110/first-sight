@@ -6,13 +6,13 @@
 
 ---
 
-## 1. 使用说明（iOS 安装）
+## 1. 使用说明（iOS / Android）
 
-完整步骤见 [docs/mobile-trial-ios.md](docs/mobile-trial-ios.md)，下面是速览。
+完整步骤见 [docs/mobile-trial.md](docs/mobile-trial.md)，下面是速览。
 
 ### 1.1 前置
 
-- Windows 电脑 + 同一 Wi-Fi 下的 iPhone。
+- Windows 电脑 + 同一 Wi-Fi 下的手机（iPhone 或 Android）。
 - Node.js ≥ 20；Python 3 + OpenCV（图片记忆用，见 `requirements.txt`）。
 - 服务端环境变量：`QWEN_API_KEY`、`QWEN_BASE_URL`，可选 `QWEN_MODEL`（默认 `qwen3-vl-plus`）。
 
@@ -38,17 +38,28 @@ npm.cmd run trial:web
 - 网页：`https://<LAN-IP>:8765/vlm`
 - CA 安装页（普通 HTTP）：`http://<LAN-IP>:8767/`
 
-### 1.4 iPhone 安装并信任 CA（关键）
+### 1.4 手机安装并信任 CA（关键）
 
-1. iPhone 用 **Safari** 打开 `http://<LAN-IP>:8767/`，下载 `vlm-local-ca.cer`。
+**iOS**：
+
+1. 用 **Safari** 打开 `http://<LAN-IP>:8767/`，下载 `vlm-local-ca.cer`。
 2. `设置 → 通用 → VPN 与设备管理 → VLM Local Dev CA → 安装`（输入锁屏密码）。
 3. `设置 → 通用 → 关于本机 → 证书信任设置`，打开 **VLM Local Dev CA 的完全信任**。
-   > 这一步不能省，否则 Safari 仍会拦截 `https://<LAN-IP>:8765`。
+
+**Android（Chrome）**：
+
+1. 用 **Chrome** 打开 `http://<LAN-IP>:8767/`，下载 `vlm-local-ca.cer`。
+2. `设置 → 安全 → 加密与凭据 → 安装证书 → CA 证书`，选择该文件并确认。
+3. `设置 → 安全 → 加密与凭据 → 受信任的凭据 → 用户` 中确认已存在。
+
+> 不信任 CA，浏览器会拦截 `https://<LAN-IP>:8765`；换 IP 后需重装。
 
 ### 1.5 打开试用页
 
-1. Safari 打开 `https://<LAN-IP>:8765/vlm`，输入口令登录。
-2. 点“开启摄像头”，允许摄像头权限；iOS 会请求**运动与方向**权限，**必须允许**（否则运动模式不可用）。
+1. 用手机浏览器打开 `https://<LAN-IP>:8765/vlm`，输入口令登录。
+2. 点“开启摄像头”：
+   - **iOS**：允许摄像头，并允许**运动与方向**权限（必须，否则运动模式不可用）；
+   - **Android（Chrome）**：只需允许摄像头，运动传感器无需手势授权，且通常能提供陀螺仪角速度。
 3. 页面三条线：
    - **场景**：显示当前地点，以及新场景 / 回到已知场景 / 同一场景；
    - **场景变化**：同一地点内部的非位移变化（物体移动、人出现、开关门等）；
@@ -108,6 +119,7 @@ npm.cmd run trial:web
 
 - 端上 VIO-lite：`web/vio-flow.js`（160×120 灰度块匹配光流）+ `web/motion-fusion.js`（陀螺仪补偿后融合成 still / move / turn 段），产出自然语言“运动模式”。
 - `src/dead-reckoning.ts` / `activity-motion.ts`：标定（起始静止 3s）→ 去重力 → 积分 → 零速校正（ZUPT），得到**低置信度的米制参考**。
+- 平台：Android Chrome 通常提供陀螺仪 `rotationRate`，VIO 优先用它计算短时 yaw，并优先监听 `deviceorientationabsolute`；iOS 的 `rotationRate` 常为空，退回 `alpha` 差分。
 - **结论：运动模式只能定性，轨迹不可靠。** 累计路程比净位移可信；匀速平移、连续扫视、快动作、弱纹理都会失效。VLM 收到的是“大约怎么动了”的文字，不是速度/方向向量/坐标。
 
 ### 2.4 用户要求（RequestAgent）

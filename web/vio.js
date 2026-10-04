@@ -24,9 +24,15 @@ let recordUntil = 0;
 let recordFrames = [];
 let recordImu = [];
 
-window.addEventListener("deviceorientation", (event) => {
-  orientation = { alpha: event.alpha, beta: event.beta, gamma: event.gamma, rate: null };
-});
+let absoluteOrientationSeenAt = 0;
+function applyOrientation(event, isAbsolute) {
+  const now = performance.now();
+  if (!isAbsolute && absoluteOrientationSeenAt && now - absoluteOrientationSeenAt < 3000) return;
+  if (isAbsolute) absoluteOrientationSeenAt = now;
+  orientation = { alpha: event.alpha, beta: event.beta, gamma: event.gamma, rate: orientation.rate };
+}
+window.addEventListener("deviceorientation", (event) => applyOrientation(event, false));
+window.addEventListener("deviceorientationabsolute", (event) => applyOrientation(event, true));
 window.addEventListener("devicemotion", (event) => {
   const r = event.rotationRate;
   if (r && [r.alpha, r.beta, r.gamma].every(Number.isFinite)) orientation.rate = { alpha: r.alpha, beta: r.beta, gamma: r.gamma };

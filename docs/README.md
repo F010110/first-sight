@@ -4,7 +4,7 @@
 
 ## 使用 / 部署
 
-- [手机试用（iOS / 局域网 HTTPS）](mobile-trial-ios.md) —— iOS 安装 CA、启动服务、打开页面、故障排查。
+- [手机试用（iOS / Android · 局域网 HTTPS）](mobile-trial.md) —— 两平台安装 CA、启动服务、打开页面、平台差异与排查。
 
 ## 架构与设计（当前）
 
