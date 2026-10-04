@@ -1,8 +1,10 @@
 # First Sight · 第一视角视觉助理（手机摄像头 + Qwen VLM）
 
+**V1.0 · 正式版**（2026-10-04）
+
 一个手机浏览器里的第一视角视觉试用工具：手机摄像头连续取景，服务端用 Qwen 多模态模型理解画面，对外表现为**三条互相独立的观察线**——场景记录、场景变化、用户要求。
 
-> 这是供迭代测试的**原型**：不提供可靠的安全导航、测距或绝对定位能力。
+> V1 定位：一个**可稳定演示**的体验版。不提供可靠的安全导航、测距或绝对定位能力；运动信息只作定性参考，是否切换场景由 VLM 判断。
 
 ---
 
@@ -161,7 +163,7 @@ inputs/<runId>/       某次观察的原始 IMU（motion.json）与输入帧
 scene-memory/scene-N/ 场景代表帧（图片记忆）
 ```
 
-离线工具：`scripts/image_match.py`、`scripts/image_overlap.py`，以及 `npm run vio:plot` / `motion:plot` 生成的 HTML 报告（`run/analysis/`，可用 `/report` 查看）。
+离线工具：`scripts/image_match.py`（图片记忆匹配）、`scripts/image_change.py`（局部变化检测）、`scripts/image_overlap.py`，以及 `npm run vio:plot` / `motion:plot` 生成的 HTML 报告（`run/analysis/`，可用 `/report` 查看）。
 
 ### 2.7 项目结构
 
