@@ -56,8 +56,8 @@ interface Baseline {
 	timestampMs: number;
 	frameId: string;
 	label: string | null;
-	/** Last time the VLM fallback ran for this scene (to rate-limit it). */
-	lastFallbackMs?: number;
+	/** Last time the VLM compared this scene (to rate-limit checks). */
+	lastVlmMs?: number;
 }
 
 const MIN_OVERLAP_RATIO = 0.5;
@@ -65,7 +65,7 @@ const MIN_INLIERS = 25;
 const MIN_CHANGE_RATIO = 0.005;
 const MIN_REGION_FRACTION = 0.004;
 const VLM_MIN_CONFIDENCE = 0.6;
-const FALLBACK_INTERVAL_MS = 20_000;
+const MIN_VLM_INTERVAL_MS = 10_000;
 
 const SYSTEM_PROMPT = [
 	"You compare an EARLIER view of a place with the CURRENT view of the SAME place.",
@@ -164,29 +164,20 @@ export class SceneChangeAgent {
 		const largest = detection.regions[0]?.area ?? 0;
 		const significant = compareArea > 0 && largest >= MIN_REGION_FRACTION * compareArea && detection.changedRatio >= MIN_CHANGE_RATIO;
 
-		// Good alignment + no significant blob => definitely no change: stay quiet
-		// without spending a VLM call. This is the common, cheap path.
-		if (aligned && (!detection.regions.length || !significant)) {
+		// The pixel detector is only a trigger and a hint: a significant blob
+		// triggers a check immediately, otherwise we check on a fixed interval.
+		// Either way the VLM is the one that decides whether the place changed.
+		const now = Date.now();
+		if (!significant && baseline.lastVlmMs && now - baseline.lastVlmMs < MIN_VLM_INTERVAL_MS) {
 			if (boxesPath) await unlink(boxesPath).catch(() => {});
-			return quiet("no significant local change");
+			return quiet("within the change-check interval");
 		}
+		baseline.lastVlmMs = now;
 
-		// Otherwise the pixel evidence is either a candidate change (good alignment)
-		// or untrustworthy (weak alignment). Ask the VLM; rate-limit the weak-
-		// alignment case so a permanently hard-to-align view does not spam calls.
-		if (!aligned) {
-			const now = Date.now();
-			if (baseline.lastFallbackMs && now - baseline.lastFallbackMs < FALLBACK_INTERVAL_MS) {
-				if (boxesPath) await unlink(boxesPath).catch(() => {});
-				return quiet("views could not be aligned reliably; fallback rate-limited");
-			}
-			baseline.lastFallbackMs = now;
-		}
-
-		const useBoxes = aligned && boxesPath;
+		const useBoxes = aligned && boxesPath && detection.regions.length > 0;
 		const images = await this.buildImages(baseline.framePath, useBoxes ? boxesPath! : latest.path);
 		if (boxesPath) await unlink(boxesPath).catch(() => {});
-		const via: "pixels" | "vlm-fallback" = aligned ? "pixels" : "vlm-fallback";
+		const via: "pixels" | "vlm-fallback" = useBoxes ? "pixels" : "vlm-fallback";
 		const promptLines = [
 			"The first image is an EARLIER view of the place; the second is the CURRENT view. They are the same place but may be from different angles.",
 			`SCENE: ${sceneLabel ?? key}`,
@@ -196,14 +187,14 @@ export class SceneChangeAgent {
 			promptLines.push(`FLAGGED_REGIONS (${detection.regions.length}, changed ${(detection.changedRatio * 100).toFixed(1)}% of the compared area; boxed on the current image): ${detection.regions.slice(0, 5).map((region, index) => `#${index + 1} ${region.w}x${region.h}px area=${region.area} diff=${region.meanDiff}`).join("; ")}`);
 			promptLines.push("Did the scene itself change, or are these just parallax / reflection / exposure? Reply with only the JSON object.");
 		} else {
-			promptLines.push("The two views could not be registered reliably (different angle / little shared texture), so ignore viewpoint, framing and exposure. Did the content of the place itself change (e.g. an object moved, or a screen / light changed)? Reply with only the JSON object.");
+			promptLines.push("The local-change detector found no clear pixel difference (or could not register the two views), so rely on what you can see: ignore viewpoint, framing and exposure, and decide whether the content of the place itself changed (an object moved, or a screen / light changed). Reply with only the JSON object.");
 		}
 		const parsed = await this.ask(promptLines.join("\n\n"), images);
 		const changed = parsed.changed && parsed.confidence >= VLM_MIN_CONFIDENCE;
 		if (changed) {
 			this.events.push({ atMs: Date.now(), sceneId: key, what: parsed.what ?? "unspecified change", candidateUtterance: parsed.candidateUtterance, confidence: parsed.confidence, frameId: latest.id, regionCount: detection.regions.length, changedRatio: detection.changedRatio, via });
 			// The new state becomes the reference for the next comparison.
-			this.baselines.set(key, { framePath: latest.path, timestampMs: latest.timestampMs, frameId: latest.id, label: sceneLabel, ...(baseline.lastFallbackMs !== undefined ? { lastFallbackMs: baseline.lastFallbackMs } : {}) });
+			this.baselines.set(key, { framePath: latest.path, timestampMs: latest.timestampMs, frameId: latest.id, label: sceneLabel, ...(baseline.lastVlmMs !== undefined ? { lastVlmMs: baseline.lastVlmMs } : {}) });
 		}
 		return {
 			changed, what: changed ? parsed.what : null, candidateUtterance: changed ? parsed.candidateUtterance : null,
