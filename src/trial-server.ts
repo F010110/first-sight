@@ -1,6 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
-import { spawn } from "node:child_process";
 import { createHash, randomBytes, timingSafeEqual, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { appendFile, mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
@@ -27,7 +26,6 @@ const LAN_IP_HINT = (() => {
 const GENERATED_PASSCODE = !process.env.VLM_TRIAL_PASSCODE;
 const PASSCODE = process.env.VLM_TRIAL_PASSCODE || randomBytes(6).toString("base64url");
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
-const MAX_CAPTURE_BODY_BYTES = 48 * 1024 * 1024;
 const MAX_RECORDING_BODY_BYTES = 24 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 1_500_000;
 const MAX_RECORDING_FRAMES = 300;
@@ -819,51 +817,6 @@ async function handleFeedback(req: IncomingMessage, res: ServerResponse, session
 	json(res, 200, { saved: true, feedbackPath: path });
 }
 
-async function handleSpatialProbeReport(req: IncomingMessage, res: ServerResponse, session: { id: string }): Promise<void> {
-	const input = await bodyJson(req);
-	if (typeof input.reportId !== "string" || input.reportId.length < 8 || input.reportId.length > 100) throw new Error("reportId must be a string between 8 and 100 characters");
-	if (typeof input.sequence !== "number" || !Number.isSafeInteger(input.sequence) || input.sequence < 0 || input.sequence > 1000) throw new Error("sequence must be an integer between 0 and 1000");
-	if (typeof input.report !== "object" || input.report === null || Array.isArray(input.report)) throw new Error("report must be an object");
-	const serializedReport = JSON.stringify(input.report);
-	if (Buffer.byteLength(serializedReport, "utf8") > 64 * 1024) throw new Error("Diagnostic report exceeds 64 KB");
-	const report = input.report as Record<string, unknown>;
-	if (typeof report.browser !== "object" || report.browser === null || Array.isArray(report.browser)
-		|| typeof report.result !== "object" || report.result === null || Array.isArray(report.result)) {
-		throw new Error("report must include browser and result objects");
-	}
-	const eventPath = await appendSessionEvent(experimentRoot, session.id, {
-		type: "browser_spatial_probe_report",
-		details: { reportId: input.reportId, sequence: input.sequence, report },
-	});
-	json(res, 200, { saved: true, reportId: input.reportId, sequence: input.sequence, eventPath });
-}
-
-async function handleSpatialSensorTest(req: IncomingMessage, res: ServerResponse, session: { id: string }): Promise<void> {
-	const input = await bodyJson(req, 128 * 1024);
-	if (typeof input.report !== "object" || input.report === null || Array.isArray(input.report)) throw new Error("report must be an object");
-	const report = input.report as Record<string, unknown>;
-	const serializedReport = JSON.stringify(report);
-	if (Buffer.byteLength(serializedReport, "utf8") > 64 * 1024) throw new Error("Sensor test report exceeds 64 KB");
-	const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-	if (report.schemaVersion !== 1 || !isObject(report.browser) || !isObject(report.permissions)
-		|| !isObject(report.deviceMotion) || !isObject(report.deviceOrientation) || !isObject(report.genericGyroscope)
-		|| !isObject(report.diagnosis) || typeof report.diagnosis.code !== "string") {
-		throw new Error("report is missing required sensor test results");
-	}
-	const reportId = randomUUID();
-	const spatialRoot = resolve(experimentRoot, session.id, "spatial");
-	const testsRoot = resolve(spatialRoot, "sensor-tests");
-	await mkdir(testsRoot, { recursive: true });
-	const record = { reportId, receivedAt: new Date().toISOString(), report };
-	await writeFile(resolve(testsRoot, `${reportId}.json`), JSON.stringify(record, null, 2), { flag: "wx" });
-	await writeFile(resolve(spatialRoot, "sensor-test-latest.json"), JSON.stringify(record, null, 2), { flag: "w" });
-	const eventPath = await appendSessionEvent(experimentRoot, session.id, {
-		type: "spatial_sensor_test_completed",
-		details: { reportId, testId: report.testId, diagnosis: report.diagnosis, browser: report.browser, permissions: report.permissions, deviceMotion: report.deviceMotion, deviceOrientation: report.deviceOrientation, genericGyroscope: report.genericGyroscope },
-	});
-	json(res, 200, { saved: true, reportId, diagnosis: report.diagnosis, eventPath });
-}
-
 function finiteNumber(value: unknown, name: string, min = -Number.MAX_VALUE, max = Number.MAX_VALUE): number {
 	if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) throw new Error(`${name} must be a finite number`);
 	return value;
@@ -890,207 +843,8 @@ function roundTo(value: number, places = 2): number {
 	return Math.round(value * scale) / scale;
 }
 
-function summarizeSpatialInputs(frames: Array<{ timeMs: number }>, motionSamples: Array<Record<string, unknown>>, durationMs: number, camera: Record<string, unknown>) {
-	const frameSpan = frames.length > 1 ? frames.at(-1)!.timeMs - frames[0]!.timeMs : 0;
-	const frameDeltas = frames.slice(1).map((frame, index) => frame.timeMs - frames[index]!.timeMs).filter((delta) => delta > 0);
-	const cameraFps = frameSpan > 0 ? roundTo((frames.length - 1) * 1000 / frameSpan, 1) : 0;
-	const motionTimes = motionSamples.map((sample) => sample.timeMs as number).filter(Number.isFinite);
-	const motionSpan = motionTimes.length > 1 ? Math.max(...motionTimes) - Math.min(...motionTimes) : 0;
-	const imuHz = motionSpan > 0 ? roundTo((motionTimes.length - 1) * 1000 / motionSpan, 1) : 0;
-	let gyroSampleCount = 0;
-	let accelSampleCount = 0;
-	let maxRotationRateDegPerSec = 0;
-	let sumLinearAccelSquared = 0;
-	let linearAccelCount = 0;
-	for (const sample of motionSamples) {
-		const gyro = sample.rotationRate as { alpha: number | null; beta: number | null; gamma: number | null } | null;
-		if (gyro && Object.values(gyro).some((item) => item !== null)) {
-			gyroSampleCount++;
-			const values = [gyro.alpha, gyro.beta, gyro.gamma].map((item) => item ?? 0);
-			maxRotationRateDegPerSec = Math.max(maxRotationRateDegPerSec, Math.hypot(...values));
-		}
-		const accel = sample.acceleration as { x: number | null; y: number | null; z: number | null } | null;
-		const accelGravity = sample.accelerationIncludingGravity as { x: number | null; y: number | null; z: number | null } | null;
-		if (accel || accelGravity) accelSampleCount++;
-		if (accel && [accel.x, accel.y, accel.z].every((item) => item !== null)) {
-			sumLinearAccelSquared += (accel.x! ** 2) + (accel.y! ** 2) + (accel.z! ** 2);
-			linearAccelCount++;
-		}
-	}
-	const frameMotionGaps: number[] = [];
-	for (const frame of frames) {
-		let nearest = Number.POSITIVE_INFINITY;
-		for (const sampleTime of motionTimes) nearest = Math.min(nearest, Math.abs(frame.timeMs - sampleTime));
-		if (Number.isFinite(nearest)) frameMotionGaps.push(nearest);
-	}
-	frameMotionGaps.sort((a, b) => a - b);
-	const medianFrameMotionGapMs = frameMotionGaps.length ? roundTo(frameMotionGaps[Math.floor(frameMotionGaps.length / 2)]!, 1) : null;
-	const captureReady = frames.length >= 20 && gyroSampleCount >= 20 && accelSampleCount >= 20;
-	const frameMethod = camera.frameTimeMethod;
-	const statusText = captureReady
-		? `收到 ${frames.length} 帧图像和 ${motionSamples.length} 条运动读数；相机 ${cameraFps} fps，IMU ${imuHz} Hz，正在尝试恢复三维结构。`
-		: `已保存 ${frames.length} 帧图像、${motionSamples.length} 条运动读数；本次数据较少或缺少传感器读数，模型可靠性会受影响。`;
-	return {
-		status: captureReady ? "image_and_imu_received" : "incomplete_input",
-		statusText,
-		frameCount: frames.length,
-		cameraFps,
-		medianFrameIntervalMs: frameDeltas.length ? roundTo(frameDeltas.sort((a, b) => a - b)[Math.floor(frameDeltas.length / 2)]!, 1) : null,
-		motionSampleCount: motionSamples.length,
-		imuHz,
-		gyroSampleCount,
-		accelSampleCount,
-		maxRotationRateDegPerSec: roundTo(maxRotationRateDegPerSec, 2),
-		linearAccelerationRmsMps2: linearAccelCount ? roundTo(Math.sqrt(sumLinearAccelSquared / linearAccelCount), 3) : null,
-		medianFrameMotionGapMs,
-		clockAssessment: {
-			cameraFrameCallbackAndMotionEventsSharePerformanceClock: true,
-			medianNearestImuSampleGapMs: medianFrameMotionGapMs,
-			cameraHardwareExposureTimestampAvailable: false,
-			method: typeof frameMethod === "string" ? frameMethod : "unknown",
-			note: "浏览器回调时间与传感器事件使用同一页面时钟；并不等同于相机硬件曝光时间戳。",
-		},
-		durationMs,
-	};
-}
-
-async function runSpatialReconstruction(manifestPath: string, outputPath: string): Promise<Record<string, unknown>> {
-	const scriptPath = resolve("scripts/reconstruct_spatial.py");
-	const windows = process.platform === "win32";
-	const venvExecutable = windows ? resolve(".venv", "Scripts", "python.exe") : resolve(".venv", "bin", "python");
-	const tempRoot = process.env.TEMP || process.env.TMP || process.env.TMPDIR;
-	const tempVenvExecutable = tempRoot
-		? resolve(tempRoot, "vlm-spatial-reconstruction", windows ? "Scripts" : "bin", windows ? "python.exe" : "python")
-		: null;
-	const python = process.env.VLM_PYTHON
-		|| [venvExecutable, tempVenvExecutable].find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)))
-		|| (windows ? "python" : "python3");
-	await new Promise<void>((resolveProcess, rejectProcess) => {
-		const child = spawn(python, [scriptPath, "--manifest", manifestPath, "--output", outputPath], { cwd: process.cwd(), windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
-		let stderr = "";
-		child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); if (stderr.length > 8000) stderr = stderr.slice(-8000); });
-		const timeout = setTimeout(() => child.kill(), 120_000);
-		child.once("error", (error) => { clearTimeout(timeout); rejectProcess(new Error(`无法启动空间重建引擎（${python}）：${error.message}`)); });
-		child.once("close", (code) => {
-			clearTimeout(timeout);
-			if (code !== 0) rejectProcess(new Error(`空间重建进程退出（${code}）：${stderr.slice(-2000)}`));
-			else resolveProcess();
-		});
-	});
-	return JSON.parse(await readFile(outputPath, "utf8")) as Record<string, unknown>;
-}
-
-async function handleSpatialCapture(req: IncomingMessage, res: ServerResponse, session: { id: string }): Promise<void> {
-	const input = await bodyJson(req, MAX_CAPTURE_BODY_BYTES);
-	if (!Array.isArray(input.frames) || input.frames.length < 1 || input.frames.length > 220) throw new Error("采集至少需要 1 帧，最多 220 帧");
-	if (!Array.isArray(input.motionSamples) || input.motionSamples.length > 10_000) throw new Error("手机运动数据格式错误或超过 10000 条");
-	const durationMs = finiteNumber(input.durationMs, "durationMs", 0, 120_000);
-	if (typeof input.camera !== "object" || input.camera === null || Array.isArray(input.camera)) throw new Error("camera metadata is required");
-	const camera = input.camera as Record<string, unknown>;
-	const captureId = randomUUID();
-	const captureRoot = resolve(experimentRoot, session.id, "spatial", captureId);
-	await mkdir(captureRoot, { recursive: true });
-	let imageBytesTotal = 0;
-	const frameRows: Array<Record<string, unknown>> = [];
-	const frameTimes: Array<{ timeMs: number }> = [];
-	for (const [index, item] of input.frames.entries()) {
-		if (typeof item !== "object" || item === null || Array.isArray(item)) throw new Error(`第 ${index + 1} 帧格式错误`);
-		const row = item as Record<string, unknown>;
-		if (typeof row.dataBase64 !== "string" || !/^[A-Za-z0-9+/]*={0,2}$/.test(row.dataBase64)) throw new Error(`第 ${index + 1} 帧图像编码错误`);
-		const bytes = Buffer.from(row.dataBase64, "base64");
-		if (bytes.length < 100 || bytes.length > MAX_IMAGE_BYTES || bytes[0] !== 0xff || bytes[1] !== 0xd8) throw new Error(`第 ${index + 1} 帧不是有效 JPEG 或超过 1.5 MB`);
-		imageBytesTotal += bytes.length;
-		if (imageBytesTotal > 24 * 1024 * 1024) throw new Error("本次图像总量超过 24 MB，请缩短采集或降低相机分辨率");
-		const timeMs = finiteNumber(row.timeMs, `frames[${index}].timeMs`, 0, durationMs + 3000);
-		const width = finiteNumber(row.width, `frames[${index}].width`, 1, 4096);
-		const height = finiteNumber(row.height, `frames[${index}].height`, 1, 4096);
-		const filename = `frame-${String(index).padStart(4, "0")}.jpg`;
-		await writeFile(resolve(captureRoot, filename), bytes, { flag: "wx" });
-		frameRows.push({
-			index, timeMs, mediaTimeMs: typeof row.mediaTimeMs === "number" && Number.isFinite(row.mediaTimeMs) ? row.mediaTimeMs : null,
-			presentedFrames: typeof row.presentedFrames === "number" && Number.isSafeInteger(row.presentedFrames) ? row.presentedFrames : null,
-			width, height, path: filename,
-		});
-		frameTimes.push({ timeMs });
-	}
-	const motionSamples: Array<Record<string, unknown>> = [];
-	for (const [index, item] of input.motionSamples.entries()) {
-		if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
-		const row = item as Record<string, unknown>;
-		const timeMs = finiteNumber(row.timeMs, `motionSamples[${index}].timeMs`, 0, durationMs + 5000);
-		motionSamples.push({
-			timeMs,
-			receivedTimeMs: typeof row.receivedTimeMs === "number" && Number.isFinite(row.receivedTimeMs) ? row.receivedTimeMs : null,
-			acceleration: finiteVector(row.acceleration),
-			accelerationIncludingGravity: finiteVector(row.accelerationIncludingGravity),
-			rotationRate: finiteRotationRate(row.rotationRate),
-		});
-	}
-	motionSamples.sort((a, b) => (a.timeMs as number) - (b.timeMs as number));
-	const device = typeof input.device === "object" && input.device !== null && !Array.isArray(input.device) ? input.device : {};
-	const clock = typeof input.clock === "object" && input.clock !== null && !Array.isArray(input.clock) ? input.clock : {};
-	const diagnostics = summarizeSpatialInputs(frameTimes, motionSamples, durationMs, camera);
-	const manifest = {
-		captureId,
-		clientCaptureId: typeof input.captureId === "string" ? input.captureId.slice(0, 100) : null,
-		capturedAt: typeof input.capturedAt === "string" ? input.capturedAt.slice(0, 80) : new Date().toISOString(),
-		durationMs,
-		device,
-		camera,
-		clock,
-		frames: frameRows,
-		motionSamples,
-		inputDiagnostics: diagnostics,
-	};
-	const manifestPath = resolve(captureRoot, "capture.json");
-	const modelPath = resolve(captureRoot, "model.json");
-	await writeFile(manifestPath, JSON.stringify(manifest, null, 2), { flag: "wx" });
-	await writeFile(resolve(captureRoot, "motion.jsonl"), motionSamples.map((sample) => JSON.stringify(sample)).join("\n") + "\n", { flag: "wx" });
-	let model: Record<string, unknown>;
-	try {
-		model = await runSpatialReconstruction(manifestPath, modelPath);
-	} catch (error) {
-		model = {
-			status: "engine_unavailable", engine: "opencv-orb-essential-matrix+gyro-rotation-prior", points: [], cameraPositions: [], diagnostics: {}, scale: "unavailable",
-			notes: [`采集数据已保存，但重建进程未运行：${error instanceof Error ? error.message : String(error)}`],
-		};
-		await writeFile(modelPath, JSON.stringify(model, null, 2), { flag: "w" });
-	}
-	if (Array.isArray(model.notes) && diagnostics.gyroSampleCount === 0) (model.notes as string[]).push("本次没有有效陀螺仪读数；图像几何仍可尝试，但不是完整视觉惯性输入。");
-	const capture = {
-		captureId,
-		createdAt: new Date().toISOString(),
-		metadata: { durationMs, device, camera: { actualWidth: camera.actualWidth, actualHeight: camera.actualHeight, frameTimeMethod: camera.frameTimeMethod } },
-		diagnostics,
-		model,
-		storage: { imageCount: frameRows.length, motionSampleCount: motionSamples.length, imageBytes: imageBytesTotal },
-	};
-	const sessionSpatialRoot = resolve(experimentRoot, session.id, "spatial");
-	await writeFile(resolve(sessionSpatialRoot, "latest.json"), JSON.stringify(capture, null, 2), { flag: "w" });
-	await appendSessionEvent(experimentRoot, session.id, {
-		type: "spatial_capture_completed",
-		details: { captureId, diagnostics, modelStatus: model.status, modelDiagnostics: model.diagnostics, storage: capture.storage },
-	});
-	json(res, 200, { capture });
-}
-
-async function handleLatestSpatialCapture(res: ServerResponse, sessionId: string): Promise<void> {
-	const path = resolve(experimentRoot, sessionId, "spatial", "latest.json");
-	try {
-		const capture = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
-		json(res, 200, { available: true, capture });
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") { json(res, 200, { available: false }); return; }
-		throw error;
-	}
-}
-
 async function serveStatic(pathname: string, res: ServerResponse): Promise<void> {
 	const assets: Record<string, { file: string; type: string }> = {
-		"/": { file: "spatial.html", type: "text/html; charset=utf-8" },
-		"/spatial-probe": { file: "spatial.html", type: "text/html; charset=utf-8" },
-		"/spatial.css": { file: "spatial.css", type: "text/css; charset=utf-8" },
-		"/spatial.js": { file: "spatial.js", type: "text/javascript; charset=utf-8" },
 		"/vlm": { file: "index.html", type: "text/html; charset=utf-8" },
 		"/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
 		"/vio": { file: "vio.html", type: "text/html; charset=utf-8" },
@@ -1100,7 +854,6 @@ async function serveStatic(pathname: string, res: ServerResponse): Promise<void>
 		"/motion-fusion.js": { file: "motion-fusion.js", type: "text/javascript; charset=utf-8" },
 		"/motion-vio-bridge.js": { file: "motion-vio-bridge.js", type: "text/javascript; charset=utf-8" },
 		"/style.css": { file: "style.css", type: "text/css; charset=utf-8" },
-		"/spatial-probe.js": { file: "spatial.js", type: "text/javascript; charset=utf-8" },
 	};
 	const asset = assets[pathname];
 	if (!asset) { json(res, 404, { error: "Not found" }); return; }
@@ -1194,14 +947,7 @@ async function main(): Promise<void> {
 			res.on("close", logOnce);
 
 			if (req.method === "GET") {
-				if (pathname === "/api/spatial/latest") {
-					if (!sameOrigin(req)) { json(res, 403, { error: "Cross-origin request rejected" }); return; }
-					const session = authorized(req, res);
-					if (!session) return;
-					rateLimit(session);
-					await handleLatestSpatialCapture(res, session.id);
-					return;
-				}
+				if (pathname === "/") { res.writeHead(302, { Location: "/vlm", "Cache-Control": "no-store" }); res.end(); return; }
 				if (pathname === "/api/state") {
 					if (!sameOrigin(req)) { json(res, 403, { error: "Cross-origin request rejected" }); return; }
 					const session = authorized(req, res);
@@ -1223,7 +969,7 @@ async function main(): Promise<void> {
 			rateLimit(session);
 			if (pathname === "/api/live/batch") { await handleLiveBatch(req, res, session); return; }
 			if (pathname === "/api/observe") {
-				if (!process.env.QWEN_API_KEY || !process.env.QWEN_BASE_URL) { json(res, 503, { error: "VLM API is not configured; spatial capture remains available" }); return; }
+				if (!process.env.QWEN_API_KEY || !process.env.QWEN_BASE_URL) { json(res, 503, { error: "VLM API is not configured" }); return; }
 				await handleObserve(req, res, session);
 				return;
 			}
@@ -1242,9 +988,6 @@ async function main(): Promise<void> {
 				await handleRequest(req, res, session);
 				return;
 			}
-			if (pathname === "/api/spatial/capture") { await handleSpatialCapture(req, res, session); return; }
-			if (pathname === "/api/spatial/sensor-test") { await handleSpatialSensorTest(req, res, session); return; }
-			if (pathname === "/api/spatial-probe") { await handleSpatialProbeReport(req, res, session); return; }
 			if (pathname === "/api/task") { await handleTask(req, res, session.id); return; }
 			if (pathname === "/api/watch") { await handleWatch(req, res, session.id); return; }
 			if (pathname === "/api/feedback") { await handleFeedback(req, res, session); return; }

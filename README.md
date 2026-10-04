@@ -73,7 +73,6 @@ npm.cmd run trial:web
 | `/vlm` | 主试用页（三条观察线） |
 | `/vio` | VIO 探针，`记录 12 秒` 采集灰度帧 + IMU，供离线分析 |
 | `/report` | 离线运动轨迹报告列表 |
-| `/spatial-probe` | 浏览器空间/深度能力探针（实验） |
 | `npm.cmd run vio:plot` | 由最新一段 VIO 录制生成轨迹报告 |
 | `npm.cmd run motion:plot` | 由最近会话的 IMU 生成航位推算轨迹报告 |
 
