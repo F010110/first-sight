@@ -607,7 +607,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, session:
 	const action = typeof input.action === "string" ? input.action : "step";
 	let agent = requestAgents.get(session.id);
 	if (!agent) {
-		agent = new RequestAgent();
+		agent = new RequestAgent(() => {
+			const sceneState = sceneAgents.get(session.id)?.getState();
+			const changeState = sceneChangeAgents.get(session.id)?.getState();
+			return {
+				currentSceneId: sceneState?.currentSceneId ?? null,
+				scenes: (sceneState?.scenes ?? []).map((scene) => ({ id: scene.id, label: scene.label, summary: scene.summary, objects: scene.objects, visits: scene.visits, lastSeenMs: scene.lastSeenMs })),
+				visitedOrder: (sceneState?.history ?? []).map((entry) => entry.sceneId),
+				changes: (changeState?.events ?? []).map((event) => ({ sceneId: event.sceneId, what: event.what, atMs: event.atMs })),
+			};
+		});
 		if (requestAgents.size >= MAX_SESSIONS) requestAgents.delete(requestAgents.keys().next().value!);
 		requestAgents.set(session.id, agent);
 	}
@@ -636,7 +645,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, session:
 	if (!Array.isArray(input.frames) || input.frames.length < 1 || input.frames.length > 6) throw new Error("request 需要 1 到 6 张截图");
 	const motionDescription = typeof input.motionDescription === "string" ? input.motionDescription.slice(0, 1200) : null;
 	const sceneLabel = typeof input.sceneLabel === "string" ? input.sceneLabel.slice(0, 120) : null;
-	const sceneContext = typeof input.sceneContext === "string" ? input.sceneContext.slice(0, 800) : null;
 	const runId = randomUUID();
 	const stagingDir = resolve("run/mobile-staging", session.id, `request-${runId}`);
 	await mkdir(stagingDir, { recursive: true });
@@ -655,7 +663,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, session:
 		frames.push({ id: `request-${index + 1}-${Math.round(row.timestampMs)}`, timestampMs: Math.round(row.timestampMs), path });
 	}
 
-	const result = await agent.observe(frames, motionDescription, sceneLabel, sceneContext);
+	const result = await agent.observe(frames, motionDescription, sceneLabel);
 	await appendSessionEvent(experimentRoot, session.id, { type: "request_answered", goal: current.text, details: { kind: result.kind, answer: result.answer, shouldSpeak: result.shouldSpeak, done: result.done, confidence: result.confidence } });
 	json(res, 200, {
 		request: agent.getState(),

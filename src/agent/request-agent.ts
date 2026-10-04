@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
-import { Agent } from "@earendil-works/pi-agent-core";
+import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { createQwenModel } from "./qwen-provider.js";
 import type { FrameRef } from "./types.js";
@@ -53,6 +53,30 @@ export interface RequestResult {
 	raw: string;
 }
 
+export interface SceneMemoryScene {
+	id: string;
+	label: string;
+	summary: string;
+	objects: string[];
+	visits: number;
+	lastSeenMs: number;
+}
+
+export interface SceneMemoryChange {
+	sceneId: string;
+	what: string;
+	atMs: number;
+}
+
+export interface SceneMemorySnapshot {
+	currentSceneId: string | null;
+	scenes: SceneMemoryScene[];
+	visitedOrder: string[];
+	changes: SceneMemoryChange[];
+}
+
+export type SceneMemoryProvider = () => SceneMemorySnapshot;
+
 const SYSTEM_PROMPT = [
 	"You are the user-request agent of a first-person visual assistant.",
 	"The user has given ONE explicit requirement. Read the current camera frames and respond helpfully, in the user's own language.",
@@ -63,6 +87,7 @@ const SYSTEM_PROMPT = [
 	"A 'MOTION' line (how the phone moved, natural language) and a 'SCENE' line (current place) are approximate context; use them to help interpret the frames.",
 	"For a WATCH condition be conservative: shouldSpeak must be true only when the current frames clearly show the condition is happening now. Never set shouldSpeak for a condition that was already reported.",
 	"For a QUESTION answer once and set done=true. For a GOAL give brief, actionable help; set done=true only when it is clearly achieved or impossible.",
+	"You have a tool `search_scene_memory` to look up places the user has already visited and recent changes in them. Use it ONLY when the request is about the place they are in, whether they have been somewhere before, or what changed there; never use it for ordinary object questions.",
 	"Keep 'answer' to one or two short sentences. If there is nothing useful to say, make 'answer' the reason and shouldSpeak=false.",
 	'Reply with ONLY JSON: {"kind": "question|goal|watch", "answer": string, "shouldSpeak": boolean, "done": boolean, "confidence": number}. No markdown.',
 ].join(" ");
@@ -99,10 +124,42 @@ export class RequestAgent {
 		mode: null, kind: null, text: null, status: "idle", spoken: false, lastAnswer: null, turns: [], startedAtMs: null, updatedAtMs: null,
 	};
 
-	constructor() {
+	constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null) {
 		const configured = createQwenModel(512);
 		this.model = configured.model;
 		this.streamFn = configured.streamFn;
+	}
+
+	/** Optional tool: look up visited places and recent changes. The agent decides when to call it. */
+	private sceneMemoryTool(): AgentTool<any> {
+		return {
+			name: "search_scene_memory",
+			label: "搜索场景记忆",
+			description: "Look up places the user has already visited and recent changes in them. Call this only when the request is about the place, prior visits, or what changed.",
+			parameters: {
+				type: "object",
+				properties: { query: { type: "string", description: "Optional keywords to filter places (a place name or an object)." } },
+				required: [],
+			},
+			execute: async (_toolCallId: string, params: unknown) => {
+				const snapshot = this.getSceneMemory?.() ?? { currentSceneId: null, scenes: [], visitedOrder: [], changes: [] };
+				const rawQuery = (params as { query?: unknown } | null)?.query;
+				const query = typeof rawQuery === "string" ? rawQuery.trim().toLowerCase() : "";
+				let scenes = snapshot.scenes;
+				if (query) {
+					const terms = query.split(/\s+/).filter(Boolean);
+					const matched = scenes.filter((scene) => terms.some((term) => `${scene.label} ${scene.summary} ${scene.objects.join(" ")}`.toLowerCase().includes(term)));
+					if (matched.length) scenes = matched;
+				}
+				const result = {
+					currentSceneId: snapshot.currentSceneId,
+					visitedOrder: snapshot.visitedOrder,
+					scenes: scenes.slice(-10).map((scene) => ({ id: scene.id, label: scene.label, summary: scene.summary, objects: scene.objects, visits: scene.visits })),
+					recentChanges: snapshot.changes.slice(-5),
+				};
+				return { content: [{ type: "text" as const, text: JSON.stringify(result) }], details: { sceneCount: result.scenes.length } };
+			},
+		};
 	}
 
 	getState(): RequestState {
@@ -130,7 +187,7 @@ export class RequestAgent {
 		return this.getState();
 	}
 
-	async observe(frames: FrameRef[], motionDescription: string | null, sceneLabel: string | null, sceneContext: string | null = null): Promise<RequestResult> {
+	async observe(frames: FrameRef[], motionDescription: string | null, sceneLabel: string | null): Promise<RequestResult> {
 		if (this.state.status !== "active" || !this.state.text) throw new Error("No active user requirement");
 		if (frames.length === 0) throw new Error("RequestAgent needs at least one frame");
 		const ordered = frames.slice().sort((a, b) => a.timestampMs - b.timestampMs).slice(-3);
@@ -147,13 +204,11 @@ export class RequestAgent {
 			`MOTION (approximate, how the phone moved recently): ${motionDescription ?? "none"}`,
 			`ALREADY_REPORTED (do not repeat these): ${JSON.stringify(recent)}${this.state.spoken ? " (a watch condition has already been reported; do not report it again)" : ""}`,
 		];
-		// Optional scene memory, only attached when the request looks scene-related.
-		// Use it only if the user is actually asking about the place / memory / changes.
-		if (sceneContext) promptLines.push(`SCENE_MEMORY (use only if the user's request is about the place, whether they have been here, or what changed): ${sceneContext}`);
 		promptLines.push("Reply with only the JSON object.");
 		const prompt = promptLines.join("\n\n");
 
-		const agent = new Agent({ initialState: { systemPrompt: SYSTEM_PROMPT, model: this.model, tools: [] }, streamFn: this.streamFn });
+		const tools = this.getSceneMemory ? [this.sceneMemoryTool()] : [];
+		const agent = new Agent({ initialState: { systemPrompt: SYSTEM_PROMPT, model: this.model, tools }, streamFn: this.streamFn });
 		await agent.prompt(prompt, imageContents);
 		if (agent.state.errorMessage) throw new Error(`RequestAgent request failed: ${agent.state.errorMessage}`);
 		const assistant = [...agent.state.messages].reverse().find((message) => message.role === "assistant");

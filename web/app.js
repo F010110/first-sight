@@ -40,7 +40,7 @@ function emptyRouterStats() {
 	return { capturedFrames: 0, movingFramesSkipped: 0, sensorMotionGatedFrames: 0, noChangeFramesSkipped: 0, familiarSceneFramesSkipped: 0, stabilityWaits: 0, frameChangeScore: null, visualNoveltyScore: null, motionContext: null };
 }
 
-const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", sceneLabel: null, sceneId: null, knownScenes: [], request: { mode: null, kind: null, status: "idle", text: null, lastAnswer: null, spoken: false, lastStepMs: 0 }, live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, prevTickMs: 0, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, lastAbsoluteMs: 0, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
+const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", sceneLabel: null, sceneId: null, request: { mode: null, kind: null, status: "idle", text: null, lastAnswer: null, spoken: false, lastStepMs: 0 }, live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, prevTickMs: 0, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, lastAbsoluteMs: 0, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
 
 async function post(path, payload, authenticated = true, timeoutMs = 25_000) {
   const headers = { "Content-Type": "application/json" };
@@ -873,7 +873,6 @@ async function maybeObserveScene() {
     state.sceneStatus = `${result.label}${tag}`;
     state.sceneLabel = result.label ?? null;
     state.sceneId = result.sceneId ?? null;
-    state.knownScenes = (result.scene?.scenes ?? []).map((scene) => scene.label).filter(Boolean);
     state.vio.lastSceneChangeMs = Date.now();
     setStatus($("app-status"), `场景：${state.sceneStatus}`);
     updateActionState();
@@ -1312,22 +1311,9 @@ async function stopCurrentTask() {
   await finishCurrentTask();
 }
 
-// --- Voice input/output, and optional scene context for the request line ---
+// --- Voice input/output for the request line ---
 let voiceRecognition = null;
 let voiceListening = false;
-
-/** Cheap keyword check: only attach scene memory when the request is about the place. */
-function isSceneRelated(text) {
-  return /(房间|屋子|地方|地点|场景|环境|哪儿|哪里|在哪|之前|来过|回到|记得|变化|变了|同一个|这个地方)/.test(text);
-}
-
-function sceneContextText() {
-  const parts = [];
-  if (state.sceneLabel) parts.push(`当前场景：${state.sceneLabel}`);
-  if (state.knownScenes.length) parts.push(`已知场景：${state.knownScenes.slice(0, 8).join("、")}`);
-  if (state.changeStatus && state.changeStatus !== "未开始") parts.push(`最近场景变化：${state.changeStatus}`);
-  return parts.join("；");
-}
 
 function speak(text) {
   if (!$("speak-toggle")?.checked || !text || typeof speechSynthesis === "undefined") return;
@@ -1380,7 +1366,6 @@ async function submitRequest(mode) {
       frames: framesForUpload(2, 8_000),
       ...(motion ? { motionDescription: motion } : {}),
       ...(state.sceneLabel ? { sceneLabel: state.sceneLabel } : {}),
-      ...(isSceneRelated(text) && sceneContextText() ? { sceneContext: sceneContextText() } : {}),
     });
     state.request = { ...state.request, ...result.request, lastStepMs: Date.now() };
     if (result.result) showRequestResult(result.result);
@@ -1404,7 +1389,6 @@ async function stepRequest() {
       frames: framesForUpload(2, 8_000),
       ...(motion ? { motionDescription: motion } : {}),
       ...(state.sceneLabel ? { sceneLabel: state.sceneLabel } : {}),
-      ...(isSceneRelated(state.request.text || "") && sceneContextText() ? { sceneContext: sceneContextText() } : {}),
     });
     state.request = { ...state.request, ...result.request, lastStepMs: now };
     if (result.result) showRequestResult(result.result);
