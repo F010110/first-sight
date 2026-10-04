@@ -130,7 +130,7 @@ export class RequestAgent {
 		return this.getState();
 	}
 
-	async observe(frames: FrameRef[], motionDescription: string | null, sceneLabel: string | null): Promise<RequestResult> {
+	async observe(frames: FrameRef[], motionDescription: string | null, sceneLabel: string | null, sceneContext: string | null = null): Promise<RequestResult> {
 		if (this.state.status !== "active" || !this.state.text) throw new Error("No active user requirement");
 		if (frames.length === 0) throw new Error("RequestAgent needs at least one frame");
 		const ordered = frames.slice().sort((a, b) => a.timestampMs - b.timestampMs).slice(-3);
@@ -139,15 +139,19 @@ export class RequestAgent {
 		})));
 
 		const recent = this.state.turns.slice(-3).map((turn) => ({ kind: turn.kind, answer: turn.answer, spoke: turn.shouldSpeak }));
-		const prompt = [
+		const promptLines = [
 			"Answer the user's requirement using the current frames. Image blocks are in chronological order.",
 			`MODE: ${this.state.mode ?? "ask"}`,
 			`REQUIREMENT: ${this.state.text}`,
 			`SCENE: ${sceneLabel ?? "unknown"}`,
 			`MOTION (approximate, how the phone moved recently): ${motionDescription ?? "none"}`,
 			`ALREADY_REPORTED (do not repeat these): ${JSON.stringify(recent)}${this.state.spoken ? " (a watch condition has already been reported; do not report it again)" : ""}`,
-			"Reply with only the JSON object.",
-		].join("\n\n");
+		];
+		// Optional scene memory, only attached when the request looks scene-related.
+		// Use it only if the user is actually asking about the place / memory / changes.
+		if (sceneContext) promptLines.push(`SCENE_MEMORY (use only if the user's request is about the place, whether they have been here, or what changed): ${sceneContext}`);
+		promptLines.push("Reply with only the JSON object.");
+		const prompt = promptLines.join("\n\n");
 
 		const agent = new Agent({ initialState: { systemPrompt: SYSTEM_PROMPT, model: this.model, tools: [] }, streamFn: this.streamFn });
 		await agent.prompt(prompt, imageContents);

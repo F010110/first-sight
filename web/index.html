@@ -48,14 +48,19 @@
           <div><label>场景变化</label><div id="change-status" class="setting-value">未开始</div></div>
         </div>
         <label for="goal" class="mode-input-label">用户要求（提问 / 目标 / 关注条件）</label>
-        <textarea id="goal" rows="2" maxlength="2000" placeholder="例如：帮我找蓝色盖子的容器；或：水壶开始沸腾时告诉我"></textarea>
+        <textarea id="goal" rows="2" maxlength="2000" placeholder="例如：我的手机在哪里？；或：水壶开始沸腾时告诉我"></textarea>
         <input id="auto-analyze" type="checkbox" hidden>
+        <div class="button-row">
+          <button id="mic-button" class="secondary" disabled>🎤 语音提问</button>
+          <label class="inline" style="gap:6px"><input type="checkbox" id="speak-toggle" checked> 语音播报</label>
+        </div>
         <div class="button-row">
           <button id="ask-button" class="primary" disabled>提问 / 设定目标</button>
           <button id="watch-button" disabled>关注这个情况</button>
-          <button id="stop-task-button" class="secondary" disabled>结束任务/关注</button>
+          <button id="stop-task-button" class="secondary" disabled>结束要求</button>
         </div>
-        <p id="task-status" class="muted" aria-live="polite">当前没有任务或关注条件。</p>
+        <p id="voice-status" class="muted" aria-live="polite"></p>
+        <p id="task-status" class="muted" aria-live="polite">当前没有用户要求。</p>
         <details class="advanced-settings">
           <summary>采集设置</summary>
           <div class="settings-grid">

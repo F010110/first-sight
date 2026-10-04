@@ -636,6 +636,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, session:
 	if (!Array.isArray(input.frames) || input.frames.length < 1 || input.frames.length > 6) throw new Error("request 需要 1 到 6 张截图");
 	const motionDescription = typeof input.motionDescription === "string" ? input.motionDescription.slice(0, 1200) : null;
 	const sceneLabel = typeof input.sceneLabel === "string" ? input.sceneLabel.slice(0, 120) : null;
+	const sceneContext = typeof input.sceneContext === "string" ? input.sceneContext.slice(0, 800) : null;
 	const runId = randomUUID();
 	const stagingDir = resolve("run/mobile-staging", session.id, `request-${runId}`);
 	await mkdir(stagingDir, { recursive: true });
@@ -654,7 +655,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, session:
 		frames.push({ id: `request-${index + 1}-${Math.round(row.timestampMs)}`, timestampMs: Math.round(row.timestampMs), path });
 	}
 
-	const result = await agent.observe(frames, motionDescription, sceneLabel);
+	const result = await agent.observe(frames, motionDescription, sceneLabel, sceneContext);
 	await appendSessionEvent(experimentRoot, session.id, { type: "request_answered", goal: current.text, details: { kind: result.kind, answer: result.answer, shouldSpeak: result.shouldSpeak, done: result.done, confidence: result.confidence } });
 	json(res, 200, {
 		request: agent.getState(),

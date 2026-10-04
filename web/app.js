@@ -40,7 +40,7 @@ function emptyRouterStats() {
 	return { capturedFrames: 0, movingFramesSkipped: 0, sensorMotionGatedFrames: 0, noChangeFramesSkipped: 0, familiarSceneFramesSkipped: 0, stabilityWaits: 0, frameChangeScore: null, visualNoveltyScore: null, motionContext: null };
 }
 
-const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", sceneLabel: null, sceneId: null, request: { mode: null, kind: null, status: "idle", text: null, lastAnswer: null, spoken: false, lastStepMs: 0 }, live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, prevTickMs: 0, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, lastAbsoluteMs: 0, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
+const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", sceneLabel: null, sceneId: null, knownScenes: [], request: { mode: null, kind: null, status: "idle", text: null, lastAnswer: null, spoken: false, lastStepMs: 0 }, live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, prevTickMs: 0, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, lastAbsoluteMs: 0, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
 
 async function post(path, payload, authenticated = true, timeoutMs = 25_000) {
   const headers = { "Content-Type": "application/json" };
@@ -562,6 +562,8 @@ function stopCamera() {
 function updateActionState() {
   const hasGoal = $("goal").value.trim().length > 0;
   const ready = state.frames.length > 0 && !state.busy;
+  const micButton = $("mic-button");
+  if (micButton) micButton.disabled = !(ready && voiceRecognition);
   const active = state.request.status === "active";
   const mode = state.request.mode;
   const askButton = $("ask-button");
@@ -871,6 +873,7 @@ async function maybeObserveScene() {
     state.sceneStatus = `${result.label}${tag}`;
     state.sceneLabel = result.label ?? null;
     state.sceneId = result.sceneId ?? null;
+    state.knownScenes = (result.scene?.scenes ?? []).map((scene) => scene.label).filter(Boolean);
     state.vio.lastSceneChangeMs = Date.now();
     setStatus($("app-status"), `场景：${state.sceneStatus}`);
     updateActionState();
@@ -1309,6 +1312,60 @@ async function stopCurrentTask() {
   await finishCurrentTask();
 }
 
+// --- Voice input/output, and optional scene context for the request line ---
+let voiceRecognition = null;
+let voiceListening = false;
+
+/** Cheap keyword check: only attach scene memory when the request is about the place. */
+function isSceneRelated(text) {
+  return /(房间|屋子|地方|地点|场景|环境|哪儿|哪里|在哪|之前|来过|回到|记得|变化|变了|同一个|这个地方)/.test(text);
+}
+
+function sceneContextText() {
+  const parts = [];
+  if (state.sceneLabel) parts.push(`当前场景：${state.sceneLabel}`);
+  if (state.knownScenes.length) parts.push(`已知场景：${state.knownScenes.slice(0, 8).join("、")}`);
+  if (state.changeStatus && state.changeStatus !== "未开始") parts.push(`最近场景变化：${state.changeStatus}`);
+  return parts.join("；");
+}
+
+function speak(text) {
+  if (!$("speak-toggle")?.checked || !text || typeof speechSynthesis === "undefined") return;
+  try {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "zh-CN";
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utterance);
+  } catch { /* ignore */ }
+}
+
+function setupVoice() {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const mic = $("mic-button");
+  if (!Recognition) { mic.disabled = true; mic.title = "当前浏览器不支持语音识别，请用键盘输入"; return; }
+  voiceRecognition = new Recognition();
+  voiceRecognition.lang = "zh-CN";
+  voiceRecognition.interimResults = false;
+  voiceRecognition.maxAlternatives = 1;
+  voiceRecognition.onstart = () => { voiceListening = true; mic.textContent = "🎙️ 正在听…"; setStatus($("voice-status"), "正在听……说完会自动提问。"); };
+  voiceRecognition.onend = () => { voiceListening = false; mic.textContent = "🎤 语音提问"; };
+  voiceRecognition.onerror = (event) => { voiceListening = false; mic.textContent = "🎤 语音提问"; setStatus($("voice-status"), `语音识别失败：${event.error}`); };
+  voiceRecognition.onresult = (event) => {
+    const transcript = event.results?.[0]?.[0]?.transcript?.trim();
+    if (!transcript) return;
+    $("goal").value = transcript;
+    updateActionState();
+    setStatus($("voice-status"), `识别到：${transcript}`);
+    void submitRequest("ask");
+  };
+}
+
+function toggleVoiceInput() {
+  if (!voiceRecognition) return;
+  if (voiceListening) { voiceRecognition.stop(); return; }
+  try { voiceRecognition.start(); } catch { /* already started */ }
+}
+
 /** Role 3: the user's explicit requirement. */
 async function submitRequest(mode) {
   const text = $("goal").value.trim();
@@ -1320,9 +1377,10 @@ async function submitRequest(mode) {
     const result = await post("/api/request", {
       action: mode === "watch" ? "watch" : "ask",
       text,
-      frames: framesForUpload(3, 10_000),
+      frames: framesForUpload(2, 8_000),
       ...(motion ? { motionDescription: motion } : {}),
       ...(state.sceneLabel ? { sceneLabel: state.sceneLabel } : {}),
+      ...(isSceneRelated(text) && sceneContextText() ? { sceneContext: sceneContextText() } : {}),
     });
     state.request = { ...state.request, ...result.request, lastStepMs: Date.now() };
     if (result.result) showRequestResult(result.result);
@@ -1343,9 +1401,10 @@ async function stepRequest() {
     const motion = currentMotionDescription();
     const result = await post("/api/request", {
       action: "step",
-      frames: framesForUpload(3, 10_000),
+      frames: framesForUpload(2, 8_000),
       ...(motion ? { motionDescription: motion } : {}),
       ...(state.sceneLabel ? { sceneLabel: state.sceneLabel } : {}),
+      ...(isSceneRelated(state.request.text || "") && sceneContextText() ? { sceneContext: sceneContextText() } : {}),
     });
     state.request = { ...state.request, ...result.request, lastStepMs: now };
     if (result.result) showRequestResult(result.result);
@@ -1357,8 +1416,10 @@ function showRequestResult(result) {
   const kindLabel = { question: "回答", goal: "建议", watch: "关注" }[result.kind] || "回答";
   state.request.lastAnswer = result.answer;
   const frameHint = hasFrameRelativeDirection(result.answer) ? "（模型用了画面方位；实际方位以你身体为准）" : "";
-  if (result.shouldSpeak) setStatus($("app-status"), `◉ ${kindLabel}：${result.answer}${frameHint}`);
-  else setStatus($("app-status"), `${kindLabel}：${result.answer}${frameHint}（未提示）`);
+  if (result.shouldSpeak) {
+    setStatus($("app-status"), `◉ ${kindLabel}：${result.answer}${frameHint}`);
+    speak(result.answer);
+  } else setStatus($("app-status"), `${kindLabel}：${result.answer}${frameHint}（未提示）`);
 }
 
 async function stopRequest() {
@@ -1380,6 +1441,8 @@ $("capture-button").addEventListener("click", () => void captureFrame().catch((e
 $("ask-button").addEventListener("click", () => void submitRequest("ask"));
 $("watch-button").addEventListener("click", () => void submitRequest("watch"));
 $("stop-task-button").addEventListener("click", () => void stopRequest());
+$("mic-button").addEventListener("click", toggleVoiceInput);
+setupVoice();
 $("goal").addEventListener("input", updateActionState);
 $("auto-observe-button").addEventListener("click", () => {
   $("auto-analyze").checked = !$("auto-analyze").checked;
