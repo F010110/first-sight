@@ -56,8 +56,6 @@ interface Baseline {
 	timestampMs: number;
 	frameId: string;
 	label: string | null;
-	/** Last time the VLM compared this scene (to rate-limit checks). */
-	lastVlmMs?: number;
 }
 
 const MIN_OVERLAP_RATIO = 0.5;
@@ -65,7 +63,6 @@ const MIN_INLIERS = 25;
 const MIN_CHANGE_RATIO = 0.005;
 const MIN_REGION_FRACTION = 0.004;
 const VLM_MIN_CONFIDENCE = 0.6;
-const MIN_VLM_INTERVAL_MS = 10_000;
 
 const SYSTEM_PROMPT = [
 	"You compare an EARLIER view of a place with the CURRENT view of the SAME place.",
@@ -164,15 +161,14 @@ export class SceneChangeAgent {
 		const largest = detection.regions[0]?.area ?? 0;
 		const significant = compareArea > 0 && largest >= MIN_REGION_FRACTION * compareArea && detection.changedRatio >= MIN_CHANGE_RATIO;
 
-		// The pixel detector is only a trigger and a hint: a significant blob
-		// triggers a check immediately, otherwise we check on a fixed interval.
-		// Either way the VLM is the one that decides whether the place changed.
-		const now = Date.now();
-		if (!significant && baseline.lastVlmMs && now - baseline.lastVlmMs < MIN_VLM_INTERVAL_MS) {
+		// Skip the VLM only when the algorithm can *confidently* say "no change":
+		// the two views registered reliably (enough inliers / overlap) and no
+		// significant residual blob was found. Every other case — a candidate blob,
+		// or unreliable registration — is handed to the VLM to decide.
+		if (aligned && !significant) {
 			if (boxesPath) await unlink(boxesPath).catch(() => {});
-			return quiet("within the change-check interval");
+			return quiet("no significant local change");
 		}
-		baseline.lastVlmMs = now;
 
 		const useBoxes = aligned && boxesPath && detection.regions.length > 0;
 		const images = await this.buildImages(baseline.framePath, useBoxes ? boxesPath! : latest.path);
@@ -194,7 +190,7 @@ export class SceneChangeAgent {
 		if (changed) {
 			this.events.push({ atMs: Date.now(), sceneId: key, what: parsed.what ?? "unspecified change", candidateUtterance: parsed.candidateUtterance, confidence: parsed.confidence, frameId: latest.id, regionCount: detection.regions.length, changedRatio: detection.changedRatio, via });
 			// The new state becomes the reference for the next comparison.
-			this.baselines.set(key, { framePath: latest.path, timestampMs: latest.timestampMs, frameId: latest.id, label: sceneLabel, ...(baseline.lastVlmMs !== undefined ? { lastVlmMs: baseline.lastVlmMs } : {}) });
+			this.baselines.set(key, { framePath: latest.path, timestampMs: latest.timestampMs, frameId: latest.id, label: sceneLabel });
 		}
 		return {
 			changed, what: changed ? parsed.what : null, candidateUtterance: changed ? parsed.candidateUtterance : null,
