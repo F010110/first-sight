@@ -1356,8 +1356,9 @@ async function stepRequest() {
 function showRequestResult(result) {
   const kindLabel = { question: "回答", goal: "建议", watch: "关注" }[result.kind] || "回答";
   state.request.lastAnswer = result.answer;
-  if (result.shouldSpeak) setStatus($("app-status"), `◉ ${kindLabel}：${result.answer}`);
-  else setStatus($("app-status"), `${kindLabel}：${result.answer}（未提示）`);
+  const frameHint = hasFrameRelativeDirection(result.answer) ? "（模型用了画面方位；实际方位以你身体为准）" : "";
+  if (result.shouldSpeak) setStatus($("app-status"), `◉ ${kindLabel}：${result.answer}${frameHint}`);
+  else setStatus($("app-status"), `${kindLabel}：${result.answer}${frameHint}（未提示）`);
 }
 
 async function stopRequest() {
