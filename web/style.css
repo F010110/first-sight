@@ -114,3 +114,4 @@ footer { font-size: 11px; line-height: 1.5; text-align: center; padding: 6px 12p
 .result-details { padding: 12px 16px; }
 .result-details > summary { color: #aebbd0; font-size: 13px; cursor: pointer; }
 .ask-card .button-row { margin-top: 10px; }
+.diagnostics { white-space: pre-line; margin-top: 12px; padding: 10px 12px; border: 1px solid #2b3a52; border-radius: 10px; background: #0c1527; color: #a9b8cd; font-size: 12.5px; line-height: 1.6; }

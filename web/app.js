@@ -594,6 +594,26 @@ function updateActionState() {
   $("buffer-count").textContent = `${state.frames.length} / ${FRAME_BUFFER_MAX}`;
   $("scene-status").textContent = state.sceneStatus;
   $("change-status").textContent = state.changeStatus;
+  updateDiagnostics();
+}
+
+function permissionLabel(value) {
+  return { granted: "已授权", denied: "被拒绝", error: "不可用", not_required: "无需授权", unknown: "未知" }[value] || value || "未知";
+}
+
+/** Small readout of the real permissions and whether data is actually flowing. */
+function updateDiagnostics() {
+  const el = $("diagnostics");
+  if (!el) return;
+  const video = $("camera");
+  const camera = state.stream ? `已开启 ${video.videoWidth || "?"}×${video.videoHeight || "?"}` : "未开启";
+  const motion = state.motion.listenerActive
+    ? `${permissionLabel(state.motion.motionPermission)}（采样 ${state.motion.samples.length}）`
+    : permissionLabel(state.motion.motionPermission);
+  const orientation = state.motion.listenerActive
+    ? `${permissionLabel(state.motion.orientationPermission)}（${state.motion.orientations.length}）`
+    : permissionLabel(state.motion.orientationPermission);
+  el.textContent = `摄像头：${camera}\n运动传感器：${motion}\n姿态传感器：${orientation}\n截图缓冲：${state.frames.length} 帧 · VIO 特征：${state.vio.features.length}`;
 }
 
 function renderFrames() {
@@ -810,7 +830,7 @@ function startVio() {
   state.vio.prevTickMs = 0;
   state.vio.lastPlaceMs = 0;
   state.vio.timer = window.setInterval(vioTick, VIO_INTERVAL_MS);
-  state.vio.placeTimer = window.setInterval(() => { void maybeObserveScene(); void maybeObserveSceneChange(); void stepRequest(); }, 5_000);
+  state.vio.placeTimer = window.setInterval(() => { void maybeObserveScene(); void maybeObserveSceneChange(); void stepRequest(); updateDiagnostics(); }, 5_000);
 }
 
 function stopVio() {
