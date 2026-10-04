@@ -1105,12 +1105,35 @@ async function serveStatic(pathname: string, res: ServerResponse): Promise<void>
 const ANALYSIS_ROOT = resolve("run", "analysis");
 const CA_FILE = resolve("run", "tls", "vlm-local-ca.cer");
 
+/** Best-effort hostname the phone used to reach us, so the /vlm link is never stale. */
+function requestHostname(req: IncomingMessage): string {
+	const host = req.headers.host ?? "";
+	const name = host.split(":")[0] ?? "";
+	return name || LAN_IP_HINT || "<LAN-IP>";
+}
+
+/** Shared CA install page for iOS and Android (used on both the plain-HTTP helper and the main port). */
+function caInstallPageHtml(req: IncomingMessage): string {
+	const host = requestHostname(req);
+	return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>安装本地证书</title></head>
+<body style="font-family:system-ui;padding:24px;line-height:1.7;max-width:680px">
+<h1>安装本地证书（iOS / Android）</h1>
+<p>先把证书下载到手机上（会提示下载文件）：</p>
+<p><a href="/vlm-local-ca.cer" style="font-size:1.2em">⬇︎ 下载 vlm-local-ca.cer</a></p>
+<h3>iOS</h3>
+<ol><li>设置 → 通用 → VPN 与设备管理 → 安装该描述文件</li><li>设置 → 通用 → 关于本机 → 证书信任设置 → 打开“VLM Local Dev CA”的完全信任</li></ol>
+<h3>Android（Chrome）</h3>
+<ol><li>设置 → 安全 → 加密与凭据 → 安装证书 → CA 证书 → 选择下载的文件</li><li>确认“受信任的凭据 → 用户”里出现它</li></ol>
+<p>完成后用手机浏览器打开 <b>https://${host}:${PORT}/vlm</b>。</p>
+</body></html>`;
+}
+
 /**
  * Serves the local CA certificate over the main server too, so a phone that can
  * already reach the HTTPS port can install the CA even when the plain-HTTP
  * helper port (8765+2) is blocked by the network.
  */
-async function serveCa(pathname: string, res: ServerResponse): Promise<void> {
+async function serveCa(req: IncomingMessage, pathname: string, res: ServerResponse): Promise<void> {
 	if (!existsSync(CA_FILE)) { json(res, 404, { error: "CA 证书不存在，请先运行 scripts/setup-lan-tls.ps1" }); return; }
 	if (pathname === "/vlm-local-ca.cer") {
 		res.writeHead(200, { "Content-Type": "application/x-x509-ca-cert", "Content-Disposition": "attachment; filename=vlm-local-ca.cer", "Cache-Control": "no-store" });
@@ -1118,17 +1141,7 @@ async function serveCa(pathname: string, res: ServerResponse): Promise<void> {
 		return;
 	}
 	res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-	res.end(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>安装本地证书</title></head>
-<body style="font-family:system-ui;padding:24px;line-height:1.7;max-width:640px">
-<h1>安装本地证书</h1>
-<p>先把证书下载到手机上（会提示下载文件）：</p>
-<p><a href="/vlm-local-ca.cer" style="font-size:1.2em">⬇︎ 下载 vlm-local-ca.cer</a></p>
-<h3>iOS</h3>
-<ol><li>设置 → 通用 → VPN 与设备管理 → 安装该描述文件</li><li>设置 → 通用 → 关于本机 → 证书信任设置 → 打开“VLM Local Dev CA”的完全信任</li></ol>
-<h3>Android（Chrome）</h3>
-<ol><li>设置 → 安全 → 加密与凭据 → 安装证书 → CA 证书 → 选择下载的文件</li><li>确认“受信任的凭据 → 用户”里出现它</li></ol>
-<p>完成后用手机浏览器打开 <b>${LAN_IP_HINT ? `https://${LAN_IP_HINT}:${PORT}/vlm` : `https://&lt;LAN-IP&gt;:${PORT}/vlm`}</b>。</p>
-</body></html>`);
+	res.end(caInstallPageHtml(req));
 }
 
 /** Serves the generated trajectory reports (inline scripts, so no restrictive CSP). */
@@ -1184,7 +1197,7 @@ async function main(): Promise<void> {
 					return;
 				}
 				if (pathname === "/report" || pathname === "/report/" || pathname.startsWith("/report/")) { await serveReport(pathname, res); return; }
-				if (pathname === "/ca" || pathname === "/vlm-local-ca.cer") { await serveCa(pathname, res); return; }
+				if (pathname === "/ca" || pathname === "/vlm-local-ca.cer") { await serveCa(req, pathname, res); return; }
 				await serveStatic(pathname, res); return;
 			}
 			if (req.method !== "POST") { json(res, 405, { error: "Method not allowed" }); return; }
@@ -1270,14 +1283,7 @@ async function main(): Promise<void> {
 					return;
 				}
 				res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-				res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>安装本地证书</title></head><body style="font-family:system-ui;padding:24px;line-height:1.6">
-<h1>安装本地证书</h1>
-<p>1. 点下面的链接下载 CA 证书（会提示下载描述文件）。</p>
-<p><a href="/vlm-local-ca.cer">下载 vlm-local-ca.cer</a></p>
-<p>2. 打开 iPhone「设置」，顶部会出现「已下载描述文件」，安装它。</p>
-<p>3. 再到「设置 → 通用 → 关于本机 → 证书信任设置」，打开「VLM Local Dev CA」的开关。</p>
-<p>4. 用 Safari 打开 <b>https://${LAN_IP_HINT}:${PORT}/vlm</b>。</p>
-</body></html>`);
+				res.end(caInstallPageHtml(req));
 			}).listen(caPort, "0.0.0.0", () => {
 				process.stdout.write(`CA install page (plain HTTP): http://<this-machine-LAN-IP>:${caPort}/\n`);
 			});
