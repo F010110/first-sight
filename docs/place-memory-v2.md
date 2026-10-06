@@ -1,0 +1,105 @@
+# V2：持久 Place Memory（设计 + 实施计划）
+
+依据 `迭代建议.md`，并把现有三 agent 架构升级为**持久的地点记忆**，而不是重写。核心只有三件事：**把 Scene 从“会话内识别结果”升级成持久 Place Node；增加 Visit；增加 Scene-to-Scene Transition Graph。** 不做精确 3D/位移。
+
+## 1. 数据模型（`src/agent/place-memory.ts`）
+
+```ts
+interface PlaceNode {
+  id: string;                 // scene-1 ...
+  label: string;              // "Kitchen"（VLM 给的，可后改）
+  summary: string;
+  objects: string[];
+  representativeFrames: string[];   // 代表帧路径
+  visits: Visit[];
+  neighbors: { sceneId: string; count: number }[];
+  createdAt: number;
+  lastVisitedAt: number;
+  confidence: number;
+  provisional: boolean;       // 尚未确认的地点身份
+}
+
+interface Visit {
+  id: string;
+  sceneId: string | null;             // 已确认时
+  sceneCandidates?: { sceneId: string; score: number }[];  // provisional 时
+  startMs: number; endMs: number | null;
+  entryFrame: string; exitFrame: string | null;
+  representativeFrames: string[];
+  rawArchivePointer: string | null;   // 原始帧范围/目录
+  changes: { atMs: number; what: string; via: string }[];
+  previousSceneId: string | null;     // 进入前的场景
+  nextSceneId: string | null;
+}
+
+interface Transition {
+  id: string;
+  fromScene: string; toScene: string;
+  count: number;
+  roughMotion: string | null;   // 自然语言“运动模式”（弱元数据）
+  durationMs: number | null;
+  confidence: number;
+}
+```
+
+持久化到 `run/experiments/<session>/place-memory.json`（或按 session 的 store），支持 `mergeScene(a,b)` / `splitScene(a)` / `rebindVisit(visitId, oldScene, newScene)`。
+
+## 2. SceneAgent：Place Recognition（升级，不扩职责）
+
+只回答“当前是不是以前来过的地方”，输出 `scene_id + confidence + candidates + evidence`，不给坐标。
+
+匹配流程（**cheap CV 找候选 → VLM 只做验证**）：
+
+```
+current frames
+  → 候选集 = neighbors(previousScene) ∪ 最近访问的若干 scene
+  → cheap CV（现有 image memory：SIFT + RANSAC 内点；后续可换 embedding）打分
+  → top-k（k≈3）
+  → VLM 验证：“当前画面与候选 X 是否同一地点？”
+  → existing scene / new scene
+  → 若 top-1 与 top-2 接近 → provisional（不硬绑定）
+```
+
+- 图邻居优先，历史越多也不线性变慢；邻居都不像时再全局搜索。
+- 每次进入创建/延续一个 **Visit**；离开（识别到新场景）时结束该 Visit 并写 Transition。
+- **允许修正**：provisional visit 后续用新证据或图上下文 resolve；支持 merge/rebind。
+
+## 3. SceneChangeAgent：只在身份已知后运行
+
+数据流：`current → SceneAgent → scene_id → 载入该 scene 历史 → ChangeAgent`。
+
+- 只比较 `Current(scene_X)` vs `Historical(scene_X)`（该地点的代表帧/上次 Visit），不跟整个世界比。
+- 保留现有“配准 + 残差 + 边缘抑制 + 显著块”作为触发/提示；判不准时交给 VLM。
+- 变化写回该 Visit 的 `changes[]` 与该 PlaceNode 的 `current_state`。
+
+## 4. RequestAgent：沿 Place Memory 检索
+
+- 保留工具式检索（agent 自决），但把 `search_scene_memory` 扩展为：
+  - `recent_visits()`、`scene_history(scene_or_label)`、`neighbors(scene_id)`；
+  - 以后再加 `recover(visit_id | time_range)`（从 `rawArchivePointer` 恢复代表帧之外的原始帧）。
+- 例如“我刚才去过哪些地方？” → `recent_visits`；“之前在厨房看到过什么？” → `scene_history(Kitchen)`。
+
+## 5. 自动评测 harness（`sim/replay-eval`）
+
+读 `run/sim/<episode>/`，把帧按 agent 触发节奏喂给被测 SceneAgent（真实或桩），用 `observations.jsonl` 的 **GT 房间**打分：
+
+| 指标 | 含义 |
+|---|---|
+| place accuracy / purity | 每个预测 scene 映射到 GT 房间后的准确率（Hungarian/多数投票） |
+| revisit consistency | 同一房间的两次访问是否落到同一预测 scene |
+| transition graph F1 | 预测相邻关系 vs GT 房间邻接 |
+| visits per place | 每个地点的访问次数是否合理 |
+
+先跑**cheap CV 部分**（不花 VLM）快速迭代匹配/候选策略，再接真实 VLM 跑验证。
+
+## 6. 实施顺序
+
+1. **P0 模拟器**（已完成）：`sim/record_episode.py` 产出带 GT 的往返 episode。
+2. **P1 Scene Recognition**：Place Memory 数据模型 + 候选收窄 + VLM 验证 + 评测 harness（先 cheap CV 打分）。
+3. **P2 Place Graph**：transition 边 + `neighbors` 候选。
+4. **P3 Visit Memory**：Visit 生命周期、代表帧、raw archive 指针。
+5. **P4 Scene Correction**：provisional / merge / split / rebind。
+
+## 7. 暂不做
+
+精确 3D 重建、全局 XYZ、IMU 双积分轨迹、SLAM、物体级坐标、复杂 memory 层级/折叠策略/多 agent 记忆管理。

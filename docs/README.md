@@ -11,6 +11,7 @@
 ## 架构与设计（当前）
 
 - 根 [README](../README.md) —— **当前三 Agent 架构、运动模式、图片记忆、离线工具**。
+- [V2：持久 Place Memory（设计 + 实施计划）](place-memory-v2.md) —— 下一阶段的 Place Node / Visit / Transition 设计与评测方案。
 - [产品设计](product-design.md) —— 产品方向与分阶段计划。
 
 ## 运动 / 惯导
