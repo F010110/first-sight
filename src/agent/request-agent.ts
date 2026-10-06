@@ -72,6 +72,8 @@ export interface SceneMemorySnapshot {
 	currentSceneId: string | null;
 	scenes: SceneMemoryScene[];
 	visitedOrder: string[];
+	/** Edges between places with their usual path (qualitative). */
+	transitions: Array<{ from: string; to: string; count: number; path: string }>;
 	changes: SceneMemoryChange[];
 }
 
@@ -142,7 +144,7 @@ export class RequestAgent {
 				required: [],
 			},
 			execute: async (_toolCallId: string, params: unknown) => {
-				const snapshot = this.getSceneMemory?.() ?? { currentSceneId: null, scenes: [], visitedOrder: [], changes: [] };
+				const snapshot = this.getSceneMemory?.() ?? { currentSceneId: null, scenes: [], visitedOrder: [], transitions: [], changes: [] };
 				const rawQuery = (params as { query?: unknown } | null)?.query;
 				const query = typeof rawQuery === "string" ? rawQuery.trim().toLowerCase() : "";
 				let scenes = snapshot.scenes;
@@ -151,10 +153,12 @@ export class RequestAgent {
 					const matched = scenes.filter((scene) => terms.some((term) => `${scene.label} ${scene.summary} ${scene.objects.join(" ")}`.toLowerCase().includes(term)));
 					if (matched.length) scenes = matched;
 				}
+				const kept = new Set(scenes.slice(-10).map((scene) => scene.id));
 				const result = {
 					currentSceneId: snapshot.currentSceneId,
 					visitedOrder: snapshot.visitedOrder,
 					scenes: scenes.slice(-10).map((scene) => ({ id: scene.id, label: scene.label, summary: scene.summary, objects: scene.objects, visits: scene.visits })),
+					connections: snapshot.transitions.filter((edge) => kept.has(edge.from) || kept.has(edge.to)).slice(-20),
 					recentChanges: snapshot.changes.slice(-5),
 				};
 				return { content: [{ type: "text" as const, text: JSON.stringify(result) }], details: { sceneCount: result.scenes.length } };

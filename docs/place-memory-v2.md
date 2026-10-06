@@ -36,11 +36,21 @@ interface Transition {
   id: string;
   fromScene: string; toScene: string;
   count: number;
-  roughMotion: string | null;   // 自然语言“运动模式”（弱元数据）
+  /** 通常路径：多次经过后归纳出的常见走法（定性，自然语言），写在边上。 */
+  path: string;
+  /** 观察到的若干版本及其出现次数，用于归纳与修正。 */
+  pathVariants: { path: string; count: number }[];
   durationMs: number | null;
+  evidence: string[];       // 进入/退出帧
   confidence: number;
 }
 ```
+
+**边的语义（用户要求）**：不需要 3D，只要知道**两个场景之间的通常路径**，写在边上。做法：
+
+- 每次识别到 `A → B` 转换，把**转换期间的运动模式**（定性，自然语言，如"先左转约90°，再前进约4步，再右转"）作为一次 path variant 记到 `A—B` 边上；
+- 多次经过后，边上的 `path` = **出现最多的那个 variant**（并保留 variants 计数），`count++`、更新 duration；
+- 路径是**定性/拓扑**的，不含坐标；后续可用它回答"从卧室怎么去厨房"、也可以反过来收紧候选（先匹配邻居）。
 
 持久化到 `run/experiments/<session>/place-memory.json`（或按 session 的 store），支持 `mergeScene(a,b)` / `splitScene(a)` / `rebindVisit(visitId, oldScene, newScene)`。
 

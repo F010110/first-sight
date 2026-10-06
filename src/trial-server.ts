@@ -550,7 +550,7 @@ async function handleScene(req: IncomingMessage, res: ServerResponse, session: {
 	}
 	let agent = sceneAgents.get(session.id);
 	if (!agent) {
-		agent = new SceneAgent(resolve(experimentRoot, session.id, "scene-memory"));
+		agent = new SceneAgent(resolve(experimentRoot, session.id, "scene-memory"), resolve(experimentRoot, session.id, "place-memory.json"));
 		if (sceneAgents.size >= MAX_SESSIONS) sceneAgents.delete(sceneAgents.keys().next().value!);
 		sceneAgents.set(session.id, agent);
 	}
@@ -558,8 +558,8 @@ async function handleScene(req: IncomingMessage, res: ServerResponse, session: {
 	// Kept as a safety net: the scene-change agent keeps one baseline per scene,
 	// so a new place simply has no baseline yet and returning to a known scene
 	// reuses its stored baseline (so changes that happened while away are found).
-	await appendSessionEvent(experimentRoot, session.id, { type: "scene_recorded", details: { sceneId: result.sceneId, label: result.label, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, match: result.match, motion: motionDescription } });
-	json(res, 200, { sceneId: result.sceneId, label: result.label, summary: result.summary, objects: result.objects, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, match: result.match, frameIds: result.frameIds, scene: agent.getState() });
+	await appendSessionEvent(experimentRoot, session.id, { type: "scene_recorded", details: { sceneId: result.sceneId, label: result.label, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, provisional: result.provisional, match: result.match, motion: motionDescription } });
+	json(res, 200, { sceneId: result.sceneId, label: result.label, summary: result.summary, objects: result.objects, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, provisional: result.provisional, match: result.match, frameIds: result.frameIds, scene: agent.getState() });
 }
 
 async function handleSceneChange(req: IncomingMessage, res: ServerResponse, session: { id: string }): Promise<void> {
@@ -610,8 +610,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, session:
 			const changeState = sceneChangeAgents.get(session.id)?.getState();
 			return {
 				currentSceneId: sceneState?.currentSceneId ?? null,
-				scenes: (sceneState?.scenes ?? []).map((scene) => ({ id: scene.id, label: scene.label, summary: scene.summary, objects: scene.objects, visits: scene.visits, lastSeenMs: scene.lastSeenMs })),
+				scenes: (sceneState?.scenes ?? []).map((scene) => ({ id: scene.id, label: scene.label, summary: scene.summary, objects: scene.objects, visits: scene.visits.length, lastSeenMs: scene.lastVisitedAt })),
 				visitedOrder: (sceneState?.history ?? []).map((entry) => entry.sceneId),
+				transitions: (sceneState?.transitions ?? []).map((edge) => ({ from: edge.fromScene, to: edge.toScene, count: edge.count, path: edge.path })),
 				changes: (changeState?.events ?? []).map((event) => ({ sceneId: event.sceneId, what: event.what, atMs: event.atMs })),
 			};
 		});
