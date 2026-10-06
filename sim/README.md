@@ -14,6 +14,32 @@ manifest.json              户型、房间、路线、是否截断、house sha25
 
 `room` 是**评测用真值**，绝不能给被测 agent。位姿来自模拟器（oracle），也只用于评测/导航，不作为 agent 输入。
 
+## 运动模式（不含位移）
+
+agent 只吃**定性运动模式**，不拿任何位移/坐标。用后处理从 episode 派生（不必重跑模拟器）：
+
+```powershell
+python sim\derive_motion.py run\sim\<episode> --observe-every 3
+```
+
+写出 `windows.jsonl`，每个 agent 观察窗口一行：
+
+```
+{ window, startTick, endTick, frame, room(GT), startPose, endPose,
+  motionPerfect,   # 由 GT 动作派生的干净描述
+  motionNoisy }    # 模拟真机失败模式（丢段 / 转向读成横移 / 角度缩放）
+```
+
+replay 端选择三种模式之一喂给 agent，**位姿只用于评测**：
+
+| 模式 | agent 收到 |
+|---|---|
+| `none` | 不带运动信息（下界） |
+| `perfect` | `motionPerfect` |
+| `noisy` | `motionNoisy`（鲁棒性对照） |
+
+不合成完整 IMU 数据：agent 从不需要位移，端上 VIO 的失败模式已用 `noisy` 近似。
+
 ## 运行（WSL + AI2-THOR）
 
 复用 EAM 的模拟器环境（WSL Ubuntu + `.venv-thor`，AI2-THOR 5.0.0）：

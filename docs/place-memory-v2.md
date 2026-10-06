@@ -44,6 +44,12 @@ interface Transition {
 
 持久化到 `run/experiments/<session>/place-memory.json`（或按 session 的 store），支持 `mergeScene(a,b)` / `splitScene(a)` / `rebindVisit(visitId, oldScene, newScene)`。
 
+## 1.5 运动信息边界（模拟器与真机一致）
+
+- 三个 agent 都**只接收定性运动模式**（`none` / `perfect` / `noisy`），**不接收坐标、速度、净位移**。
+- 模拟器的精确位姿**只用于评测与路线生成**，绝不进 agent 输入。
+- **不合成 IMU 数据流**：端上 VIO 的失败模式用 `noisy`（丢段、把转向读成横移、角度缩放）近似。采集与派生见 `sim/README.md`。
+
 ## 2. SceneAgent：Place Recognition（升级，不扩职责）
 
 只回答“当前是不是以前来过的地方”，输出 `scene_id + confidence + candidates + evidence`，不给坐标。
