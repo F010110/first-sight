@@ -40,7 +40,7 @@ function emptyRouterStats() {
 	return { capturedFrames: 0, movingFramesSkipped: 0, sensorMotionGatedFrames: 0, noChangeFramesSkipped: 0, familiarSceneFramesSkipped: 0, stabilityWaits: 0, frameChangeScore: null, visualNoveltyScore: null, motionContext: null };
 }
 
-const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", sceneLabel: null, sceneId: null, request: { mode: null, kind: null, status: "idle", text: null, lastAnswer: null, spoken: false, lastStepMs: 0 }, live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, prevTickMs: 0, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, lastAbsoluteMs: 0, absoluteHeadingDeg: null, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
+const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", sceneLabel: null, sceneId: null, request: { mode: null, kind: null, status: "idle", text: null, lastAnswer: null, spoken: false, lastStepMs: 0 }, live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, prevTickMs: 0, prevAbsHeading: null, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, lastAbsoluteMs: 0, absoluteHeadingDeg: null, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
 
 async function post(path, payload, authenticated = true, timeoutMs = 25_000) {
   const headers = { "Content-Type": "application/json" };
@@ -808,9 +808,13 @@ function vioTick() {
     const lastMotion = state.motion.samples.at(-1);
     let dYaw = 0;
     const dtSec = vio.prevTickMs ? Math.min(0.25, Math.max(0, (now - vio.prevTickMs) / 1000)) : 0;
-    // Prefer the gyroscope (available on most Android devices) for the short-term
-    // yaw delta; fall back to the deviceorientation alpha difference (iOS).
-    if (lastMotion && now - lastMotion.timeMs < 500 && lastMotion.rotationVector && Number.isFinite(lastMotion.rotationVector.x) && dtSec > 0) {
+    // Yaw from the ABSOLUTE heading (compass) when available — it does not accumulate
+    // drift. Gyro is only a short-term fallback; relative alpha is the last resort.
+    const absHeading = state.motion.absoluteHeadingDeg;
+    if (Number.isFinite(absHeading)) {
+      if (vio.prevAbsHeading !== null) dYaw = wrapDegrees(absHeading - vio.prevAbsHeading);
+      vio.prevAbsHeading = absHeading;
+    } else if (lastMotion && now - lastMotion.timeMs < 500 && lastMotion.rotationVector && Number.isFinite(lastMotion.rotationVector.x) && dtSec > 0) {
       dYaw = lastMotion.rotationVector.x * dtSec;
     } else if (latest && vio.prevAlpha !== null && Number.isFinite(latest.alpha)) {
       dYaw = wrapDegrees(latest.alpha - vio.prevAlpha);
@@ -831,6 +835,7 @@ function startVio() {
   state.vio.prevGray = null;
   state.vio.prevAlpha = null;
   state.vio.prevTickMs = 0;
+  state.vio.prevAbsHeading = null;
   state.vio.lastPlaceMs = 0;
   state.vio.timer = window.setInterval(vioTick, VIO_INTERVAL_MS);
   state.vio.placeTimer = window.setInterval(() => { void maybeObserveScene(); void maybeObserveSceneChange(); void stepRequest(); updateDiagnostics(); }, 5_000);

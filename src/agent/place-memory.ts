@@ -307,14 +307,14 @@ export class PlaceMemory {
 	 * "I have left this place moving like this before — where did I end up?"
 	 * Ranks the places usually reached from `from` given the current motion hint.
 	 */
-	expectedNext(from: string | null, hint: MotionHint): Array<{ sceneId: string; score: number; path: string }> {
+	expectedNext(from: string | null, hint: MotionHint): Array<{ sceneId: string; score: number; path: string; pathSim: number }> {
 		if (!from) return [];
-		const out: Array<{ sceneId: string; score: number; path: string }> = [];
+		const out: Array<{ sceneId: string; score: number; path: string; pathSim: number }> = [];
 		for (const transition of this.transitions.values()) {
 			if (transition.fromScene !== from) continue;
 			const similarity = hintSimilarity(this.usualHint(transition), hint);
 			const score = transition.confidence * (0.3 + 0.7 * similarity) + Math.min(0.3, transition.count * 0.03);
-			out.push({ sceneId: transition.toScene, score: Number(score.toFixed(3)), path: transition.path });
+			out.push({ sceneId: transition.toScene, score: Number(score.toFixed(3)), path: transition.path, pathSim: Number(similarity.toFixed(3)) });
 		}
 		return out.sort((a, b) => b.score - a.score);
 	}

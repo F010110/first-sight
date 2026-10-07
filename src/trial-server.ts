@@ -558,8 +558,8 @@ async function handleScene(req: IncomingMessage, res: ServerResponse, session: {
 	// Kept as a safety net: the scene-change agent keeps one baseline per scene,
 	// so a new place simply has no baseline yet and returning to a known scene
 	// reuses its stored baseline (so changes that happened while away are found).
-	await appendSessionEvent(experimentRoot, session.id, { type: "scene_recorded", details: { sceneId: result.sceneId, label: result.label, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, provisional: result.provisional, match: result.match, motion: motionDescription } });
-	json(res, 200, { sceneId: result.sceneId, label: result.label, summary: result.summary, objects: result.objects, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, provisional: result.provisional, match: result.match, frameIds: result.frameIds, scene: agent.getState() });
+	await appendSessionEvent(experimentRoot, session.id, { type: "scene_recorded", details: { sceneId: result.sceneId, label: result.label, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, provisional: result.provisional, decidedBy: result.decidedBy, match: result.match, motion: motionDescription } });
+	json(res, 200, { sceneId: result.sceneId, label: result.label, summary: result.summary, objects: result.objects, isNew: result.isNew, sameAsPrevious: result.sameAsPrevious, revisited: result.revisited, matchedSceneId: result.matchedSceneId, changed: result.changed, confidence: result.confidence, provisional: result.provisional, decidedBy: result.decidedBy, match: result.match, frameIds: result.frameIds, scene: agent.getState() });
 }
 
 async function handleSceneChange(req: IncomingMessage, res: ServerResponse, session: { id: string }): Promise<void> {

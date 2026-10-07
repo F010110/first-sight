@@ -38,6 +38,8 @@ export interface SceneResult {
 	/** Cheap-CV evidence: best candidate place and its match score (inliers). */
 	match: { sceneId: string; inliers: number } | null;
 	provisional: boolean;
+	/** Whether the place was decided by cheap signals or by the VLM. */
+	decidedBy: "cheap" | "vlm";
 	frameIds: string[];
 	raw: string;
 }
@@ -57,6 +59,10 @@ const MAX_CANDIDATES = 5;
 const REPS_PER_CANDIDATE = 3;
 const CLEAR_MATCH_INLIERS = 15;
 const DUPLICATE_INLIERS = 60;
+/** Strong visual evidence for "same as previous" (skip the VLM). */
+const CHEAP_SAME_INLIERS = 60;
+/** Visual match + remembered-path agreement strong enough to skip the VLM. */
+const CHEAP_PATH_SIM = 0.7;
 const NEW_PLACE_MIN_CONFIDENCE = 0.6;
 
 function mimeTypeFor(path: string): string {
@@ -177,41 +183,60 @@ export class SceneAgent {
 
 		const previous = previousSceneId ? this.memory.getScene(previousSceneId) : null;
 		const candidateList = candidateScenes.map((scene) => ({ id: scene.id, label: scene.label, summary: scene.summary }));
-		const promptLines = [
-			"Identify the place the user is in now. Image blocks order: the current frames first; then, if present, the PREVIOUS_PLACE stored view; then, if MATCH is present, the matched candidate's stored view.",
-			`PREVIOUS_PLACE: ${previous ? JSON.stringify({ id: previous.id, label: previous.label, summary: previous.summary }) : "none"}`,
-			`CANDIDATE_PLACES: ${JSON.stringify(candidateList)}`,
-			`MOTION (approximate): ${motionDescription ?? "none"}`,
-			`MOTION_HINT: ${describeHint(hint)}`,
-		];
-		if (previous && previous.frames.length) {
-			const prevPath = previous.frames[previous.frames.length - 1]!.path;
-			try {
-				imageContents.push({ type: "image", data: (await readFile(prevPath)).toString("base64"), mimeType: mimeTypeFor(prevPath) });
-				promptLines.push(`(The image just added is PREVIOUS_PLACE ${previous.id} "${previous.label}" as stored earlier.)`);
-			} catch { /* ignore */ }
-		}
-		if (expected.length) {
-			promptLines.push(`EXPECTED_NEXT (from past trips out of the previous place with similar motion): ${expected.slice(0, 3).map((item) => `${item.sceneId} (usual path: ${item.path})`).join("; ")}. Prefer a candidate consistent with this when the images are ambiguous.`);
-		}
-		if (matchedScene && matchedRepPath) {
-			const repPath = matchedScene.frames.find((frame) => frame.path === matchedRepPath)?.path ?? matchedScene.frames.at(-1)?.path ?? matchedRepPath;
-			try {
-				imageContents.push({ type: "image", data: (await readFile(repPath)).toString("base64"), mimeType: mimeTypeFor(repPath) });
-				promptLines.push(`MATCH: local-feature matching found about ${match!.inliers} matching points between the current view and the LAST image, a stored representative of candidate ${matchedScene.id} ("${matchedScene.label}"). They likely show the same place — confirm, or correct with another candidate.`);
-			} catch { /* fall back to text-only */ }
-		}
-		promptLines.push("Reply with only the JSON object.");
-		const prompt = promptLines.join("\n\n");
+		let raw = "";
+		let decidedBy: "cheap" | "vlm" = "vlm";
+		let parsed: ParsedScene;
 
-		const agent = new Agent({ initialState: { systemPrompt: SYSTEM_PROMPT, model: this.model, tools: [] }, streamFn: this.streamFn });
-		await agent.prompt(prompt, imageContents);
-		if (agent.state.errorMessage) throw new Error(`SceneAgent request failed: ${agent.state.errorMessage}`);
-		const assistant = [...agent.state.messages].reverse().find((message) => message.role === "assistant");
-		if (!assistant || assistant.role !== "assistant") throw new Error("SceneAgent returned no assistant message");
-		const raw = assistant.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
-		const candidateIds = new Set(candidateScenes.map((scene) => scene.id));
-		const parsed = parseScene(raw, candidateIds);
+		// Cheap gate: decide without the VLM when the signals are strong enough.
+		//  - strong visual match to the previous place, or
+		//  - strong visual match to a candidate AND a matching remembered path.
+		const strongSamePrevious = Boolean(previous && match && match.sceneId === previous.id && match.inliers >= CHEAP_SAME_INLIERS);
+		const expectedTop = expected[0];
+		const strongKnown = Boolean(match && expectedTop && expectedTop.sceneId === match.sceneId && match.inliers >= CLEAR_MATCH_INLIERS && expectedTop.pathSim >= CHEAP_PATH_SIM);
+		if (strongSamePrevious && previous) {
+			decidedBy = "cheap";
+			parsed = { label: previous.label, summary: previous.summary, objects: previous.objects, seenBeforeSceneId: previous.id, samePlaceAsPrevious: true, confidence: 0.85 };
+		} else if (strongKnown && match) {
+			const scene = this.memory.getScene(match.sceneId)!;
+			decidedBy = "cheap";
+			parsed = { label: scene.label, summary: scene.summary, objects: scene.objects, seenBeforeSceneId: scene.id, samePlaceAsPrevious: scene.id === previousSceneId, confidence: 0.8 };
+		} else {
+			const promptLines = [
+				"Identify the place the user is in now. Image blocks order: the current frames first; then, if present, the PREVIOUS_PLACE stored view; then, if MATCH is present, the matched candidate's stored view.",
+				`PREVIOUS_PLACE: ${previous ? JSON.stringify({ id: previous.id, label: previous.label, summary: previous.summary }) : "none"}`,
+				`CANDIDATE_PLACES: ${JSON.stringify(candidateList)}`,
+				`MOTION (approximate): ${motionDescription ?? "none"}`,
+				`MOTION_HINT: ${describeHint(hint)}`,
+			];
+			if (previous && previous.frames.length) {
+				const prevPath = previous.frames[previous.frames.length - 1]!.path;
+				try {
+					imageContents.push({ type: "image", data: (await readFile(prevPath)).toString("base64"), mimeType: mimeTypeFor(prevPath) });
+					promptLines.push(`(The image just added is PREVIOUS_PLACE ${previous.id} "${previous.label}" as stored earlier.)`);
+				} catch { /* ignore */ }
+			}
+			if (expected.length) {
+				promptLines.push(`EXPECTED_NEXT (from past trips out of the previous place with similar motion): ${expected.slice(0, 3).map((item) => `${item.sceneId} (usual path: ${item.path})`).join("; ")}. Prefer a candidate consistent with this when the images are ambiguous.`);
+			}
+			if (matchedScene && matchedRepPath) {
+				const repPath = matchedScene.frames.find((frame) => frame.path === matchedRepPath)?.path ?? matchedScene.frames.at(-1)?.path ?? matchedRepPath;
+				try {
+					imageContents.push({ type: "image", data: (await readFile(repPath)).toString("base64"), mimeType: mimeTypeFor(repPath) });
+					promptLines.push(`MATCH: local-feature matching found about ${match!.inliers} matching points between the current view and the LAST image, a stored representative of candidate ${matchedScene.id} ("${matchedScene.label}"). They likely show the same place — confirm, or correct with another candidate.`);
+				} catch { /* fall back to text-only */ }
+			}
+			promptLines.push("Reply with only the JSON object.");
+			const prompt = promptLines.join("\n\n");
+
+			const agent = new Agent({ initialState: { systemPrompt: SYSTEM_PROMPT, model: this.model, tools: [] }, streamFn: this.streamFn });
+			await agent.prompt(prompt, imageContents);
+			if (agent.state.errorMessage) throw new Error(`SceneAgent request failed: ${agent.state.errorMessage}`);
+			const assistant = [...agent.state.messages].reverse().find((message) => message.role === "assistant");
+			if (!assistant || assistant.role !== "assistant") throw new Error("SceneAgent returned no assistant message");
+			raw = assistant.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+			const candidateIds = new Set(candidateScenes.map((scene) => scene.id));
+			parsed = parseScene(raw, candidateIds);
+		}
 
 		const now = Date.now();
 		let sceneId: string;
@@ -240,7 +265,7 @@ export class SceneAgent {
 		return {
 			sceneId, label: stored.label, summary: stored.summary, objects: stored.objects,
 			isNew, sameAsPrevious, revisited, matchedSceneId: isNew ? null : sceneId,
-			changed, confidence: parsed.confidence, match, provisional, frameIds: [representative.id], raw,
+			changed, confidence: parsed.confidence, match, provisional, decidedBy, frameIds: [representative.id], raw,
 		};
 	}
 

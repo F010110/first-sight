@@ -35,7 +35,7 @@ interface WindowRow {
 	motionNoisy: string;
 }
 
-interface Observation { gt: string; pred: string; motion: string | null; }
+interface Observation { gt: string; pred: string; motion: string | null; decidedBy?: "cheap" | "vlm"; }
 
 const CLEAR_MATCH_INLIERS = 15;
 const MAX_CANDIDATES = 5;
@@ -63,7 +63,7 @@ function motionFor(row: WindowRow, mode: "none" | "perfect" | "noisy"): string |
 }
 
 /** Cheap-CV agent: candidate narrowing + SIFT score; no VLM. */
-async function runCheap(rows: WindowRow[], dir: string, motion: "none" | "perfect" | "noisy"): Promise<{ observations: Observation[]; prediction: { tries: number; hits: number }; edges: Array<{ from: string; to: string; count: number; path: string }> }> {
+async function runCheap(rows: WindowRow[], dir: string, motion: "none" | "perfect" | "noisy"): Promise<{ observations: Observation[]; prediction: { tries: number; hits: number }; edges: Array<{ from: string; to: string; count: number; path: string }>; vlmCalls: number }> {
 	const memory = new PlaceMemory(null);
 	const observations: Observation[] = [];
 	const sceneRoom = new Map<string, Map<string, number>>();
@@ -115,11 +115,11 @@ async function runCheap(rows: WindowRow[], dir: string, motion: "none" | "perfec
 		observations.push({ gt: row.room, pred: sceneId, motion: motionFor(row, motion) });
 	}
 	const edges = memory.getState().transitions.map((t) => ({ from: t.fromScene, to: t.toScene, count: t.count, path: t.path }));
-	return { observations, prediction: { tries, hits }, edges };
+	return { observations, prediction: { tries, hits }, edges, vlmCalls: 0 };
 }
 
 /** Full VLM agent (real Qwen). */
-async function runVlm(rows: WindowRow[], dir: string, motion: "none" | "perfect" | "noisy", limit: number): Promise<{ observations: Observation[]; prediction: { tries: number; hits: number }; edges: Array<{ from: string; to: string; count: number; path: string }> }> {
+async function runVlm(rows: WindowRow[], dir: string, motion: "none" | "perfect" | "noisy", limit: number): Promise<{ observations: Observation[]; prediction: { tries: number; hits: number }; edges: Array<{ from: string; to: string; count: number; path: string }>; vlmCalls: number }> {
 	const memoryDir = resolve(dir, "_vlm-memory");
 	const storePath = resolve(dir, "_vlm-place-memory.json");
 	await rm(memoryDir, { recursive: true, force: true });
@@ -128,6 +128,7 @@ async function runVlm(rows: WindowRow[], dir: string, motion: "none" | "perfect"
 	await agent.load();
 	const observations: Observation[] = [];
 	const selected = limit > 0 ? rows.slice(0, limit) : rows;
+	let vlmCalls = 0;
 	for (const row of selected) {
 		const frames: FrameRef[] = [];
 		for (let tick = row.startTick + 1; tick <= row.endTick; tick += 1) {
@@ -135,10 +136,11 @@ async function runVlm(rows: WindowRow[], dir: string, motion: "none" | "perfect"
 		}
 		if (frames.length === 0) frames.push({ id: `sim-${row.endTick}`, timestampMs: row.endTick * 1000, path: resolve(dir, row.frame) });
 		const result = await agent.observe(frames, motionFor(row, motion));
-		observations.push({ gt: row.room, pred: result.sceneId, motion: motionFor(row, motion) });
+		if (result.decidedBy === "vlm") vlmCalls += 1;
+		observations.push({ gt: row.room, pred: result.sceneId, motion: motionFor(row, motion), decidedBy: result.decidedBy });
 	}
 	const edges = agent.getState().transitions.map((t) => ({ from: t.fromScene, to: t.toScene, count: t.count, path: t.path }));
-	return { observations, prediction: { tries: 0, hits: 0 }, edges };
+	return { observations, prediction: { tries: 0, hits: 0 }, edges, vlmCalls };
 }
 
 function majorityMapping(observations: Observation[]): Map<string, string> {
@@ -230,7 +232,8 @@ async function main(): Promise<void> {
 		? await runVlm(useRows, dir, args.motion, 0)
 		: await runCheap(useRows, dir, args.motion);
 	const graphPrediction = result.prediction.tries ? Number((result.prediction.hits / result.prediction.tries).toFixed(3)) : null;
-	const summary = { episode: dir, mode: args.mode, motion: args.motion, ...metrics(result.observations), graphPrediction, learnedEdges: result.edges };
+	const cheapDecisions = result.observations.filter((o) => o.decidedBy === "cheap").length;
+	const summary = { episode: dir, mode: args.mode, motion: args.motion, ...metrics(result.observations), graphPrediction, vlmCalls: result.vlmCalls, cheapDecisions, learnedEdges: result.edges };
 
 	console.log(`episode: ${dir}`);
 	console.log(`mode=${args.mode} motion=${args.motion}`);
@@ -238,6 +241,7 @@ async function main(): Promise<void> {
 	console.log(`place accuracy=${summary.accuracy} purity=${summary.purity} revisit=${summary.revisitConsistency}`);
 	console.log(`transitions gt=${summary.transitions.gt} pred=${summary.transitions.pred} P=${summary.transitions.precision} R=${summary.transitions.recall} F1=${summary.transitions.f1}`);
 	console.log(`same-path recall (graph expectedNext): ${graphPrediction === null ? "n/a" : `${graphPrediction} (${result.prediction.hits}/${result.prediction.tries})`}`);
+	console.log(`decisions: cheap=${cheapDecisions} vlm=${result.vlmCalls} (of ${summary.windows})`);
 	console.log(`GT edges: ${summary.gtEdges.join(", ")}`);
 	console.log(`Pred edges: ${summary.predEdges.join(", ")}`);
 	console.log("learned edges (usual path):");
