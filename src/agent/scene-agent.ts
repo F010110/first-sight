@@ -44,10 +44,12 @@ export interface SceneResult {
 
 const SYSTEM_PROMPT = [
 	"You perform PLACE RECOGNITION for a first-person assistant: decide which place the user is in now.",
-	"You are shown the current camera frames (chronological), the PREVIOUS place, a short list of CANDIDATE places, how the phone moved (MOTION), and sometimes a MATCH hint from local-feature matching.",
-	"Judge by the images and the candidates. Prefer reusing a candidate or the previous place when the view could be the same place from a different angle. Turning the camera in one place does NOT create a new place; passing a doorway or clearly relocating does.",
-	"When a MATCH line is present, the LAST image is a stored representative of that candidate (not the current view); if it shows the same place, reuse that candidate.",
-	"If nothing fits, propose a NEW place.",
+	"You are shown the current camera frames (chronological), the PREVIOUS place and its stored view, a short list of CANDIDATE places, how the phone moved (MOTION / MOTION_HINT), and sometimes a MATCH hint from local-feature matching.",
+	"Decide among three honest outcomes: (a) the SAME place as the previous observation, (b) a place seen BEFORE (one of CANDIDATE_PLACES), or (c) a NEW place.",
+	"Judge by the images and the motion. Then:",
+	"- If the phone only TURNED or stayed still (MOTION_HINT: turn, little/no translation), it is usually still the SAME place, even if the view looks different.",
+	"- If the phone clearly MOVED to another area or room, and the view is genuinely different, it is a NEW place or a previously seen place. Do NOT force it to be the previous place.",
+	"- A MATCH line means local-feature matching found the same surface on that candidate; that is strong evidence for (b).",
 	'Reply with ONLY JSON: {"place": string, "summary": string, "objects": string[], "samePlaceAsPrevious": true|false|null, "seenBeforeSceneId": string|null, "confidence": number}. seenBeforeSceneId must be an id from CANDIDATE_PLACES, or null for a new place. No markdown. summary under 25 words.',
 ].join(" ");
 
@@ -176,12 +178,19 @@ export class SceneAgent {
 		const previous = previousSceneId ? this.memory.getScene(previousSceneId) : null;
 		const candidateList = candidateScenes.map((scene) => ({ id: scene.id, label: scene.label, summary: scene.summary }));
 		const promptLines = [
-			"Identify the place the user is in now. Image blocks are in chronological order (the current frames), followed by at most one stored candidate image when MATCH is present.",
+			"Identify the place the user is in now. Image blocks order: the current frames first; then, if present, the PREVIOUS_PLACE stored view; then, if MATCH is present, the matched candidate's stored view.",
 			`PREVIOUS_PLACE: ${previous ? JSON.stringify({ id: previous.id, label: previous.label, summary: previous.summary }) : "none"}`,
 			`CANDIDATE_PLACES: ${JSON.stringify(candidateList)}`,
 			`MOTION (approximate): ${motionDescription ?? "none"}`,
 			`MOTION_HINT: ${describeHint(hint)}`,
 		];
+		if (previous && previous.frames.length) {
+			const prevPath = previous.frames[previous.frames.length - 1]!.path;
+			try {
+				imageContents.push({ type: "image", data: (await readFile(prevPath)).toString("base64"), mimeType: mimeTypeFor(prevPath) });
+				promptLines.push(`(The image just added is PREVIOUS_PLACE ${previous.id} "${previous.label}" as stored earlier.)`);
+			} catch { /* ignore */ }
+		}
 		if (expected.length) {
 			promptLines.push(`EXPECTED_NEXT (from past trips out of the previous place with similar motion): ${expected.slice(0, 3).map((item) => `${item.sceneId} (usual path: ${item.path})`).join("; ")}. Prefer a candidate consistent with this when the images are ambiguous.`);
 		}

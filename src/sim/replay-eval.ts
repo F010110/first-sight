@@ -17,7 +17,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { PlaceMemory } from "../agent/place-memory.js";
 import { matchImages } from "../agent/image-match.js";
@@ -120,13 +120,21 @@ async function runCheap(rows: WindowRow[], dir: string, motion: "none" | "perfec
 
 /** Full VLM agent (real Qwen). */
 async function runVlm(rows: WindowRow[], dir: string, motion: "none" | "perfect" | "noisy", limit: number): Promise<{ observations: Observation[]; prediction: { tries: number; hits: number }; edges: Array<{ from: string; to: string; count: number; path: string }> }> {
-	const agent = new SceneAgent(null, null);
+	const memoryDir = resolve(dir, "_vlm-memory");
+	const storePath = resolve(dir, "_vlm-place-memory.json");
+	await rm(memoryDir, { recursive: true, force: true });
+	await rm(storePath, { force: true });
+	const agent = new SceneAgent(memoryDir, storePath);
 	await agent.load();
 	const observations: Observation[] = [];
 	const selected = limit > 0 ? rows.slice(0, limit) : rows;
 	for (const row of selected) {
-		const frame: FrameRef = { id: `sim-${row.window}`, timestampMs: row.endTick * 1000, path: resolve(dir, row.frame) };
-		const result = await agent.observe([frame], motionFor(row, motion));
+		const frames: FrameRef[] = [];
+		for (let tick = row.startTick + 1; tick <= row.endTick; tick += 1) {
+			frames.push({ id: `sim-${tick}`, timestampMs: tick * 1000, path: resolve(dir, `frames/${String(tick).padStart(4, "0")}.jpg`) });
+		}
+		if (frames.length === 0) frames.push({ id: `sim-${row.endTick}`, timestampMs: row.endTick * 1000, path: resolve(dir, row.frame) });
+		const result = await agent.observe(frames, motionFor(row, motion));
 		observations.push({ gt: row.room, pred: result.sceneId, motion: motionFor(row, motion) });
 	}
 	const edges = agent.getState().transitions.map((t) => ({ from: t.fromScene, to: t.toScene, count: t.count, path: t.path }));
