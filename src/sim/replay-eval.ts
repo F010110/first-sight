@@ -21,6 +21,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { PlaceMemory } from "../agent/place-memory.js";
 import { matchImages } from "../agent/image-match.js";
+import { parseMotionHint } from "../agent/motion-hint.js";
 import { SceneAgent } from "../agent/scene-agent.js";
 import type { FrameRef } from "../agent/types.js";
 
@@ -62,14 +63,27 @@ function motionFor(row: WindowRow, mode: "none" | "perfect" | "noisy"): string |
 }
 
 /** Cheap-CV agent: candidate narrowing + SIFT score; no VLM. */
-async function runCheap(rows: WindowRow[], dir: string, motion: "none" | "perfect" | "noisy"): Promise<Observation[]> {
+async function runCheap(rows: WindowRow[], dir: string, motion: "none" | "perfect" | "noisy"): Promise<{ observations: Observation[]; prediction: { tries: number; hits: number }; edges: Array<{ from: string; to: string; count: number; path: string }> }> {
 	const memory = new PlaceMemory(null);
 	const observations: Observation[] = [];
+	const sceneRoom = new Map<string, Map<string, number>>();
+	let tries = 0;
+	let hits = 0;
 	for (const row of rows) {
 		const framePath = resolve(dir, row.frame);
 		const previous = memory.getState().currentSceneId;
+		const hint = parseMotionHint(motionFor(row, motion));
+		// Does the graph "remember" where this path leads? (evaluated against GT room)
+		const expected = memory.expectedNext(previous, hint);
+		if (expected.length && expected[0]) {
+			tries += 1;
+			const rooms = sceneRoom.get(expected[0].sceneId);
+			const predictedRoom = rooms ? [...rooms.entries()].sort((a, b) => b[1] - a[1])[0]![0] : null;
+			if (predictedRoom && predictedRoom === row.room) hits += 1;
+		}
 		// Candidate tiers: 1-hop neighbours, then recent, then global fallback.
 		const tiered = [
+			...expected.map((item) => memory.getScene(item.sceneId)).filter((s): s is NonNullable<typeof s> => Boolean(s)),
 			...memory.neighbors(previous).map((n) => memory.getScene(n.sceneId)).filter((s): s is NonNullable<typeof s> => Boolean(s)),
 			...memory.candidates(previous, MAX_CANDIDATES),
 			...memory.listScenes(),
@@ -93,15 +107,19 @@ async function runCheap(rows: WindowRow[], dir: string, motion: "none" | "perfec
 			const scene = memory.ensureScene(null, row.room, "", [], Date.now());
 			sceneId = scene.id;
 		}
+		if (!sceneRoom.has(sceneId)) sceneRoom.set(sceneId, new Map());
+		const bucket = sceneRoom.get(sceneId)!;
+		bucket.set(row.room, (bucket.get(row.room) ?? 0) + 1);
 		memory.addRepresentative(sceneId, { id: `rep-${row.window}`, path: framePath });
-		await memory.onSceneResolved(sceneId, row.frame, motionFor(row, motion), row.endTick * 1000);
+		await memory.onSceneResolved(sceneId, row.frame, hint, motionFor(row, motion), row.endTick * 1000);
 		observations.push({ gt: row.room, pred: sceneId, motion: motionFor(row, motion) });
 	}
-	return observations;
+	const edges = memory.getState().transitions.map((t) => ({ from: t.fromScene, to: t.toScene, count: t.count, path: t.path }));
+	return { observations, prediction: { tries, hits }, edges };
 }
 
 /** Full VLM agent (real Qwen). */
-async function runVlm(rows: WindowRow[], dir: string, motion: "none" | "perfect" | "noisy", limit: number): Promise<Observation[]> {
+async function runVlm(rows: WindowRow[], dir: string, motion: "none" | "perfect" | "noisy", limit: number): Promise<{ observations: Observation[]; prediction: { tries: number; hits: number }; edges: Array<{ from: string; to: string; count: number; path: string }> }> {
 	const agent = new SceneAgent(null, null);
 	await agent.load();
 	const observations: Observation[] = [];
@@ -111,7 +129,8 @@ async function runVlm(rows: WindowRow[], dir: string, motion: "none" | "perfect"
 		const result = await agent.observe([frame], motionFor(row, motion));
 		observations.push({ gt: row.room, pred: result.sceneId, motion: motionFor(row, motion) });
 	}
-	return observations;
+	const edges = agent.getState().transitions.map((t) => ({ from: t.fromScene, to: t.toScene, count: t.count, path: t.path }));
+	return { observations, prediction: { tries: 0, hits: 0 }, edges };
 }
 
 function majorityMapping(observations: Observation[]): Map<string, string> {
@@ -199,18 +218,22 @@ async function main(): Promise<void> {
 	const rows = (await readFile(windowsPath, "utf8")).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line) as WindowRow);
 
 	const useRows = args.limit > 0 ? rows.slice(0, args.limit) : rows;
-	const observations = args.mode === "vlm"
+	const result = args.mode === "vlm"
 		? await runVlm(useRows, dir, args.motion, 0)
 		: await runCheap(useRows, dir, args.motion);
-	const summary = { episode: dir, mode: args.mode, motion: args.motion, ...metrics(observations) };
+	const graphPrediction = result.prediction.tries ? Number((result.prediction.hits / result.prediction.tries).toFixed(3)) : null;
+	const summary = { episode: dir, mode: args.mode, motion: args.motion, ...metrics(result.observations), graphPrediction, learnedEdges: result.edges };
 
 	console.log(`episode: ${dir}`);
 	console.log(`mode=${args.mode} motion=${args.motion}`);
 	console.log(`windows=${summary.windows} places=${summary.places} rooms=${summary.rooms}`);
 	console.log(`place accuracy=${summary.accuracy} purity=${summary.purity} revisit=${summary.revisitConsistency}`);
 	console.log(`transitions gt=${summary.transitions.gt} pred=${summary.transitions.pred} P=${summary.transitions.precision} R=${summary.transitions.recall} F1=${summary.transitions.f1}`);
+	console.log(`same-path recall (graph expectedNext): ${graphPrediction === null ? "n/a" : `${graphPrediction} (${result.prediction.hits}/${result.prediction.tries})`}`);
 	console.log(`GT edges: ${summary.gtEdges.join(", ")}`);
 	console.log(`Pred edges: ${summary.predEdges.join(", ")}`);
+	console.log("learned edges (usual path):");
+	for (const edge of result.edges.slice(0, 10)) console.log(`  ${edge.from} -> ${edge.to}  x${edge.count}  path: ${edge.path}`);
 	console.log("rooms (lowest consistency):");
 	for (const item of summary.roomsDetail.slice(0, 6)) console.log(`  ${item.room}: windows=${item.windows} places=${item.places} dominant=${item.dominantShare}`);
 

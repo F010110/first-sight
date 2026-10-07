@@ -119,6 +119,13 @@ current frames
 - **VLM 单独严重过合并**：把 4 个房间并成 2 个 place，accuracy 与 transition 直接崩。原因：提示偏向复用、候选中只有"已知地点"、缺少运动与图上下文。
 - **结论**：两者单独都不够。下一步把 `matchScore`（SIFT 重叠）与 `motionHint`（平移/转向）作为两个**特征**，引入 `PlaceGraphMemory`（1-hop → 2-hop → global）参与候选与判断，并让 VLM 把"**新地点**"当作一等选项、只在真正歧义时做验证。这正是 `建议2.md` 的方向。
 
+### 5.2 图结构（已实现）
+
+- `motion-hint.ts`：把自然语言运动解析成结构化 `MotionHint`（moving / duration / distance / turn / turnAmount / level，允许 unknown），并支持聚合与相似度；
+- `place-memory.ts`：边累积多次 transition 的**直方图 + 通常路径**（vocabulary vote），提供 `expectedNext(from, hint)` —— "从这里、以这种运动出发，通常到哪"；
+- `SceneAgent`：候选优先取 `expectedNext`（图记忆）→ 邻居 → 最近 → 全局；转换时把聚合后的运动写回边；
+- 评测新增 **same-path recall**：用已建图做 `expectedNext` 预测下一地点的命中率（val-5 首测 0.5，3/6），并导出学习到的边（含通常路径）。
+
 ## 6. 实施顺序
 
 1. **P0 模拟器**（已完成）：`sim/record_episode.py` 产出带 GT 的往返 episode。

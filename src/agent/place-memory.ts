@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { describeHint, hintSimilarity, type Bin3, type LevelChange, type MotionHint, type TurnAmount, type TurnDir } from "./motion-hint.js";
 
 /**
  * Persistent place memory: places (nodes), visits, and transitions (edges that
@@ -55,9 +56,16 @@ export interface Transition {
 	count: number;
 	/** The usual path between the two places (qualitative, natural language). */
 	path: string;
+	/** Observed path variants (for the usual-path vote). */
 	pathVariants: Array<{ path: string; count: number }>;
-	durationMs: number | null;
-	evidence: string[];
+	/** Accumulated transition experience (histograms of qualitative motion bins). */
+	duration: Record<Bin3, number>;
+	distance: Record<Bin3, number>;
+	turn: Record<TurnDir, number>;
+	turnAmount: Record<TurnAmount, number>;
+	level: Record<LevelChange, number>;
+	firstSeenMs: number;
+	lastSeenMs: number;
 	confidence: number;
 }
 
@@ -78,6 +86,30 @@ interface Persisted {
 
 const MAX_REPS_PER_SCENE = 5;
 const MAX_VARIANTS_PER_EDGE = 8;
+
+function emptyBins<T extends string>(keys: T[]): Record<T, number> {
+	const bins = {} as Record<T, number>;
+	for (const key of keys) bins[key] = 0;
+	return bins;
+}
+
+function bump<T extends string>(bins: Record<T, number>, key: T): void {
+	bins[key] = (bins[key] ?? 0) + 1;
+}
+
+function modalBin<T extends string>(bins: Record<T, number>): T {
+	const entries = Object.entries(bins) as Array<[T, number]>;
+	entries.sort((a, b) => b[1] - a[1]);
+	return entries[0]?.[0] ?? ("unknown" as T);
+}
+
+/** Strips the boilerplate prefix the motion module prepends, for a clean edge path. */
+function normalizeMotionText(text: string): string {
+	return text
+		.replace(/^the phone's motion over this window[^:]*:\s*/i, "")
+		.replace(/^the phone's motion[^:]*:\s*/i, "")
+		.trim();
+}
 
 export class PlaceMemory {
 	private scenes = new Map<string, PlaceNode>();
@@ -180,7 +212,7 @@ export class PlaceMemory {
 	 * place is unchanged, or close it and open a new visit plus a transition edge
 	 * (carrying the motion path) when the place changed.
 	 */
-	async onSceneResolved(sceneId: string, frame: string, motion: string | null, now: number): Promise<void> {
+	async onSceneResolved(sceneId: string, frame: string, hint: MotionHint, description: string | null, now: number): Promise<void> {
 		if (sceneId === this.currentSceneId) {
 			const scene = this.scenes.get(sceneId);
 			const visit = scene?.visits.at(-1);
@@ -194,7 +226,7 @@ export class PlaceMemory {
 			const prevScene = this.scenes.get(previous);
 			const visit = prevScene?.visits.at(-1);
 			if (visit && visit.id === this.currentVisitId) { visit.endMs = now; visit.exitFrame = frame; visit.nextSceneId = sceneId; }
-			await this.addTransition(previous, sceneId, motion, now);
+			await this.addTransition(previous, sceneId, hint, description, now);
 		}
 
 		const scene = this.scenes.get(sceneId);
@@ -212,24 +244,37 @@ export class PlaceMemory {
 		await this.persist();
 	}
 
-	private async addTransition(fromScene: string, toScene: string, motion: string | null, now: number): Promise<void> {
+	private async addTransition(fromScene: string, toScene: string, hint: MotionHint, description: string | null, now: number): Promise<void> {
 		const key = this.edgeKey(fromScene, toScene);
 		let transition = this.transitions.get(key);
-		const path = (motion ?? "").trim() || "moved";
 		if (!transition) {
-			transition = { id: `edge-${this.transitions.size + 1}`, fromScene, toScene, count: 1, path, pathVariants: [{ path, count: 1 }], durationMs: null, evidence: [], confidence: 0.5 };
+			transition = {
+				id: `edge-${this.transitions.size + 1}`, fromScene, toScene, count: 0, path: "", pathVariants: [],
+				duration: emptyBins(["short", "medium", "long", "unknown"] as Bin3[]),
+				distance: emptyBins(["short", "medium", "long", "unknown"] as Bin3[]),
+				turn: emptyBins(["left", "right", "straight", "around", "unknown"] as TurnDir[]),
+				turnAmount: emptyBins(["small", "medium", "large", "unknown"] as TurnAmount[]),
+				level: emptyBins(["same", "up", "down", "unknown"] as LevelChange[]),
+				firstSeenMs: now, lastSeenMs: now, confidence: 0.5,
+			};
 			this.transitions.set(key, transition);
-		} else {
-			transition.count += 1;
-			const variant = transition.pathVariants.find((item) => item.path === path);
-			if (variant) variant.count += 1;
-			else transition.pathVariants.push({ path, count: 1 });
-			transition.pathVariants.sort((a, b) => b.count - a.count);
-			transition.pathVariants = transition.pathVariants.slice(0, MAX_VARIANTS_PER_EDGE);
-			transition.path = transition.pathVariants[0]!.path;  // usual path = most frequent
-			transition.confidence = Math.min(0.95, 0.5 + 0.05 * transition.count);
 		}
-		// Keep the neighbor lists in sync with the edges.
+		transition.count += 1;
+		transition.lastSeenMs = now;
+		bump(transition.duration, hint.duration);
+		bump(transition.distance, hint.distance);
+		bump(transition.turn, hint.turn);
+		bump(transition.turnAmount, hint.turnAmount);
+		bump(transition.level, hint.level);
+		const path = normalizeMotionText(description ?? "") || describeHint(hint);
+		const variant = transition.pathVariants.find((item) => item.path === path);
+		if (variant) variant.count += 1;
+		else transition.pathVariants.push({ path, count: 1 });
+		transition.pathVariants.sort((a, b) => b.count - a.count);
+		transition.pathVariants = transition.pathVariants.slice(0, MAX_VARIANTS_PER_EDGE);
+		transition.path = transition.pathVariants[0]!.path;   // usual path = most frequent
+		transition.confidence = Math.min(0.95, 0.5 + 0.05 * transition.count);
+
 		for (const [sceneId, target] of [[fromScene, toScene], [toScene, fromScene]] as const) {
 			const scene = this.scenes.get(sceneId);
 			if (!scene) continue;
@@ -237,7 +282,36 @@ export class PlaceMemory {
 			if (neighbor) neighbor.count += 1;
 			else scene.neighbors.push({ sceneId: target, count: 1 });
 		}
-		void now;
+	}
+
+	/** The usual (modal) motion recorded on an edge. */
+	usualHint(transition: Transition): MotionHint {
+		const moved = transition.distance.short + transition.distance.medium + transition.distance.long + transition.turn.left + transition.turn.right + transition.turn.around;
+		return {
+			moving: moved > 0,
+			duration: modalBin(transition.duration),
+			distance: modalBin(transition.distance),
+			turn: modalBin(transition.turn),
+			turnAmount: modalBin(transition.turnAmount),
+			level: modalBin(transition.level),
+			confidence: transition.confidence,
+		};
+	}
+
+	/**
+	 * "I have left this place moving like this before — where did I end up?"
+	 * Ranks the places usually reached from `from` given the current motion hint.
+	 */
+	expectedNext(from: string | null, hint: MotionHint): Array<{ sceneId: string; score: number; path: string }> {
+		if (!from) return [];
+		const out: Array<{ sceneId: string; score: number; path: string }> = [];
+		for (const transition of this.transitions.values()) {
+			if (transition.fromScene !== from) continue;
+			const similarity = hintSimilarity(this.usualHint(transition), hint);
+			const score = transition.confidence * (0.3 + 0.7 * similarity) + Math.min(0.3, transition.count * 0.03);
+			out.push({ sceneId: transition.toScene, score: Number(score.toFixed(3)), path: transition.path });
+		}
+		return out.sort((a, b) => b.score - a.score);
 	}
 
 	/** Path between two places: the direct edge's usual path, or a two-hop summary. */

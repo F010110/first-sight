@@ -6,6 +6,7 @@ import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { createQwenModel } from "./qwen-provider.js";
 import { matchImages } from "./image-match.js";
 import { PlaceMemory, type PlaceNode } from "./place-memory.js";
+import { aggregateHints, describeHint, parseMotionHint, type MotionHint } from "./motion-hint.js";
 import type { FrameRef } from "./types.js";
 
 /**
@@ -116,6 +117,7 @@ export class SceneAgent {
 	private readonly memory: PlaceMemory;
 	private loaded = false;
 	private repCounter = 1;
+	private hintBuffer: MotionHint[] = [];
 
 	constructor(private readonly memoryDir: string | null = null, storePath: string | null = null) {
 		const configured = createQwenModel(512);
@@ -140,9 +142,22 @@ export class SceneAgent {
 			type: "image" as const, data: (await readFile(frame.path)).toString("base64"), mimeType: mimeTypeFor(frame.path),
 		})));
 
-		// Candidate narrowing: graph neighbours first, then recent places.
+		// Candidate narrowing: places the graph expects next (given the current motion),
+		// then graph neighbours, then recent places.
 		const previousSceneId = this.memory.getState().currentSceneId;
-		const candidateScenes: PlaceNode[] = this.memory.candidates(previousSceneId, MAX_CANDIDATES);
+		const hint = parseMotionHint(motionDescription);
+		this.hintBuffer.push(hint);
+		if (this.hintBuffer.length > 3) this.hintBuffer.shift();
+		const expected = this.memory.expectedNext(previousSceneId, hint);
+		const seenCandidate = new Set<string>();
+		const candidateScenes: PlaceNode[] = [];
+		const addCandidate = (scene: PlaceNode | null): void => {
+			if (!scene || seenCandidate.has(scene.id) || candidateScenes.length >= MAX_CANDIDATES) return;
+			seenCandidate.add(scene.id); candidateScenes.push(scene);
+		};
+		for (const item of expected) addCandidate(this.memory.getScene(item.sceneId));
+		for (const neighbor of this.memory.neighbors(previousSceneId)) addCandidate(this.memory.getScene(neighbor.sceneId));
+		for (const scene of this.memory.candidates(previousSceneId, MAX_CANDIDATES)) addCandidate(scene);
 		const candidates = candidateScenes.flatMap((scene) => scene.frames.slice(-REPS_PER_CANDIDATE).map((rep) => ({ id: scene.id, path: rep.path })));
 
 		let match: { sceneId: string; inliers: number } | null = null;
@@ -164,8 +179,12 @@ export class SceneAgent {
 			"Identify the place the user is in now. Image blocks are in chronological order (the current frames), followed by at most one stored candidate image when MATCH is present.",
 			`PREVIOUS_PLACE: ${previous ? JSON.stringify({ id: previous.id, label: previous.label, summary: previous.summary }) : "none"}`,
 			`CANDIDATE_PLACES: ${JSON.stringify(candidateList)}`,
-			`MOTION (approximate, how the phone moved since the previous observation): ${motionDescription ?? "none"}`,
+			`MOTION (approximate): ${motionDescription ?? "none"}`,
+			`MOTION_HINT: ${describeHint(hint)}`,
 		];
+		if (expected.length) {
+			promptLines.push(`EXPECTED_NEXT (from past trips out of the previous place with similar motion): ${expected.slice(0, 3).map((item) => `${item.sceneId} (usual path: ${item.path})`).join("; ")}. Prefer a candidate consistent with this when the images are ambiguous.`);
+		}
 		if (matchedScene && matchedRepPath) {
 			const repPath = matchedScene.frames.find((frame) => frame.path === matchedRepPath)?.path ?? matchedScene.frames.at(-1)?.path ?? matchedRepPath;
 			try {
@@ -201,7 +220,10 @@ export class SceneAgent {
 
 		const representative = richestFrame(ordered, featureCounts);
 		await this.rememberFrames(sceneId, ordered, featureCounts, match);
-		await this.memory.onSceneResolved(sceneId, representative.id, motionDescription, now);
+		const isTransition = previousSceneId !== null && sceneId !== previousSceneId;
+		const edgeHint = isTransition ? aggregateHints(this.hintBuffer) : hint;
+		await this.memory.onSceneResolved(sceneId, representative.id, edgeHint, motionDescription, now);
+		if (isTransition) this.hintBuffer = [];
 
 		const sameAsPrevious = previousSceneId !== null && sceneId === previousSceneId;
 		const changed = previousSceneId === null ? false : !sameAsPrevious;
