@@ -17,6 +17,7 @@
     "motion:replay": "npm run build && node dist/motion-replay.js",
     "motion:plot": "npm run build && node dist/plot-trajectory.js",
     "vio:plot": "npm run build && node dist/plot-vio.js",
+    "sim:eval": "npm run build && node dist/sim/replay-eval.js",
     "motion:import": "npm run build && node dist/import-local-recording.js",
     "typecheck": "tsc --noEmit"
   },

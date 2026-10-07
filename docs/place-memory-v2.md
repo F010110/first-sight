@@ -108,6 +108,17 @@ current frames
 
 先跑**cheap CV 部分**（不花 VLM）快速迭代匹配/候选策略，再接真实 VLM 跑验证。
 
+### 5.1 首轮评测发现（val-5）
+
+| 模式 | places | accuracy | purity | revisit | transition F1 |
+|---|---|---|---|---|---|
+| cheap CV（SIFT） | 11–29 | 0.91–0.94 | 0.91–0.94 | 0.26–0.50 | 0.83–0.86 |
+| VLM（真实 Qwen） | **2** | **0.44** | 0.44 | 0.81 | **0.00** |
+
+- **cheap CV 严重过分割**：SIFT+RANSAC 是"同一块表面"匹配器，不是"同一地点"识别器；换视角/重叠少就判不匹配 → 同一房间被切成很多 place。加全局候选回退也救不了（不是候选覆盖问题）。
+- **VLM 单独严重过合并**：把 4 个房间并成 2 个 place，accuracy 与 transition 直接崩。原因：提示偏向复用、候选中只有"已知地点"、缺少运动与图上下文。
+- **结论**：两者单独都不够。下一步把 `matchScore`（SIFT 重叠）与 `motionHint`（平移/转向）作为两个**特征**，引入 `PlaceGraphMemory`（1-hop → 2-hop → global）参与候选与判断，并让 VLM 把"**新地点**"当作一等选项、只在真正歧义时做验证。这正是 `建议2.md` 的方向。
+
 ## 6. 实施顺序
 
 1. **P0 模拟器**（已完成）：`sim/record_episode.py` 产出带 GT 的往返 episode。
