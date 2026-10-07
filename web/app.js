@@ -40,7 +40,7 @@ function emptyRouterStats() {
 	return { capturedFrames: 0, movingFramesSkipped: 0, sensorMotionGatedFrames: 0, noChangeFramesSkipped: 0, familiarSceneFramesSkipped: 0, stabilityWaits: 0, frameChangeScore: null, visualNoveltyScore: null, motionContext: null };
 }
 
-const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", sceneLabel: null, sceneId: null, request: { mode: null, kind: null, status: "idle", text: null, lastAnswer: null, spoken: false, lastStepMs: 0 }, live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, prevTickMs: 0, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, lastAbsoluteMs: 0, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
+const state = { token: sessionStorage.getItem("vlm-token"), sessionId: sessionStorage.getItem("vlm-session"), stream: null, frames: [], captureTimer: null, monitorCursorMs: null, captureBusy: false, busy: false, currentRequestMode: null, pendingDeepGoal: null, pendingDeepReason: null, pendingMonitorReason: null, pendingTaskStop: false, activeTask: null, activeWatch: null, lastRunId: null, sceneStatus: "未开始", changeStatus: "未开始", sceneLabel: null, sceneId: null, request: { mode: null, kind: null, status: "idle", text: null, lastAnswer: null, spoken: false, lastStepMs: 0 }, live: { pendingFrames: [], pendingMotionSamples: [], timer: null }, vio: { canvas: null, ctx: null, prevGray: null, prevAlpha: null, prevTickMs: 0, features: [], startMs: 0, timer: null, placeTimer: null, lastPlaceMs: 0, lastSceneChangeMs: 0, lastSceneSignature: null }, motion: { samples: [], orientations: [], lastActivityAt: null, lastAbsoluteMs: 0, absoluteHeadingDeg: null, angularState: "unknown", linearState: "unknown", calibration: null, listenerActive: false, motionPermission: "unknown", orientationPermission: "unknown" }, router: { baselineSignature: null, knownViewSignatures: [], stableFrames: 0, lastAnalysisMs: 0, lastTriggerAt: 0, motionSignature: null, frameChangeHistory: [], noveltyHistory: [], stats: emptyRouterStats() } };
 
 async function post(path, payload, authenticated = true, timeoutMs = 25_000) {
   const headers = { "Content-Type": "application/json" };
@@ -344,6 +344,9 @@ function onDeviceOrientationAbsolute(event) {
 
 function handleOrientation(event, isAbsolute) {
   const now = performance.now();
+  // Absolute heading (compass): Android absolute alpha, or iOS webkitCompassHeading.
+  if (isAbsolute && Number.isFinite(event.alpha)) state.motion.absoluteHeadingDeg = (360 - event.alpha) % 360;
+  if (Number.isFinite(event.webkitCompassHeading)) state.motion.absoluteHeadingDeg = event.webkitCompassHeading;
   // If the absolute event is available, ignore the relative one (they would
   // otherwise double-feed the same orientation).
   if (!isAbsolute && state.motion.lastAbsoluteMs && now - state.motion.lastAbsoluteMs < 3000) return;
@@ -841,9 +844,20 @@ function stopVio() {
 /** Fuses IMU + camera VIO into a natural-language motion description for the last window. */
 function currentMotionDescription() {
   const vio = state.vio;
-  if (!window.VioMotion || vio.features.length < 20) return null;
-  const segments = window.VioMotion.fuseMotion(vio.features);
-  return segments.length ? window.VioMotion.describeMotion(segments) : null;
+  let text = null;
+  if (window.VioMotion && vio.features.length >= 20) {
+    const segments = window.VioMotion.fuseMotion(vio.features);
+    text = segments.length ? window.VioMotion.describeMotion(segments) : null;
+  }
+  if (text && typeof state.motion.absoluteHeadingDeg === "number" && Number.isFinite(state.motion.absoluteHeadingDeg)) {
+    text += ` Absolute heading: ${compassSector(state.motion.absoluteHeadingDeg)}.`;
+  }
+  return text;
+}
+
+/** 8-way compass sector from a heading in degrees (0 = north, clockwise). */
+function compassSector(degrees) {
+  return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round((((degrees % 360) + 360) % 360) / 45) % 8];
 }
 
 /**

@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { describeHint, hintSimilarity, type Bin3, type LevelChange, type MotionHint, type TurnAmount, type TurnDir } from "./motion-hint.js";
+import { describeHint, hintSimilarity, type Bin3, type Compass8, type LevelChange, type MotionHint, type TurnAmount, type TurnDir } from "./motion-hint.js";
 
 /**
  * Persistent place memory: places (nodes), visits, and transitions (edges that
@@ -64,6 +64,8 @@ export interface Transition {
 	turn: Record<TurnDir, number>;
 	turnAmount: Record<TurnAmount, number>;
 	level: Record<LevelChange, number>;
+	/** Absolute compass sector when arriving (magnetometer / oracle heading). */
+	heading: Record<Compass8, number>;
 	firstSeenMs: number;
 	lastSeenMs: number;
 	confidence: number;
@@ -255,6 +257,7 @@ export class PlaceMemory {
 				turn: emptyBins(["left", "right", "straight", "around", "unknown"] as TurnDir[]),
 				turnAmount: emptyBins(["small", "medium", "large", "unknown"] as TurnAmount[]),
 				level: emptyBins(["same", "up", "down", "unknown"] as LevelChange[]),
+				heading: emptyBins(["N", "NE", "E", "SE", "S", "SW", "W", "NW", "unknown"] as Compass8[]),
 				firstSeenMs: now, lastSeenMs: now, confidence: 0.5,
 			};
 			this.transitions.set(key, transition);
@@ -266,6 +269,7 @@ export class PlaceMemory {
 		bump(transition.turn, hint.turn);
 		bump(transition.turnAmount, hint.turnAmount);
 		bump(transition.level, hint.level);
+		bump(transition.heading, hint.heading);
 		const path = normalizeMotionText(description ?? "") || describeHint(hint);
 		const variant = transition.pathVariants.find((item) => item.path === path);
 		if (variant) variant.count += 1;
@@ -294,6 +298,7 @@ export class PlaceMemory {
 			turn: modalBin(transition.turn),
 			turnAmount: modalBin(transition.turnAmount),
 			level: modalBin(transition.level),
+			heading: modalBin(transition.heading),
 			confidence: transition.confidence,
 		};
 	}

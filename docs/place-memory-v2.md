@@ -60,6 +60,8 @@ interface Transition {
 - 模拟器的精确位姿**只用于评测与路线生成**，绝不进 agent 输入。
 - **不合成 IMU 数据流**：端上 VIO 的失败模式用 `noisy`（丢段、把转向读成横移、角度缩放）近似。采集与派生见 `sim/README.md`。
 
+**绝对方位**：客户端从 `deviceorientationabsolute`（Android，absolute alpha）或 `webkitCompassHeading`（iOS）取**绝对方位**，附到运动描述；`MotionHint` 增加 `heading`（8 向），**图的边存绝对 bearing**；模拟器提供 oracle 绝对朝向 + 罗盘噪声（`--compass-noise-deg`）。绝对方位可用于（a）以互补滤波压住偏航漂移，（b）按"从 A 朝某方向出发"优先匹配曾经那样到达的地点。
+
 ## 2. SceneAgent：Place Recognition（升级，不扩职责）
 
 只回答“当前是不是以前来过的地方”，输出 `scene_id + confidence + candidates + evidence`，不给坐标。

@@ -27,6 +27,11 @@ from pathlib import Path
 
 GRID_METERS = 0.25
 ROTATE_DEGREES = 90
+COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+
+
+def bin8(degrees: float) -> str:
+    return COMPASS[round((degrees % 360) / 45) % 8]
 
 
 def speed_bucket(meters: float, seconds: float) -> str:
@@ -99,6 +104,7 @@ def main() -> int:
     parser.add_argument("--observe-every", type=int, default=3, help="agent observes every N frames")
     parser.add_argument("--tick-seconds", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--compass-noise-deg", type=float, default=25.0)
     args = parser.parse_args()
 
     rows = [json.loads(line) for line in (args.episode / "observations.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -109,6 +115,11 @@ def main() -> int:
     while start < len(rows) - 1:
         end = min(start + args.observe_every, len(rows) - 1)
         perfect = segments_from_actions(rows, start, end, args.tick_seconds)
+        heading_true = bin8(rows[end]["yaw"])
+        heading_noisy = bin8(rows[end]["yaw"] + rng.gauss(0, args.compass_noise_deg))
+        perfect_text = describe(perfect) + f" Absolute heading: {heading_true}."
+        noisy_body = describe(corrupt(perfect, rng))
+        noisy_text = noisy_body + (" Absolute heading: unknown." if rng.random() < 0.15 else f" Absolute heading: {heading_noisy}.")
         windows.append({
             "window": index,
             "startTick": start,
@@ -118,8 +129,10 @@ def main() -> int:
             "prevRoom": rows[start]["room"],
             "startPose": {"x": rows[start]["x"], "z": rows[start]["z"], "yaw": rows[start]["yaw"]},
             "endPose": {"x": rows[end]["x"], "z": rows[end]["z"], "yaw": rows[end]["yaw"]},
-            "motionPerfect": describe(perfect),
-            "motionNoisy": describe(corrupt(perfect, rng)),
+            "headingPerfect": heading_true,
+            "headingNoisy": heading_noisy,
+            "motionPerfect": perfect_text,
+            "motionNoisy": noisy_text,
         })
         index += 1
         start = end

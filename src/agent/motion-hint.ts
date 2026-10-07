@@ -11,6 +11,8 @@ export type Bin3 = "short" | "medium" | "long" | "unknown";
 export type TurnDir = "left" | "right" | "straight" | "around" | "unknown";
 export type TurnAmount = "small" | "medium" | "large" | "unknown";
 export type LevelChange = "same" | "up" | "down" | "unknown";
+/** Absolute compass sector (from magnetometer / absolute orientation). */
+export type Compass8 = "N" | "NE" | "E" | "SE" | "S" | "SW" | "W" | "NW" | "unknown";
 
 export interface MotionHint {
 	moving: boolean;
@@ -19,7 +21,18 @@ export interface MotionHint {
 	turn: TurnDir;
 	turnAmount: TurnAmount;
 	level: LevelChange;
+	/** Absolute heading when the window ended (compass). Unknown if unavailable. */
+	heading: Compass8;
 	confidence: number;
+}
+
+const COMPASS: Compass8[] = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+
+/** Bin a compass bearing (degrees, 0 = north, clockwise) into 8 sectors. */
+export function compassBin(degrees: number): Compass8 {
+	if (!Number.isFinite(degrees)) return "unknown";
+	const normalized = ((degrees % 360) + 360) % 360;
+	return COMPASS[Math.round(normalized / 45) % 8]!;
 }
 
 const DURATION_LONG_S = 5;
@@ -52,8 +65,11 @@ function maxBin<T extends string>(a: T, b: T): T { return (BIN_RANK[a] ?? 0) >= 
  * then turned left roughly 90 degrees in place for about 1s").
  */
 export function parseMotionHint(text: string | null): MotionHint {
-	const hint: MotionHint = { moving: false, duration: "unknown", distance: "unknown", turn: "unknown", turnAmount: "unknown", level: "unknown", confidence: 0.6 };
+	const hint: MotionHint = { moving: false, duration: "unknown", distance: "unknown", turn: "unknown", turnAmount: "unknown", level: "unknown", heading: "unknown", confidence: 0.6 };
 	if (!text) return hint;
+	// Absolute heading, if the motion line carries one (compass or oracle).
+	const head = text.match(/absolute heading[:\s~]*([NSEW]{1,2}|\d{1,3})/i);
+	if (head?.[1]) hint.heading = /^[0-9]+$/.test(head[1]) ? compassBin(Number(head[1])) : (head[1].toUpperCase() as Compass8);
 	const lower = text.toLowerCase();
 	let seconds = 0;
 	for (const match of lower.matchAll(/about\s+([0-9.]+)\s*s/g)) seconds += Number(match[1]);
@@ -89,6 +105,8 @@ export function aggregateHints(hints: MotionHint[]): MotionHint {
 		result.turnAmount = maxBin(result.turnAmount, hint.turnAmount);
 		if (result.turn === "unknown" || result.turn === "straight") result.turn = hint.turn;
 		if (hint.level !== "unknown" && result.level !== hint.level) result.level = result.level === "unknown" ? hint.level : "unknown";
+		// Arrival heading: keep the latest known absolute heading.
+		if (hint.heading !== "unknown") result.heading = hint.heading;
 		result.confidence = Math.min(result.confidence, hint.confidence);
 	}
 	return result;
@@ -103,6 +121,7 @@ export function describeHint(hint: MotionHint): string {
 	if (hint.turn !== "unknown") parts.push(`turn: ${hint.turn}`);
 	if (hint.turnAmount !== "unknown") parts.push(`turn amount: ${hint.turnAmount}`);
 	if (hint.level !== "unknown") parts.push(`level: ${hint.level}`);
+	if (hint.heading !== "unknown") parts.push(`absolute heading: ${hint.heading}`);
 	return parts.join(", ");
 }
 
@@ -113,6 +132,7 @@ export function hintSimilarity(a: MotionHint, b: MotionHint): number {
 	const add = (x: string, y: string, w: number) => { weight += w; if (x === y) score += w; else if (x === "unknown" || y === "unknown") score += w * 0.5; };
 	add(a.turn, b.turn, 2);
 	add(a.turnAmount, b.turnAmount, 2);
+	add(a.heading, b.heading, 2);
 	add(a.distance, b.distance, 1.5);
 	add(a.duration, b.duration, 1);
 	add(a.level, b.level, 1);
