@@ -17,15 +17,16 @@
  */
 
 import { existsSync } from "node:fs";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, mkdir, appendFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { PlaceMemory } from "../agent/place-memory.js";
+import { PlaceMemory, type PlaceMemorySnapshot } from "../agent/place-memory.js";
 import { matchImages } from "../agent/image-match.js";
 import { parseMotionHint } from "../agent/motion-hint.js";
-import { SceneAgent } from "../agent/scene-agent.js";
+import { SceneAgent, SceneRecognitionError } from "../agent/scene-agent.js";
 import type { FrameRef } from "../agent/types.js";
 
 interface WindowRow {
+	endPose?: { x: number; z: number; yaw: number };
 	window: number;
 	startTick: number;
 	endTick: number;
@@ -35,15 +36,16 @@ interface WindowRow {
 	motionNoisy: string;
 }
 
-interface Observation { gt: string; pred: string; motion: string | null; decidedBy?: "cheap" | "vlm"; }
+interface Observation { gt: string; pred: string; motion: string | null; decidedBy?: "cheap" | "vlm"; identityStatus?: "resolved" | "unresolved"; }
 
 const CLEAR_MATCH_INLIERS = 15;
+const GLOBAL_REUSE_SIM = 0.9;
 const MAX_CANDIDATES = 5;
 const REPS_PER_CANDIDATE = 3;
 
 function parseArgs(argv: string[]) {
-	const args: { episode?: string; mode: "cheap" | "vlm"; motion: "none" | "perfect" | "noisy"; limit: number; out?: string } = {
-		mode: "cheap", motion: "perfect", limit: 0,
+	const args: { episode?: string; mode: "cheap" | "vlm"; motion: "none" | "perfect" | "noisy"; views: "front" | "triple"; limit: number; out?: string } = {
+		mode: "cheap", motion: "perfect", views: "front", limit: 0,
 	};
 	for (let i = 0; i < argv.length; i += 1) {
 		const value = argv[i]!;
@@ -52,6 +54,7 @@ function parseArgs(argv: string[]) {
 		else if (value === "--motion" && next) { args.motion = next as "none" | "perfect" | "noisy"; i += 1; }
 		else if (value === "--limit" && next) { args.limit = Number(next); i += 1; }
 		else if (value === "--out" && next) { args.out = next; i += 1; }
+		else if (value === "--views" && next) { if (next !== "front" && next !== "triple") throw new Error("views must be front or triple"); args.views = next; i += 1; }
 		else if (!value.startsWith("--") && !args.episode) args.episode = value;
 	}
 	return args;
@@ -96,15 +99,20 @@ async function runCheap(rows: WindowRow[], dir: string, motion: "none" | "perfec
 			for (const rep of scene.frames.slice(-REPS_PER_CANDIDATE)) candidatePaths.push({ id: scene.id, path: rep.path });
 		}
 		let matchedId: string | null = null;
+		let nearestId: string | null = null;
+		let nearestSim = 0;
 		if (candidatePaths.length) {
 			const response = await matchImages([framePath], candidatePaths, { minInliers: CLEAR_MATCH_INLIERS, maxDim: 640 });
 			if (response.ok && response.best) matchedId = response.best.id;
+			if (response.nearest) { nearestId = response.nearest.id; nearestSim = response.nearest.similarity; }
 		}
 		let sceneId: string;
 		if (matchedId && memory.getScene(matchedId)) {
 			sceneId = matchedId;
+		} else if (nearestId && nearestSim >= GLOBAL_REUSE_SIM && memory.getScene(nearestId)) {
+			sceneId = nearestId;   // global appearance says same place even when SIFT fails
 		} else {
-			const scene = memory.ensureScene(null, row.room, "", [], Date.now());
+			const scene = memory.ensureScene(null, "local view", "", [], Date.now(), true);
 			sceneId = scene.id;
 		}
 		if (!sceneRoom.has(sceneId)) sceneRoom.set(sceneId, new Map());
@@ -119,28 +127,45 @@ async function runCheap(rows: WindowRow[], dir: string, motion: "none" | "perfec
 }
 
 /** Full VLM agent (real Qwen). */
-async function runVlm(rows: WindowRow[], dir: string, motion: "none" | "perfect" | "noisy", limit: number): Promise<{ observations: Observation[]; prediction: { tries: number; hits: number }; edges: Array<{ from: string; to: string; count: number; path: string }>; vlmCalls: number }> {
-	const memoryDir = resolve(dir, "_vlm-memory");
-	const storePath = resolve(dir, "_vlm-place-memory.json");
-	await rm(memoryDir, { recursive: true, force: true });
-	await rm(storePath, { force: true });
+async function runVlm(rows: WindowRow[], dir: string, motion: "none" | "perfect" | "noisy", limit: number, views: "front" | "triple"): Promise<{ observations: Observation[]; prediction: { tries: number; hits: number }; edges: Array<{ from: string; to: string; count: number; path: string }>; vlmCalls: number; state: PlaceMemorySnapshot; runDir: string; failure: string | null; requestedWindows: number }> {
+	const runDir = resolve(dir, `layered-${views}-${motion}-${Date.now()}`);
+	await mkdir(runDir, { recursive: true });
+	const memoryDir = resolve(runDir, "images");
+	const storePath = resolve(runDir, "memory.json");
 	const agent = new SceneAgent(memoryDir, storePath);
 	await agent.load();
 	const observations: Observation[] = [];
 	const selected = limit > 0 ? rows.slice(0, limit) : rows;
 	let vlmCalls = 0;
+	let failure: string | null = null;
 	for (const row of selected) {
 		const frames: FrameRef[] = [];
 		for (let tick = row.startTick + 1; tick <= row.endTick; tick += 1) {
-			frames.push({ id: `sim-${tick}`, timestampMs: tick * 1000, path: resolve(dir, `frames/${String(tick).padStart(4, "0")}.jpg`) });
+			frames.push({ id: `sim-${tick}`, timestampMs: tick * 1000, path: resolve(dir, `${views === "triple" ? "triple" : "frames"}/${String(tick).padStart(4, "0")}.jpg`), ...(views === "triple" ? { visualMatchViews: (["front", "left", "right"] as const).map(view => ({ view, path: resolve(dir, `${view === "front" ? "frames" : view}/${String(tick).padStart(4, "0")}.jpg`) })) } : {}) });
 		}
 		if (frames.length === 0) frames.push({ id: `sim-${row.endTick}`, timestampMs: row.endTick * 1000, path: resolve(dir, row.frame) });
-		const result = await agent.observe(frames, motionFor(row, motion));
-		if (result.decidedBy === "vlm") vlmCalls += 1;
-		observations.push({ gt: row.room, pred: result.sceneId, motion: motionFor(row, motion), decidedBy: result.decidedBy });
+		let result;
+		const started = Date.now();
+		console.log(`window ${row.window}/${selected.length}: started`);
+		await writeFile(resolve(runDir, "progress.json"), JSON.stringify({ status: "running", window: row.window, completedWindows: observations.length, startedAt: new Date(started).toISOString(), model: process.env.QWEN_MODEL || "qwen3-vl-plus" }, null, 2));
+		try { result = await agent.observe(frames, motionFor(row, motion)); }
+		catch (error) {
+			failure = String(error);
+			await appendFile(resolve(runDir, "failures.jsonl"), JSON.stringify({ window: row.window, elapsedMs: Date.now() - started, error: failure, ...(error instanceof SceneRecognitionError ? { model: error.model, requests: error.requests } : {}) }) + "\n");
+			console.error(`window ${row.window} failed: ${failure}`);
+			break;
+		}
+		if (result.decidedBy === "vlm") vlmCalls += result.vlmCalls;
+		observations.push({ gt: row.room, pred: result.sceneId, motion: motionFor(row, motion), decidedBy: result.decidedBy, identityStatus: result.identityStatus });
+		await appendFile(resolve(runDir, "decisions.jsonl"), JSON.stringify({ window: row.window, gt: row.room, frames: frames.map(frame => frame.id), result }) + "\n");
+		console.log(`window ${observations.length}/${selected.length}: ${result.sceneId} identity=${result.identityStatus} elapsed=${Date.now() - started}ms VLM=${result.requestDiagnostics.map(request => `${request.elapsedMs}ms/${request.stopReason ?? "unknown"}`).join(",")}`);
 	}
-	const edges = agent.getState().transitions.map((t) => ({ from: t.fromScene, to: t.toScene, count: t.count, path: t.path }));
-	return { observations, prediction: { tries: 0, hits: 0 }, edges, vlmCalls };
+	if (!failure) await agent.reviewMemory();
+	const state = agent.getState();
+	await writeFile(resolve(runDir, "progress.json"), JSON.stringify({ status: failure ? "failed" : "complete", completedWindows: observations.length, requestedWindows: selected.length, failure }, null, 2));
+	for (const [index, observation] of observations.entries()) observation.pred = state.observations[index]?.placeId ?? observation.pred;
+	const edges = state.transitions.map((t) => ({ from: t.fromScene, to: t.toScene, count: t.count, path: t.path }));
+	return { observations, prediction: { tries: 0, hits: 0 }, edges, vlmCalls, state, runDir, failure, requestedWindows: selected.length };
 }
 
 function majorityMapping(observations: Observation[]): Map<string, string> {
@@ -229,14 +254,37 @@ async function main(): Promise<void> {
 
 	const useRows = args.limit > 0 ? rows.slice(0, args.limit) : rows;
 	const result = args.mode === "vlm"
-		? await runVlm(useRows, dir, args.motion, 0)
+		? await runVlm(useRows, dir, args.motion, 0, args.views)
 		: await runCheap(useRows, dir, args.motion);
 	const graphPrediction = result.prediction.tries ? Number((result.prediction.hits / result.prediction.tries).toFixed(3)) : null;
 	const cheapDecisions = result.observations.filter((o) => o.decidedBy === "cheap").length;
-	const summary = { episode: dir, mode: args.mode, motion: args.motion, ...metrics(result.observations), graphPrediction, vlmCalls: result.vlmCalls, cheapDecisions, learnedEdges: result.edges };
+	const summary = { episode: dir, mode: args.mode, model: args.mode === "vlm" ? process.env.QWEN_MODEL || "qwen3-vl-plus" : null, motion: args.motion, views: args.views, unresolvedWindows: result.observations.filter(row => row.identityStatus === "unresolved").length, ...metrics(result.observations), graphPrediction, vlmCalls: result.vlmCalls, cheapDecisions, learnedEdges: result.edges };
+	const poseDiagnostics = { samePositionDifferentHeading: { pairs: 0, samePlace: 0 }, separatedPositions: { pairs: 0, differentPlace: 0 }, note: "Diagnostic only, not Place ground truth: same position <=0.05m and yaw difference >=60deg; separated >=1.5m. Distance is not an identity rule and poses are never fed to agents." };
+	for (let i = 0; i < result.observations.length; i++) for (let j = i + 1; j < result.observations.length; j++) {
+		const a = useRows[i]?.endPose, b = useRows[j]?.endPose;
+		if (!a || !b) continue;
+		const distance = Math.hypot(a.x - b.x, a.z - b.z);
+		const heading = Math.abs(((a.yaw - b.yaw + 540) % 360) - 180);
+		const same = result.observations[i]!.pred === result.observations[j]!.pred;
+		if (distance <= 0.05 && heading >= 60) { poseDiagnostics.samePositionDifferentHeading.pairs++; if (same) poseDiagnostics.samePositionDifferentHeading.samePlace++; }
+		if (distance >= 1.5) { poseDiagnostics.separatedPositions.pairs++; if (!same) poseDiagnostics.separatedPositions.differentPlace++; }
+	}
+	const vlmResult = args.mode === "vlm" ? result as Awaited<ReturnType<typeof runVlm>> : null;
+	const layered = vlmResult ? {
+		complete: !vlmResult.failure && vlmResult.observations.length === vlmResult.requestedWindows,
+		failure: vlmResult.failure, requestedWindows: vlmResult.requestedWindows,
+		runDir: vlmResult.runDir,
+		spaceMetrics: metrics(result.observations.map(observation => ({ ...observation, pred: vlmResult.state.scenes.find(place => place.id === observation.pred)?.spaceId ?? `ungrouped:${observation.pred}` }))),
+		reviewCalls: vlmResult.state.reviews.length,
+		appliedRevisions: vlmResult.state.revisions.length,
+		provisionalPlaces: vlmResult.state.scenes.filter(place => place.provisional).length,
+		pendingTransitions: vlmResult.state.transitionExperiences.filter(edge => !edge.confirmed).length,
+		spaces: vlmResult.state.spaces,
+	} : null;
 
 	console.log(`episode: ${dir}`);
 	console.log(`mode=${args.mode} motion=${args.motion}`);
+	if (vlmResult) console.log(`complete=${layered?.complete} failure=${vlmResult.failure ?? "none"}`);
 	console.log(`windows=${summary.windows} places=${summary.places} rooms=${summary.rooms}`);
 	console.log(`place accuracy=${summary.accuracy} purity=${summary.purity} revisit=${summary.revisitConsistency}`);
 	console.log(`transitions gt=${summary.transitions.gt} pred=${summary.transitions.pred} P=${summary.transitions.precision} R=${summary.transitions.recall} F1=${summary.transitions.f1}`);
@@ -250,7 +298,7 @@ async function main(): Promise<void> {
 	for (const item of summary.roomsDetail.slice(0, 6)) console.log(`  ${item.room}: windows=${item.windows} places=${item.places} dominant=${item.dominantShare}`);
 
 	const out = args.out ? resolve(args.out) : resolve(dir, `eval-${args.mode}-${args.motion}.json`);
-	await writeFile(out, JSON.stringify(summary, null, 2), "utf8");
+	await writeFile(out, JSON.stringify({ ...summary, layered, poseDiagnostics, observations: result.observations, metricNotes: "accuracy duplicates majority purity; revisitConsistency is room dominant-place share, not cross-visit recall. Local Place need not equal GT room. Remapped transition F1 does not validate the learned graph. Ungrouped places remain distinct in Space metrics." }, null, 2), "utf8");
 	console.log(`report: ${out}`);
 }
 

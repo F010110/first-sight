@@ -1,4 +1,7 @@
 export interface FrameRef {
+	/** Optional front-only image for identical cheap-CV evidence in multiview tests. */
+	visualMatchPath?: string;
+	visualMatchViews?: Array<{ view: "front" | "left" | "right"; path: string }>;
 	id: string;
 	timestampMs: number;
 	path: string;

@@ -21,6 +21,8 @@ export interface ImageMatchEntry {
 	inliers: number;
 	good: number;
 	ratio: number;
+	/** Cheap global similarity (layout correlation + histogram intersection), 0..1. */
+	similarity: number;
 	bbox: { x0: number; y0: number; x1: number; y1: number } | null;
 }
 
@@ -30,11 +32,13 @@ export interface ImageMatchResponse {
 	ok: boolean;
 	queries: ImageMatchQuery[];
 	best: ImageMatchEntry | null;
+	/** Candidate with the highest global similarity (useful when SIFT fails). */
+	nearest: ImageMatchEntry | null;
 	results: ImageMatchEntry[];
 	error?: string;
 }
 
-const EMPTY: ImageMatchResponse = { ok: false, queries: [], best: null, results: [] };
+const EMPTY: ImageMatchResponse = { ok: false, queries: [], best: null, nearest: null, results: [] };
 
 function pythonPath(): string {
 	const candidates = [
@@ -85,7 +89,7 @@ export async function matchImages(
 			clearTimeout(timer);
 			const line = out.trim().split(/\r?\n/).filter(Boolean).at(-1);
 			if (!line) { finish({ ...EMPTY, error: err.trim() || "empty matcher output" }); return; }
-			try { const parsed = JSON.parse(line) as ImageMatchResponse; finish({ ...parsed, queries: parsed.queries ?? [] }); }
+			try { const parsed = JSON.parse(line) as ImageMatchResponse; finish({ ...parsed, queries: parsed.queries ?? [], nearest: parsed.nearest ?? null }); }
 			catch { finish({ ...EMPTY, error: "matcher output was not JSON" }); }
 		});
 		child.stdin.on("error", () => { /* ignore broken pipe */ });

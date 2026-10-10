@@ -1,12 +1,16 @@
 {
   "name": "first-sight",
-  "version": "1.0.0",
+  "version": "1.1.0-test.1",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "test:memory": "npm run build && node --test dist/agent/place-memory.test.js dist/agent/scene-agent.test.js dist/agent/place-candidates.test.js dist/agent/topological-filter.test.js dist/agent/topological-grouping.test.js dist/agent/experience-graph.test.js dist/agent/experience-association.test.js dist/agent/experience-grouping.test.js dist/agent/region-partition.test.js",
+    "sim:experience": "npm run build && node dist/sim/experience-revisable-eval.js",
+    "sim:regions": "npm run build && node dist/sim/region-partition-eval.js",
+    "sim:regions:stress": "npm run build && node dist/sim/region-partition-stress.js",
     "build": "tsc --noEmit false --outDir dist",
     "harness:sample": "npm run build && node --use-env-proxy dist/run-sample.js",
     "harness:cases": "npm run build && node --use-env-proxy dist/run-cases.js",

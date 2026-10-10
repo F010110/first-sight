@@ -55,3 +55,15 @@ def fixed_route(positions, start, initial_yaw, grid=0.25):
         yaw = heading
         actions.append("MoveAhead")
     return actions
+
+
+def align_return_heading(actions, initial_yaw):
+    """Restore the initial heading after a closed route, whatever its first leg."""
+    final_yaw = initial_yaw
+    for action in actions:
+        if action == "RotateRight":
+            final_yaw = (final_yaw + 90) % 360
+        elif action == "RotateLeft":
+            final_yaw = (final_yaw - 90) % 360
+    turns = int(round((initial_yaw - final_yaw) % 360 / 90))
+    return actions + (["RotateLeft"] if turns == 3 else ["RotateRight"] * turns)

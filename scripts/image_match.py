@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Match one or more query images against several candidate images in one run.
+"""Match query image(s) against candidate images: local features + global similarity.
 
 Reads a JSON request on stdin:
-  { "queries": ["<path>", ...],            # or "query": "<path>"
-    "candidates": [{ "id": "scene-1", "path": "<path>" }, ...],
+  { "queries": ["<path>", ...], "candidates": [{"id","path"}, ...],
     "minInliers": 20, "ratio": 0.75, "maxDim": 900, "detector": "sift" }
 
-Writes a JSON response on stdout:
-  { "ok": true,
-    "queries": [{ "path": "<path>", "keypoints": N }, ...],
-    "best": { "id", "path", "queryPath", "inliers", "good", "ratio", "bbox" } | null,
-    "results": [ ... best per candidate ... ] }
+Writes:
+  { "ok", "queries": [{path, keypoints}],
+    "best":    {id, path, queryPath, inliers, good, ratio, similarity, bbox} | null,  # best by SIFT inliers
+    "nearest": {id, path, similarity, inliers, ...} | null,                          # best by global similarity
+    "results": [ ... ] }
 
-Method: SIFT -> kNN + Lowe ratio -> RANSAC homography -> inlier count, taking the
-best query/candidate pair. Every query is tried so a single bad frame does not
-hide a real overlap.
+SIFT inliers answer "same surface / same place under little viewpoint change".
+The global similarity (16x16 layout correlation + intensity histogram intersection)
+is a cheap "same place under larger viewpoint change" cue, and also gives the
+VLM a score for the closest candidate when SIFT fails.
 """
 
 from __future__ import annotations
@@ -42,13 +42,33 @@ def make_detector(name: str):
 def features(path: str, detector, max_dim: int):
     image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
     if image is None:
-        return None, None
+        return None, None, None
     h, w = image.shape[:2]
     scale = max_dim / max(h, w) if max(h, w) > max_dim else 1.0
     if scale < 1.0:
         image = cv2.resize(image, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
     keypoints, descriptors = detector.detectAndCompute(image, None)
-    return keypoints, descriptors
+    return keypoints, descriptors, image
+
+
+def global_descriptor(image):
+    if image is None:
+        return None
+    small = cv2.resize(image, (16, 16), interpolation=cv2.INTER_AREA).astype(np.float32)
+    small -= float(small.mean())
+    norm = float(np.linalg.norm(small)) or 1.0
+    layout = small / norm
+    hist = cv2.calcHist([image], [0], None, [16], [0, 256]).flatten().astype(np.float32)
+    hist = hist / (float(hist.sum()) or 1.0)
+    return (layout, hist)
+
+
+def global_similarity(a, b) -> float:
+    if a is None or b is None:
+        return 0.0
+    layout = float(np.clip(np.sum(a[0] * b[0]), -1.0, 1.0))
+    hist = float(np.minimum(a[1], b[1]).sum())
+    return round(0.5 * (0.5 + 0.5 * layout) + 0.5 * hist, 3)
 
 
 def bbox(points):
@@ -103,31 +123,38 @@ def main() -> int:
 
     queries = []
     for path in query_paths:
-        keypoints, descriptors = features(path, detector, max_dim)
-        queries.append({"path": path, "keypoints": len(keypoints) if keypoints else 0, "feature": (keypoints, descriptors)})
+        keypoints, descriptors, image = features(path, detector, max_dim)
+        queries.append({"path": path, "keypoints": len(keypoints) if keypoints else 0, "feature": (keypoints, descriptors), "global": global_descriptor(image)})
 
     results = []
     best = None
+    nearest = None
     for candidate in candidates:
-        candidate_features = features(candidate.get("path", ""), detector, max_dim)
+        keypoints, descriptors, image = features(candidate.get("path", ""), detector, max_dim)
+        candidate_global = global_descriptor(image)
         candidate_best = None
+        candidate_similarity = 0.0
         for query in queries:
-            outcome = match(query["feature"], candidate_features, norm, ratio)
+            outcome = match(query["feature"], (keypoints, descriptors), norm, ratio)
+            candidate_similarity = max(candidate_similarity, global_similarity(query["global"], candidate_global))
             if candidate_best is None or outcome["inliers"] > candidate_best["inliers"]:
                 candidate_best = {**outcome, "queryPath": query["path"]}
         if candidate_best is None:
             candidate_best = {"inliers": 0, "good": 0, "ratio": 0.0, "bbox": None, "queryPath": None}
-        entry = {"id": candidate.get("id"), "path": candidate.get("path"), **candidate_best}
+        entry = {"id": candidate.get("id"), "path": candidate.get("path"), "similarity": candidate_similarity, **candidate_best}
         results.append(entry)
         if best is None or entry["inliers"] > best["inliers"]:
             best = entry
+        if nearest is None or entry["similarity"] > nearest["similarity"]:
+            nearest = entry
 
-    results.sort(key=lambda item: item["inliers"], reverse=True)
+    results.sort(key=lambda item: (item["inliers"], item["similarity"]), reverse=True)
     chosen = best if best and best["inliers"] >= min_inliers else None
     print(json.dumps({
         "ok": True,
         "queries": [{"path": q["path"], "keypoints": q["keypoints"]} for q in queries],
         "best": chosen,
+        "nearest": nearest,
         "results": results,
     }, ensure_ascii=False))
     return 0

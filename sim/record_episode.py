@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from navigation import fixed_route  # noqa: E402
+from navigation import fixed_route, align_return_heading  # noqa: E402
 
 
 def room_at(house, position):
@@ -57,6 +57,7 @@ def main() -> int:
     parser.add_argument("--house", type=Path, help="Pinned ProcTHOR house JSON")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--fixed-route", action="store_true")
+    parser.add_argument("--repeats", type=int, default=1, help="repeat the fixed route this many times (revisits)")
     parser.add_argument("--max-frames", type=int, default=80)
     parser.add_argument("--size", type=int, default=320)
     parser.add_argument("--quality", default="Low")
@@ -81,7 +82,12 @@ def main() -> int:
         if args.fixed_route:
             initial = controller.last_event.metadata["agent"]
             positions = controller.step(action="GetReachablePositions").metadata["actionReturn"]
-            actions = [None] + fixed_route(positions, initial["position"], initial["rotation"]["y"])
+            base = fixed_route(positions, initial["position"], initial["rotation"]["y"])
+            # Return yaw depends on the route's first segment, not necessarily on
+            # initial yaw. Compute it instead of assuming a 180-degree reversal.
+            base = align_return_heading(base, initial["rotation"]["y"])
+            repeats = max(1, args.repeats)
+            actions = [None] + base * repeats
         else:
             actions = [None, "RotateRight", "RotateRight", "RotateRight", "RotateRight", "MoveAhead"]
         planned = len(actions)
@@ -92,6 +98,8 @@ def main() -> int:
             for tick, action in enumerate(actions):
                 event = controller.last_event if action is None else controller.step(action=action)
                 meta = event.metadata
+                if action is not None and not meta.get("lastActionSuccess"):
+                    raise RuntimeError(f"Route action failed at tick {tick}: {action}: {meta.get('errorMessage')}")
                 Image.fromarray(event.frame).save(out / "frames" / f"{tick:04d}.jpg", format="JPEG", quality=90)
                 agent = meta["agent"]
                 room = room_at(house, agent["position"]) if house else args.scene

@@ -1,6 +1,13 @@
 # First Sight · 第一视角视觉助理（手机摄像头 + Qwen VLM）
 
-**V1.0 · 正式版**（2026-10-04）
+**当前快照：v1.1.0-test.1 · 实验测试版**（2026-10-10）
+
+稳定版基线仍是 `v1.0.0`（2026-10-04）。当前快照包含此前 SceneAgent/PlaceMemory 修改，以及独立的 Experience Graph 和区域分割实验；**不代表自动地点分组已可用**。新区域分割链路未接入实时助理，人工证据试验不是自动感知精度。
+
+- [测试版说明与复现入口](docs/testing-version.md)
+- [实验文档索引](docs/experiments/README.md)
+- [原图与真实轨迹核验](docs/region-partition-actual-review.md)
+- [替换方法还是训练：研究决策](docs/region-methods-and-training.md)
 
 一个手机浏览器里的第一视角视觉试用工具：手机摄像头连续取景，服务端用 Qwen 多模态模型理解画面，对外表现为**三条互相独立的观察线**——场景记录、场景变化、用户要求。
 
