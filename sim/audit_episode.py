@@ -18,7 +18,9 @@ def audit(rows):
                 unexpected.append({"tick": b["tick"], "error": "move direction/distance differs"})
         elif distance > .001:
             unexpected.append({"tick": b["tick"], "error": "unexpected translation"})
-        expected_yaw = {"RotateLeft": -90, "RotateRight": 90}.get(b["action"], 0) if b["success"] else 0
+        magnitude = b.get("commanded_turn_degrees") or 90
+        expected_yaw = {"RotateLeft": -magnitude, "RotateRight": magnitude}.get(b["action"], 0) if b["success"] else 0
+        expected_yaw = ((expected_yaw + 180) % 360) - 180
         if abs(yaw - expected_yaw) > .001:
             unexpected.append({"tick": b["tick"], "error": "unexpected rotation"})
     return {"frames": len(rows), "actions": dict(collections.Counter(row["action"] for row in rows)), "failedActions": sum(not row["success"] for row in rows), "unexpectedSteps": unexpected, "note": "Validates discrete action endpoints, not captured continuous dynamics or successful repeated routes."}

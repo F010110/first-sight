@@ -33,7 +33,7 @@ function exactCost(vertices: string[], edges: RegionEvidence[]) {
 	}
 	visit(1, 0); return best;
 }
-let nonOptimal = 0, maxGap = 0; const failures: unknown[] = [];
+let nonOptimal = 0, maxGap = 0, refinedNonOptimal = 0, refinedMaxGap = 0; const failures: unknown[] = [];
 for (let trial = 0; trial < 200; trial++) {
 	const vertices = Array.from({ length: 6 }, (_, i) => `v${i}`), edges: RegionEvidence[] = [];
 	for (let a = 0; a < 6; a++) for (let b = a + 1; b < 6; b++) {
@@ -41,6 +41,10 @@ for (let trial = 0; trial < 200; trial++) {
 		edges.push({ id: `${a}-${b}`, a: vertices[a]!, b: vertices[b]!, relation: draw < 0.65 ? "same" : "different", weight: 1 + Math.floor(random() * 3), source: "synthetic", reason: "Signed solver benchmark", frames: ["synthetic"] });
 	}
 	const greedy = partitionRegions(vertices, edges).objectiveCost, exact = exactCost(vertices, edges), gap = greedy - exact;
+	const refined = partitionRegions(vertices, edges, { refine: true }).objectiveCost;
+	if (refined > greedy + 1e-9 || refined < exact - 1e-9) throw new Error("Invalid refinement/reference cost");
+	if (refined > exact + 1e-9) refinedNonOptimal++;
+	refinedMaxGap = Math.max(refinedMaxGap, refined - exact);
 	if (gap > 1e-9) { nonOptimal++; if (failures.length < 3) failures.push({ vertices, edges, greedy, exact }); }
 	maxGap = Math.max(maxGap, gap);
 }
@@ -48,7 +52,7 @@ const result = {
 	note: "Manual-evidence robustness and synthetic solver quality only; no independent activity-region labels or automated perception. Fault endpoints intentionally target distinct reviewed layout scopes.",
 	permutation: { trials: 100, changedPartitions: permutations.filter(row => signature(row) !== baseSignature).length, distinctPartitions: new Set(permutations.map(signature)).size },
 	faults, singlePositiveEdgeDropout: { trials: dropout.length, changedPartitions: dropout.filter(row => row.partitionChanged).length, details: dropout },
-	exactComparison: { trials: 200, vertices: 6, nonOptimal, maxGap, examples: failures },
+	exactComparison: { trials: 200, vertices: 6, nonOptimal, maxGap, refinedNonOptimal, refinedMaxGap, examples: failures },
 };
-await writeFile(resolve(dir, "region-partition-stress.json"), JSON.stringify(result, null, 2));
-console.log(JSON.stringify(result, null, 2));
+await writeFile(resolve(dir, "region-partition-refinement-stress.json"), JSON.stringify(result, null, 2));
+console.log(JSON.stringify({ ...result, singlePositiveEdgeDropout: { trials: dropout.length, changedPartitions: dropout.filter(row => row.partitionChanged).length }, exactComparison: { ...result.exactComparison, examples: undefined } }, null, 2));

@@ -44,7 +44,9 @@ def speed_bucket(meters: float, seconds: float) -> str:
 def segments_from_actions(rows, start, end, tick_seconds: float):
     """Group the actions in (start, end] into (kind, direction, value, duration)."""
     segments = []
-    for action in [rows[t]["action"] for t in range(start + 1, end + 1)]:
+    for row in rows[start + 1:end + 1]:
+        action = row["action"]
+        turn_degrees = row.get("commanded_turn_degrees") or ROTATE_DEGREES
         if action == "MoveAhead":
             seg = ("move", "forward", GRID_METERS, tick_seconds)
         elif action == "MoveBack":
@@ -54,9 +56,9 @@ def segments_from_actions(rows, start, end, tick_seconds: float):
         elif action == "MoveRight":
             seg = ("move", "right", GRID_METERS, tick_seconds)
         elif action == "RotateLeft":
-            seg = ("turn", "left", ROTATE_DEGREES, tick_seconds)
+            seg = ("turn", "left", turn_degrees, tick_seconds)
         elif action == "RotateRight":
-            seg = ("turn", "right", ROTATE_DEGREES, tick_seconds)
+            seg = ("turn", "right", turn_degrees, tick_seconds)
         else:
             continue
         if segments and segments[-1][0] == seg[0] and segments[-1][1] == seg[1]:

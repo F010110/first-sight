@@ -25,14 +25,19 @@ export class ExperienceAssociation {
 	private evidence = new Map<string, CorrespondenceEvidence>();
 	constructor(readonly graph: ExperienceGraph, private sequenceVerification = false) {}
 	/** One atomic bundle prevents graph and association history from different revisions. */
+	getBundle() {
+		return structuredClone({ schemaVersion: 1 as const, sequenceVerification: this.sequenceVerification, graph: this.graph.getState(), evidence: [...this.evidence.values()], hypotheses: this.hypotheses, history: this.history });
+	}
 	async persist(path: string): Promise<void> {
 		await mkdir(dirname(path), { recursive: true });
 		const temporary = `${path}.${randomUUID()}.tmp`;
-		await writeFile(temporary, JSON.stringify({ schemaVersion: 1, sequenceVerification: this.sequenceVerification, graph: this.graph.getState(), evidence: [...this.evidence.values()], hypotheses: this.hypotheses, history: this.history }, null, 2));
+		await writeFile(temporary, JSON.stringify(this.getBundle(), null, 2));
 		await rename(temporary,path);
 	}
 	async load(path: string): Promise<void> {
-		const bundle = JSON.parse(await readFile(path,"utf8"));
+		this.restoreBundle(JSON.parse(await readFile(path,"utf8")));
+	}
+	restoreBundle(bundle: ReturnType<ExperienceAssociation["getBundle"]>): void {
 		if (bundle.schemaVersion !== 1 || !Array.isArray(bundle.evidence) || !Array.isArray(bundle.hypotheses) || !Array.isArray(bundle.history)) throw new Error("Invalid association bundle");
 		const stagedGraph = new ExperienceGraph(); stagedGraph.restore(bundle.graph);
 		const staged = new ExperienceAssociation(stagedGraph);

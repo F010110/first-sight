@@ -3,6 +3,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { partitionRegions, type RegionEvidence } from "../agent/region-partition.js";
 const dir = resolve(process.argv[2] ?? "run/sim/multiview-val5-clean-20261007");
+const refine = process.argv.includes("--refine");
+const outputPrefix = refine ? "region-partition-refined" : "region-partition";
 // Deliberately project away simulator annotations before evidence construction.
 const ticks: number[] = (await readFile(resolve(dir, "windows.jsonl"), "utf8")).trim().split(/\r?\n/).slice(0, 40).map(line => JSON.parse(line).endTick);
 const ids = ticks.map((_, i) => `observation-${i + 1}`);
@@ -28,10 +30,10 @@ const experiments = [
 	{ name: "review-evidence", evidence },
 	{ name: "remove-W24-bridge", evidence: evidence.filter(edge => edge.a !== ids[23] && edge.b !== ids[23]) },
 	{ name: "unknown-only", evidence: evidence.filter(edge => edge.relation === "unknown") },
-].map(trial => ({ name: trial.name, ...partitionRegions(ids, trial.evidence) }));
+].map(trial => ({ name: trial.name, ...partitionRegions(ids, trial.evidence, { refine }) }));
 const note = "Manual layout-evidence pilot only. No automated masks, instance tracks, geometry, rotation detector, or boundary-crossing detector. Evidence and resulting partition are not independent labels; zero objective cost is consistency, not accuracy. Does not reproduce RoboHop/Prior-SG. No simulator GT, motion descriptions, image similarities, or old node memberships used for inference.";
-await writeFile(resolve(dir, "region-partition-review-evidence.json"), JSON.stringify({ note, evidence }, null, 2));
-await writeFile(resolve(dir, "region-partition-eval.json"), JSON.stringify({ note, experiments }, null, 2));
+await writeFile(resolve(dir, `${outputPrefix}-review-evidence.json`), JSON.stringify({ note, evidence }, null, 2));
+await writeFile(resolve(dir, `${outputPrefix}-eval.json`), JSON.stringify({ note, experiments }, null, 2));
 const html = experiments.map(trial => `<h2>${trial.name}: ${trial.groups.length} supported proposals, ${trial.unresolvedObservationIds.length} unresolved</h2>${trial.groups.map(group => `<section><h3>${group.id}</h3>${group.observationIds.map(id => { const w = ids.indexOf(id) + 1; return `<figure><img loading="lazy" src="${frame(w)}"><figcaption>W${w}</figcaption></figure>`; }).join("")}</section>`).join("")}<p>Unresolved: ${trial.unresolvedObservationIds.map(id => `W${ids.indexOf(id) + 1}`).join(", ")}</p>`).join("");
-await writeFile(resolve(dir, "region-partition-inspection.html"), `<!doctype html><meta charset="utf-8"><title>Manual evidence partition pilot</title><style>body{background:#222;color:#eee;font-family:sans-serif}section{border:1px solid #777;margin:12px}figure{display:inline-block;width:46%}img{width:100%}</style><h1>Manual evidence pilot — NOT automatic region perception</h1><p>${note}</p>${html}`);
+await writeFile(resolve(dir, `${outputPrefix}-inspection.html`), `<!doctype html><meta charset="utf-8"><title>Manual evidence partition pilot</title><style>body{background:#222;color:#eee;font-family:sans-serif}section{border:1px solid #777;margin:12px}figure{display:inline-block;width:46%}img{width:100%}</style><h1>Manual evidence pilot — NOT automatic region perception</h1><p>${note}</p>${html}`);
 for (const trial of experiments) console.log(JSON.stringify({ name: trial.name, groups: trial.groups.map(group => group.observationIds.map(id => ids.indexOf(id) + 1).sort((a, b) => a - b)), unresolved: trial.unresolvedObservationIds.map(id => ids.indexOf(id) + 1), objectiveCost: trial.objectiveCost }));

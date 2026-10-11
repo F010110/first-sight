@@ -8,6 +8,8 @@
 2. [实现/验证清单](../experience-implementation-checklist.md)
 3. [分组原图与实际轨迹核验](../region-partition-actual-review.md)
 4. [方法选择与训练决策](../region-methods-and-training.md)
+5. [API-free人工评测协议与评分入口](../region-evaluation-protocol.md)
+6. [固定局部范围标准及39对审图判定](../region-manual-rubric-and-assessment.md)
 
 ## 分层实验
 

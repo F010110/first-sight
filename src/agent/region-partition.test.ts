@@ -23,3 +23,12 @@ test("conflicting evidence remains visible and invalid provenance is rejected", 
 	assert.equal(result.objectiveCost, 1); assert.equal(result.violatedEvidenceIds.length, 1);
 	assert.throws(() => partitionRegions(["a", "b"], [{ ...edge("a", "b", "same"), frames: [] }]));
 });
+test("refinement can split and reassign a greedy mistake without losing observations", () => {
+	const evidence = [edge("a", "b", "same", 3), edge("a", "c", "same", 2), edge("b", "c", "different", 2), edge("a", "d", "same", 2), edge("b", "d", "different", 2), edge("c", "d", "same", 3)];
+	const before = JSON.stringify(evidence), greedy = partitionRegions(["a", "b", "c", "d"], evidence);
+	const refined = partitionRegions(["a", "b", "c", "d"], evidence, { refine: true });
+	assert.ok(refined.objectiveCost < greedy.objectiveCost);
+	assert.ok(refined.refinementHistory.length > 0);
+	assert.equal(refined.groups.flatMap(group => group.observationIds).length + refined.unresolvedObservationIds.length, 4);
+	assert.equal(JSON.stringify(evidence), before);
+});

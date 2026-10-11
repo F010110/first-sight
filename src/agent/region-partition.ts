@@ -9,7 +9,7 @@ export interface RegionEvidence {
  * Unknowns have zero cost. Unconnected observations remain unresolved, not different.
  * Observations and evidence are never mutated; recalculation is a reversible proposal.
  */
-export function partitionRegions(ids: string[], evidence: RegionEvidence[]) {
+export function partitionRegions(ids: string[], evidence: RegionEvidence[], options: { refine?: boolean } = {}) {
 	if (new Set(ids).size !== ids.length) throw new Error("Duplicate observation ID");
 	const valid = new Set(ids), evidenceIds = new Set<string>();
 	for (const edge of evidence) {
@@ -19,7 +19,8 @@ export function partitionRegions(ids: string[], evidence: RegionEvidence[]) {
 		evidenceIds.add(edge.id);
 	}
 	const signed = evidence.filter(edge => edge.relation !== "unknown" && edge.weight > 0);
-	let groups = ids.map(id => [id]);
+	// Stable tie-breaking rather than dependence on observation input order.
+	let groups = [...ids].sort().map(id => [id]);
 	const history: { members: string[]; gain: number; evidenceIds: string[] }[] = [];
 	while (true) {
 		let best: { i: number; j: number; gain: number; edges: RegionEvidence[] } | null = null;
@@ -33,16 +34,44 @@ export function partitionRegions(ids: string[], evidence: RegionEvidence[]) {
 		groups[best.i] = [...groups[best.i]!, ...groups[best.j]!]; groups.splice(best.j, 1);
 		history.push({ members: [...groups[best.i]!], gain: best.gain, evidenceIds: best.edges.map(edge => edge.id) });
 	}
+	const cost = (partition: string[][]) => {
+		const labels = new Map(partition.flatMap((members, index) => members.map(id => [id, index] as const)));
+		return signed.reduce((sum, edge) => sum + ((labels.get(edge.a) === labels.get(edge.b)) === (edge.relation === "same") ? 0 : edge.weight), 0);
+	};
+	const refinementHistory: { observationId: string; from: string[]; to: string[]; costBefore: number; costAfter: number }[] = [];
+	if (options.refine) {
+		// Strictly improving moves can split a mistaken greedy cluster or rebind
+		// an observation. Singleton creation is explicit; no evidence is erased.
+		for (let pass = 0; pass < 100; pass++) {
+			const before = cost(groups);
+			let best: { groups: string[][]; id: string; from: string[]; to: string[]; cost: number } | null = null;
+			for (const id of [...ids].sort()) {
+				const source = groups.findIndex(members => members.includes(id));
+				for (let target = 0; target <= groups.length; target++) {
+					if (target === source || target === groups.length && groups[source]!.length === 1) continue;
+					const next = groups.map(members => [...members]);
+					next[source] = next[source]!.filter(member => member !== id);
+					const to = target === groups.length ? [] : [...next[target]!];
+					if (target === groups.length) next.push([id]); else next[target]!.push(id);
+					const filtered = next.filter(members => members.length), after = cost(filtered);
+					if (after < before - 1e-9 && (!best || after < best.cost - 1e-9)) best = { groups: filtered, id, from: [...groups[source]!], to, cost: after };
+				}
+			}
+			if (!best) break;
+			groups = best.groups;
+			refinementHistory.push({ observationId: best.id, from: best.from, to: best.to, costBefore: before, costAfter: best.cost });
+		}
+	}
 	const assignment = new Map(groups.flatMap((members, index) => members.map(id => [id, index] as const)));
 	const violated = signed.filter(edge => (assignment.get(edge.a) === assignment.get(edge.b)) !== (edge.relation === "same"));
 	return {
-		algorithm: "greedy-additive-edge-contraction-multicut" as const,
+		algorithm: options.refine ? "multicut-greedy-plus-single-vertex-refinement" as const : "greedy-additive-edge-contraction-multicut" as const,
 		groups: groups.filter(members => members.length > 1).map((observationIds, index) => ({
 			id: `region-proposal-${index + 1}`, observationIds, status: "provisional" as const, scopeVerified: false,
 		})),
 		unresolvedObservationIds: groups.filter(members => members.length === 1).flat(),
 		objectiveCost: violated.reduce((sum, edge) => sum + edge.weight, 0),
-		violatedEvidenceIds: violated.map(edge => edge.id), history,
+		violatedEvidenceIds: violated.map(edge => edge.id), history, refinementHistory,
 		warning: "Soft evidence partition, not calibrated probabilities. Separate proposals do not establish different physical regions. No navigation authorization. Greedy merges can drift through chains; inspect membership and conflicts.",
 	};
 }

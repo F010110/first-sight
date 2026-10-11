@@ -29,6 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from navigation import fixed_route, align_return_heading  # noqa: E402
+from benchmark_capture import add_rotation_probes, split_recorded_turns  # noqa: E402
 
 
 def room_at(house, position):
@@ -61,6 +62,9 @@ def main() -> int:
     parser.add_argument("--max-frames", type=int, default=80)
     parser.add_argument("--size", type=int, default=320)
     parser.add_argument("--quality", default="Low")
+    parser.add_argument("--rotation-probe-every", type=int, default=0, help="insert a full recorded turn every N successful planned moves; 0 disables")
+    parser.add_argument("--probe-angles", help="signed turn degrees, e.g. 15,30,45,60,90,120; must sum to a full revolution")
+    parser.add_argument("--max-turn-step", type=float, default=0, help="execute and record real smaller rotation actions, 0 disables; not interpolation")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
@@ -86,6 +90,9 @@ def main() -> int:
             # Return yaw depends on the route's first segment, not necessarily on
             # initial yaw. Compute it instead of assuming a 180-degree reversal.
             base = align_return_heading(base, initial["rotation"]["y"])
+            probe_angles = [float(a) for a in args.probe_angles.split(',')] if args.probe_angles else None
+            base = add_rotation_probes(base, args.rotation_probe_every, probe_angles)
+            base = split_recorded_turns(base, args.max_turn_step)
             repeats = max(1, args.repeats)
             actions = [None] + base * repeats
         else:
@@ -96,7 +103,10 @@ def main() -> int:
         rows = []
         with (out / "observations.jsonl").open("w", encoding="utf-8") as observations:
             for tick, action in enumerate(actions):
-                event = controller.last_event if action is None else controller.step(action=action)
+                action_args = action if isinstance(action, dict) else {"action": action}
+                command_args = {k:v for k,v in action_args.items() if k not in ('turn_event_id','turn_event_total_degrees')}
+                action_name = action_args["action"] if action is not None else "Initialize"
+                event = controller.last_event if action is None else controller.step(**command_args)
                 meta = event.metadata
                 if action is not None and not meta.get("lastActionSuccess"):
                     raise RuntimeError(f"Route action failed at tick {tick}: {action}: {meta.get('errorMessage')}")
@@ -105,7 +115,10 @@ def main() -> int:
                 room = room_at(house, agent["position"]) if house else args.scene
                 row = {
                     "tick": tick,
-                    "action": action or "Initialize",
+                    "action": action_name,
+                    "commanded_turn_degrees": action_args.get("degrees", 90) if action_name in ("RotateRight", "RotateLeft") else None,
+                    "turn_event_id": action_args.get("turn_event_id"),
+                    "turn_event_total_degrees": action_args.get("turn_event_total_degrees"),
                     "room": room,
                     "success": bool(meta.get("lastActionSuccess")),
                     "x": round(agent["position"]["x"], 4),
@@ -137,6 +150,10 @@ def main() -> int:
             "house_sha256": hashlib.sha256(args.house.read_bytes()).hexdigest() if args.house else None,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "status": "recorded",
+            "rotation_probe_every": args.rotation_probe_every,
+            "repeats": args.repeats,
+            "probe_angles": args.probe_angles,
+            "max_turn_step": args.max_turn_step,
         }
         (out / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
         print(str(out), flush=True)
