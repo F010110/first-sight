@@ -4,6 +4,10 @@
 
 ## 当前方向与限制
 
+算法研发已按用户要求停止；当前算法/旧评测快照提交`da10721`（本地，未推送）。之后仅改评测。新唯一验收合同/入口见`docs/grouping-acceptance-pipeline.md`、`sim/run_grouping_acceptance.py`；same/different必要事件、不强制room=group，冻结图像/标签/阈值hash、同证据预算、真实prefix、独立查询与明确通过/不通过/证据不足。现有两套AI开发标签不足验收资格；旧8.1%不再当最终分组正确率。双历史版本实际adapter对跑、独立留出标签/样本和门槛批准仍未完成，严禁宣称已建立经独立验证的可信算法成绩。
+
+本轮评测验证：`python sim/test_grouping_benchmark.py`14项通过；val4/val5必要事件合同导入与重复同一run自检成功，均明确“证据不足”，不冒充旧新版本对比。冻结开发合同及报告位于`run/sim/grouping-contract-v1-val4/val5`。此后算法源文件未修改。
+
 本轮补分组最终指标：`grouping-evaluation.ts` 实现稳定性（纠错/错误改绑区分）、正确性（same/different均衡、unknown/覆盖单列）和实际prefix组内容查询（不读未来）。新增12项测试，接入`test:visual-pipeline`。val4已有44核心审查样本评分输出`grouping-three-capabilities-val4-v1.json`：关系保持100%，核心层均衡分数8.1%、归属覆盖38.6%，组历史内容识别5/40。粗核心标签不证明合法子区域错误；val5完整子区域/核心标签与独立对象查询仍缺，见`docs/grouping-three-capabilities.md`，不以接口完成冒充全面测试完成。
 
 本轮最终验证：`npm.cmd run test:visual-pipeline`47项全通过（新增分组12项）；构建通过，实际prefix评分CLI已执行。分组能力三项评测已实现，完整真实子区域/独立查询样本验收仍部分完成。

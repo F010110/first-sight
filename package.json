@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:grouping-benchmark": "python sim/test_grouping_benchmark.py",
     "test:visual-pipeline": "npm run build && node --test dist/agent/grouping-evaluation.test.js dist/agent/visual-experience-pipeline.test.js dist/agent/visual-experience-memory.test.js dist/agent/visual-change-boundaries.test.js dist/agent/region-interpretation.test.js dist/agent/revisable-region-hierarchy.test.js dist/agent/temporal-region-continuity.test.js dist/agent/rotation-compensated-motion.test.js dist/agent/device-camera-orientation.test.js dist/agent/segment-interpretation-store.test.js dist/agent/segment-association.test.js",
     "sim:visual:pipeline": "npm run build && node dist/sim/visual-experience-replay.js",
     "sim:visual:scorecard": "npm run build && node dist/sim/visual-pipeline-scorecard.js",
