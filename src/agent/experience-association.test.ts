@@ -60,6 +60,24 @@ test("one-bearing return needs two independent sequence matches; wrong isolated 
 	assert.equal(graph.getState().observations[9]!.nodeId,null);
 	assert.equal(controller.hypotheses[0]!.evidence.length,3);
 });
+test("formal multi-bearing anchor policy refuses shared-surface sequence promotion", () => {
+	const { graph, controller: legacy } = sequenceSetup();
+	const controller = new ExperienceAssociation(graph, true, "multi-bearing");
+	for (const pair of legacy.getBundle().evidence) controller.addEvidence(pair);
+	controller.addEvidence({ a: "o2", b: "o8", bearings: [1,0,0], backwardBearings: [0,1,0], source: "single shared surface" });
+	controller.reconsider();
+	assert.equal(graph.getState().observations.find(row => row.id === "o2")!.nodeId, null);
+	controller.addEvidence({ a: "o2", b: "o8", bearings: [1,1,0], backwardBearings: [1,1,0], source: "reciprocal multi-bearing anchor" });
+	controller.reconsider();
+	assert.ok(graph.getState().observations.find(row => row.id === "o2")!.nodeId);
+});
+test("formal anchor policy round-trips and invalid policy restore is atomic", () => {
+	const controller = new ExperienceAssociation(new ExperienceGraph(), true, "multi-bearing");
+	const bundle = controller.getBundle(), loaded = new ExperienceAssociation(new ExperienceGraph());
+	loaded.restoreBundle(bundle); assert.deepEqual(loaded.getBundle(), bundle);
+	const invalid = structuredClone(bundle) as any; invalid.sequenceAnchorPolicy = "unknown";
+	assert.throws(() => loaded.restoreBundle(invalid)); assert.deepEqual(loaded.getBundle(), bundle);
+});
 test("sequence verification cannot confirm an anchor without direct visual support or across a gap", () => {
 	for(const gap of [false,true]) {
 		const {graph,controller}=sequenceSetup(gap);

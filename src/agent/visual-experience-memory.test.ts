@@ -4,6 +4,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { VisualExperienceMemory } from "./visual-experience-memory.js";
+import { ExperienceAssociation } from "./experience-association.js";
+import { ExperienceGraph } from "./experience-graph.js";
 const observation = (i: number) => ({ id: `o${i}`, atMs: i * 1000, visitId: "visit", frames: [`f${i}`], objects: ["cup"], description: "recorded cup", semanticSource: "fixture" });
 const setup = () => {
 	const memory = new VisualExperienceMemory();
@@ -72,4 +74,11 @@ test("boundary confirmations cannot leak from future into an online prefix", () 
 	const proposal = { event: { id: "cut", beforeObservationId: "o2", source: "automatic" as const, reason: "inferred candidate", frames: ["f2"] }, availableAtMs: 5000 };
 	assert.throws(() => memory.observe(observation(2), [], [], [], [], [proposal]));
 	assert.equal(memory.association.graph.getState().observations.length, 1);
+});
+test("fresh memory uses formal anchor policy while old bundles preserve legacy behavior", () => {
+	const fresh = new VisualExperienceMemory();
+	assert.equal(fresh.association.getBundle().sequenceAnchorPolicy, "multi-bearing");
+	const legacy = new ExperienceAssociation(new ExperienceGraph(), true).getBundle();
+	fresh.association.restoreBundle(legacy);
+	assert.deepEqual(fresh.association.getBundle(), legacy);
 });

@@ -23,10 +23,10 @@ export class ExperienceAssociation {
 	readonly hypotheses: AssociationHypothesis[] = [];
 	readonly history: AssociationHypothesis[] = [];
 	private evidence = new Map<string, CorrespondenceEvidence>();
-	constructor(readonly graph: ExperienceGraph, private sequenceVerification = false) {}
+	constructor(readonly graph: ExperienceGraph, private sequenceVerification = false, private sequenceAnchorPolicy: "legacy" | "multi-bearing" = "legacy") {}
 	/** One atomic bundle prevents graph and association history from different revisions. */
 	getBundle() {
-		return structuredClone({ schemaVersion: 1 as const, sequenceVerification: this.sequenceVerification, graph: this.graph.getState(), evidence: [...this.evidence.values()], hypotheses: this.hypotheses, history: this.history });
+		return structuredClone({ schemaVersion: 1 as const, sequenceVerification: this.sequenceVerification, ...(this.sequenceAnchorPolicy === "multi-bearing" ? { sequenceAnchorPolicy: "multi-bearing" as const } : {}), graph: this.graph.getState(), evidence: [...this.evidence.values()], hypotheses: this.hypotheses, history: this.history });
 	}
 	async persist(path: string): Promise<void> {
 		await mkdir(dirname(path), { recursive: true });
@@ -39,6 +39,7 @@ export class ExperienceAssociation {
 	}
 	restoreBundle(bundle: ReturnType<ExperienceAssociation["getBundle"]>): void {
 		if (bundle.schemaVersion !== 1 || !Array.isArray(bundle.evidence) || !Array.isArray(bundle.hypotheses) || !Array.isArray(bundle.history)) throw new Error("Invalid association bundle");
+		if (bundle.sequenceAnchorPolicy !== undefined && bundle.sequenceAnchorPolicy !== "multi-bearing") throw new Error("Invalid sequence anchor policy");
 		const stagedGraph = new ExperienceGraph(); stagedGraph.restore(bundle.graph);
 		const staged = new ExperienceAssociation(stagedGraph);
 		for (const pair of bundle.evidence) staged.addEvidence(pair);
@@ -50,6 +51,7 @@ export class ExperienceAssociation {
 		if (new Set(bundle.hypotheses.map((h: AssociationHypothesis) => h.id)).size !== bundle.hypotheses.length) throw new Error("Duplicate association IDs");
 		this.graph.restore(bundle.graph);
 		this.sequenceVerification = bundle.sequenceVerification === true;
+		this.sequenceAnchorPolicy = bundle.sequenceAnchorPolicy ?? "legacy";
 		this.evidence = new Map(bundle.evidence.map((pair: CorrespondenceEvidence) => [this.key(pair.a,pair.b),structuredClone(pair)]));
 		this.hypotheses.splice(0,this.hypotheses.length,...structuredClone(bundle.hypotheses));
 		this.history.splice(0,this.history.length,...structuredClone(bundle.history));
@@ -135,6 +137,9 @@ export class ExperienceAssociation {
 		const state = this.graph.getState();
 		const eligible = (a: string, b: string) => {
 			const pair = this.evidence.get(this.key(a,b));
+			// Sequence neighbors cannot turn one shared surface at the anchor into
+			// a region identity. Strict policy requires reciprocal multi-bearing support.
+			if (this.sequenceAnchorPolicy === "multi-bearing" && (!pair?.backwardBearings || !this.strong(pair))) return null;
 			if (!pair || Math.max(...pair.bearings) < 0.8 || (pair.backwardBearings && Math.max(...pair.backwardBearings) < 0.8)) return null;
 			const support = this.sequenceSupport(a,b);
 			if (support.length < 2) return null;

@@ -1,5 +1,7 @@
 # 固定分组验收流水线 v1
 
+当前正式标准已更新为`docs/temporal-image-classification-standard.md`：单一人工区域标签，同区域允许分多组，最终分组与新图旧/新归类分开评分。本文件旧same/different合同保留为历史诊断；新正式包使用`temporal-image-benchmark-v1`。
+
 算法冻结提交：`da10721`。此后只修改评测代码，不继续调算法。
 
 ## 唯一入口与结论

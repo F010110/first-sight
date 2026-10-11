@@ -15,7 +15,7 @@ export class VisualExperienceMemory {
 	private interpretations: InterpretationInput[] = [];
 	private reviews: { observationIds: string[]; targetNodeId: string | null; previousNodeIds: (string | null)[]; reason: string }[] = [];
 	private hierarchyRevisions: { scopes: RegionScope[]; reason: string }[] = [];
-	constructor(readonly association = new ExperienceAssociation(new ExperienceGraph(), true)) {}
+	constructor(readonly association = new ExperienceAssociation(new ExperienceGraph(), true, "multi-bearing")) {}
 	addObservation(input: Parameters<ExperienceGraph["addObservation"]>[0]) { this.association.graph.addObservation(input); }
 	addEvidence(input: CorrespondenceEvidence) { this.association.addEvidence(input); this.association.reconsider(); }
 	reject(...args: Parameters<ExperienceAssociation["reject"]>) { this.association.reject(...args); }

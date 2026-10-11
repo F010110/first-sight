@@ -4,6 +4,12 @@
 
 ## 当前方向与限制
 
+正式标准：`docs/temporal-image-classification-standard.md`，单一人工区域标签；同区域多组允许并计分散错误，跨区域混组严重。补最终错合并/聚合/未归类、到达时旧组识别/新组建立/重复建组/不确定，稳定性仅辅助。正式执行器支持label包且不向算法暴露答案。8项正式标准测试通过。
+
+本轮发现旧val4混合组1个（2错合并对）。修正新记忆默认sequence中心锚点双向多方向要求，旧包原策略仍保留。从空记忆同证据回放混合组1→0，但未归类61.4%→68.2%，即时旧组识别0/16，val5必要恢复15/19→12/19。**安全错误减少但整体尚未达标，不得宣布修正完成全部算法能力**。当前正式报告`formal-classification-val4-legacy-controlled-v2.json` / `formal-classification-val4-repaired-v2.json`，旧报告保留。
+
+本轮最终验证：`test:memory`75项、`test:visual-pipeline`48项、`test:classification-standard`8项、`test:grouping-benchmark`14项通过（分组重叠，不相加）。生产Place/Space/RequestAgent未改；新建VisualExperienceMemory默认采用严格锚点，旧包加载不会静默重算/删除原有组。
+
 算法研发已按用户要求停止；当前算法/旧评测快照提交`da10721`（本地，未推送）。之后仅改评测。新唯一验收合同/入口见`docs/grouping-acceptance-pipeline.md`、`sim/run_grouping_acceptance.py`；same/different必要事件、不强制room=group，冻结图像/标签/阈值hash、同证据预算、真实prefix、独立查询与明确通过/不通过/证据不足。现有两套AI开发标签不足验收资格；旧8.1%不再当最终分组正确率。双历史版本实际adapter对跑、独立留出标签/样本和门槛批准仍未完成，严禁宣称已建立经独立验证的可信算法成绩。
 
 本轮评测验证：`python sim/test_grouping_benchmark.py`14项通过；val4/val5必要事件合同导入与重复同一run自检成功，均明确“证据不足”，不冒充旧新版本对比。冻结开发合同及报告位于`run/sim/grouping-contract-v1-val4/val5`。此后算法源文件未修改。
