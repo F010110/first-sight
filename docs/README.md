@@ -9,6 +9,10 @@
 3. [可选回溯修复](research/retrospective-repair-trial.md)
 4. [逐图正式评分标准](research/temporal-image-classification-standard.md)
 5. [实验报告索引](experiments/README.md)
+6. [研究与手机应用的硬件鸿沟](research/research-application-gap.md)
+7. [原始建议材料索引](notes/suggestions/README.md)
+8. [头盔采集兼容接口](research/helmet-capture-interface.md)
+9. [旧手机实现状态](archive/mobile-implementation-status.md)
 
 ## 分区
 

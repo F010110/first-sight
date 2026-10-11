@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "test:helmet-capture": "npm run build && node --test dist/agent/helmet-capture.test.js",
     "test:grouping-benchmark": "python sim/test_grouping_benchmark.py",
     "test:classification-standard": "python sim/test_temporal_classification_standard.py",
     "test:retrospective-repair": "npm run build && node --test dist/agent/retrospective-group-repair.test.js",

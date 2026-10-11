@@ -33,6 +33,6 @@
 
 ## 研究记录
 
-[路线图](../research/revisable-experience-memory-roadmap.md)、[文献核查](../archive/place-grouping-literature-review.md)。仓库根目录 `建议3.md`–`建议7.md` 是原始建议材料，保留原文，不能当作论文已证实的结论；以核查报告的来源与限制为准。
+[路线图](../research/revisable-experience-memory-roadmap.md)、[文献核查](../archive/place-grouping-literature-review.md)。原始建议材料已集中在[建议索引](../notes/suggestions/README.md)，保留原文，不能当作论文已证实的结论；以核查报告的来源与限制为准。
 
 `v1.1.0-test.1/` 保存小体积数值报告和文件SHA256清单。`run/` 继续忽略：图像、视频、完整模型输出和运行记忆不混入代码提交。数值快照不含原始录制，不能声称全新clone即可完整复现实验。

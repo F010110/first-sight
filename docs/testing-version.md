@@ -32,6 +32,9 @@ python sim/test_navigation.py
 
 ## 阅读与复现
 
+- [研究与手机应用鸿沟](research/research-application-gap.md)：硬件/输入、时序、校准与实时验收的独立阻塞。
+- [建议材料索引](notes/suggestions/README.md)：原文集中归档，不作为完成状态。
+
 - [当前研究架构和默认回放](research/temporal-continuity-integration.md)
 - [可选修复实验与命令](research/retrospective-repair-trial.md)
 - [固定评分标准](research/temporal-image-classification-standard.md)

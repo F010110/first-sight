@@ -1,6 +1,6 @@
 # V2：持久 Place Memory（设计 + 实施计划）
 
-依据 `迭代建议.md`，并把现有三 agent 架构升级为**持久的地点记忆**，而不是重写。核心只有三件事：**把 Scene 从“会话内识别结果”升级成持久 Place Node；增加 Visit；增加 Scene-to-Scene Transition Graph。** 不做精确 3D/位移。
+依据[迭代建议](../notes/suggestions/迭代建议.md)，并把现有三 agent 架构升级为**持久的地点记忆**，而不是重写。核心只有三件事：**把 Scene 从“会话内识别结果”升级成持久 Place Node；增加 Visit；增加 Scene-to-Scene Transition Graph。** 不做精确 3D/位移。
 
 ## 1. 数据模型（`src/agent/place-memory.ts`）
 
