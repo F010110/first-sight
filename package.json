@@ -1,6 +1,6 @@
 {
   "name": "first-sight",
-  "version": "1.1.0-test.1",
+  "version": "1.1.0-test.2",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,6 +9,7 @@
   "scripts": {
     "test:grouping-benchmark": "python sim/test_grouping_benchmark.py",
     "test:classification-standard": "python sim/test_temporal_classification_standard.py",
+    "test:retrospective-repair": "npm run build && node --test dist/agent/retrospective-group-repair.test.js",
     "test:visual-pipeline": "npm run build && node --test dist/agent/coherent-context-changes.test.js dist/agent/current-experience-grouping.test.js dist/agent/grouping-evaluation.test.js dist/agent/visual-experience-pipeline.test.js dist/agent/visual-experience-memory.test.js dist/agent/visual-change-boundaries.test.js dist/agent/region-interpretation.test.js dist/agent/revisable-region-hierarchy.test.js dist/agent/temporal-region-continuity.test.js dist/agent/rotation-compensated-motion.test.js dist/agent/device-camera-orientation.test.js dist/agent/segment-interpretation-store.test.js dist/agent/segment-association.test.js",
     "sim:visual:pipeline": "npm run build && node dist/sim/visual-experience-replay.js",
     "sim:visual:scorecard": "npm run build && node dist/sim/visual-pipeline-scorecard.js",

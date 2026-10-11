@@ -1,13 +1,15 @@
 # First Sight · 第一视角视觉助理（手机摄像头 + Qwen VLM）
 
-**当前快照：v1.1.0-test.1 · 实验测试版**（2026-10-10）
+**当前快照：v1.1.0-test.2 · 研究测试版**（2026-10-11）
+
+本版固定离线三视图视觉记忆研究链路，手机应用暂不改动、不接入该链路。普通手机单摄输入不等同于研究用前/左/右三视图。回溯修复仅通过独立实验命令选择启用，默认归类保持不变；结果仍未达到可靠区域识别标准。
 
 稳定版基线仍是 `v1.0.0`（2026-10-04）。当前快照包含此前 SceneAgent/PlaceMemory 修改，以及独立的 Experience Graph 和区域分割实验；**不代表自动地点分组已可用**。新区域分割链路未接入实时助理，人工证据试验不是自动感知精度。
 
 - [测试版说明与复现入口](docs/testing-version.md)
 - [实验文档索引](docs/experiments/README.md)
-- [原图与真实轨迹核验](docs/region-partition-actual-review.md)
-- [替换方法还是训练：研究决策](docs/region-methods-and-training.md)
+- [原图与真实轨迹核验](docs/archive/region-partition-actual-review.md)
+- [替换方法还是训练：研究决策](docs/research/region-methods-and-training.md)
 
 一个手机浏览器里的第一视角视觉试用工具：手机摄像头连续取景，服务端用 Qwen 多模态模型理解画面，对外表现为**三条互相独立的观察线**——场景记录、场景变化、用户要求。
 
@@ -17,7 +19,7 @@
 
 ## 1. 使用说明（iOS / Android）
 
-完整步骤见 [docs/mobile-trial.md](docs/mobile-trial.md)，下面是速览。
+完整步骤见 [docs/application/mobile-trial.md](docs/application/mobile-trial.md)，下面是速览。
 
 ### 1.1 前置
 
@@ -221,6 +223,6 @@ scene-memory/scene-N/ 场景代表帧（图片记忆）
 ## 附：文档
 
 - 文档索引：[docs/README.md](docs/README.md)
-- 历史（四模式时期）架构：[docs/architecture-legacy-4mode.md](docs/architecture-legacy-4mode.md)
-- 惯导说明：[docs/motion-dead-reckoning.md](docs/motion-dead-reckoning.md)
-- 产品设计：[docs/product-design.md](docs/product-design.md)
+- 历史（四模式时期）架构：[docs/archive/architecture-legacy-4mode.md](docs/archive/architecture-legacy-4mode.md)
+- 惯导说明：[docs/application/motion-dead-reckoning.md](docs/application/motion-dead-reckoning.md)
+- 产品设计：[docs/application/product-design.md](docs/application/product-design.md)

@@ -22,7 +22,7 @@
 
 这里的勾选只表示**软件初版及接入存在**，不是“全部不足已解决”。F04/F05在两旧户型仍未确认任何切换，自动边界F1=0；V项必须保留未通过。
 
-验证：`test:visual-pipeline`35项、`test:memory`73项（部分重叠）；Python VO4项、自动边界6项、冷启动产物1项。两户型原baseline bundle逐项保持不变。当前说明及重跑方法：`docs/visual-functional-implementation.md`。
+验证：`test:visual-pipeline`35项、`test:memory`73项（部分重叠）；Python VO4项、自动边界6项、冷启动产物1项。两户型原baseline bundle逐项保持不变。当前说明及重跑方法：`docs/research/visual-functional-implementation.md`。
 
 ## 不可用“代码写好”替代的验收
 

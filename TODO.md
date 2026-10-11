@@ -4,29 +4,39 @@
 
 ## 当前方向与限制
 
+**固定研究测试版：v1.1.0-test.2。** 文档已分为application/research/archive，原实验JSON与失败证据路径不变，链接检查通过。研究三视图与手机单摄应用分开，本轮未修改应用接入。回溯修复只在独立实验命令中启用，不进默认pipeline。发布回归：memory 75、visual-pipeline 61、repair 4、classification 8、benchmark 14、navigation 1通过；重叠测试不可相加成独立能力覆盖。范围与结论以`docs/testing-version.md`为准。
+
+待办：独立盲审与固定分类对照、历史版本真实适配、剩余混合组与历史身份恢复；手机接入另立阶段，暂缓。保留用户未跟踪材料`建议8.md`原样，不纳入本版。
+
+## 历次工作记录（提交/推送状态是当时记录，非当前版本状态）
+
+本轮先冻结当前版本`ab0b41a`（本地未推送），后新增独立回溯修复实验`retrospective-group-repair.ts`，默认归类不改。val4后续55/56观察支持修复53/54归属，1次正确事件、2图，消除8错合并对；最终混合组2→1、错合并13→5（1.85%→0.71%），首次决定不改。v1误修7/8导致13→15，失败保留；v2目标入口+尾部一致性挡住误修。val5无提案，不宣称通过。见`docs/research/retrospective-repair-trial.md`及`retrospective-repair-review-val4-v2.json`；仍未通过正式标准，1个案例不是可靠精度。
+
+本轮最终验证：`test:retrospective-repair`4项、`test:visual-pipeline`61项通过；两套逐前缀试验跑通，原图0159/0168与旧组0141已查。独立评分v1正确1/错误1，v2正确1/错误0，确认时刻168tick、修复延迟9/6模拟秒；默认模块未启用，修复实验改动未提交。
+
 本轮时间连续接入：`current-experience-grouping.ts`+`VisualExperienceMemory.observe().grouping`实际主归类、`grouping()`/`searchGroupObjects()`，历史unknown不丢当前归属；`effective()`仅旧视觉兼容。加入正视觉锚点变化、双队列上下文变化、正矛盾修订与身份拒绝否决；不要求完整穿越。原包不删改，真实分组输出历史原子保存/加载。
 
-最新实际回放`temporal-current-val4/val5-v3.json`，旧严格视觉包逐项一致。val4正式未归类0、同区域聚合24.7%、错合并13/703、混合组2、即时旧组17/40；**仍不符合**。中间只连续+锚点变化有49个错合并对，保留失败报告。当前两套真实历史supported均0，不能宣称重访修复。见`docs/temporal-continuity-integration.md`；61项链路/75项记忆/8项正式标准测试通过，分组重叠不相加。
+最新实际回放`temporal-current-val4/val5-v3.json`，旧严格视觉包逐项一致。val4正式未归类0、同区域聚合24.7%、错合并13/703、混合组2、即时旧组17/40；**仍不符合**。中间只连续+锚点变化有49个错合并对，保留失败报告。当前两套真实历史supported均0，不能宣称重访修复。见`docs/research/temporal-continuity-integration.md`；61项链路/75项记忆/8项正式标准测试通过，分组重叠不相加。
 
-正式标准：`docs/temporal-image-classification-standard.md`，单一人工区域标签；同区域多组允许并计分散错误，跨区域混组严重。补最终错合并/聚合/未归类、到达时旧组识别/新组建立/重复建组/不确定，稳定性仅辅助。正式执行器支持label包且不向算法暴露答案。8项正式标准测试通过。
+正式标准：`docs/research/temporal-image-classification-standard.md`，单一人工区域标签；同区域多组允许并计分散错误，跨区域混组严重。补最终错合并/聚合/未归类、到达时旧组识别/新组建立/重复建组/不确定，稳定性仅辅助。正式执行器支持label包且不向算法暴露答案。8项正式标准测试通过。
 
 本轮发现旧val4混合组1个（2错合并对）。修正新记忆默认sequence中心锚点双向多方向要求，旧包原策略仍保留。从空记忆同证据回放混合组1→0，但未归类61.4%→68.2%，即时旧组识别0/16，val5必要恢复15/19→12/19。**安全错误减少但整体尚未达标，不得宣布修正完成全部算法能力**。当前正式报告`formal-classification-val4-legacy-controlled-v2.json` / `formal-classification-val4-repaired-v2.json`，旧报告保留。
 
 本轮最终验证：`test:memory`75项、`test:visual-pipeline`48项、`test:classification-standard`8项、`test:grouping-benchmark`14项通过（分组重叠，不相加）。生产Place/Space/RequestAgent未改；新建VisualExperienceMemory默认采用严格锚点，旧包加载不会静默重算/删除原有组。
 
-算法研发已按用户要求停止；当前算法/旧评测快照提交`da10721`（本地，未推送）。之后仅改评测。新唯一验收合同/入口见`docs/grouping-acceptance-pipeline.md`、`sim/run_grouping_acceptance.py`；same/different必要事件、不强制room=group，冻结图像/标签/阈值hash、同证据预算、真实prefix、独立查询与明确通过/不通过/证据不足。现有两套AI开发标签不足验收资格；旧8.1%不再当最终分组正确率。双历史版本实际adapter对跑、独立留出标签/样本和门槛批准仍未完成，严禁宣称已建立经独立验证的可信算法成绩。
+算法研发已按用户要求停止；当前算法/旧评测快照提交`da10721`（本地，未推送）。之后仅改评测。新唯一验收合同/入口见`docs/research/grouping-acceptance-pipeline.md`、`sim/run_grouping_acceptance.py`；same/different必要事件、不强制room=group，冻结图像/标签/阈值hash、同证据预算、真实prefix、独立查询与明确通过/不通过/证据不足。现有两套AI开发标签不足验收资格；旧8.1%不再当最终分组正确率。双历史版本实际adapter对跑、独立留出标签/样本和门槛批准仍未完成，严禁宣称已建立经独立验证的可信算法成绩。
 
 本轮评测验证：`python sim/test_grouping_benchmark.py`14项通过；val4/val5必要事件合同导入与重复同一run自检成功，均明确“证据不足”，不冒充旧新版本对比。冻结开发合同及报告位于`run/sim/grouping-contract-v1-val4/val5`。此后算法源文件未修改。
 
-本轮补分组最终指标：`grouping-evaluation.ts` 实现稳定性（纠错/错误改绑区分）、正确性（same/different均衡、unknown/覆盖单列）和实际prefix组内容查询（不读未来）。新增12项测试，接入`test:visual-pipeline`。val4已有44核心审查样本评分输出`grouping-three-capabilities-val4-v1.json`：关系保持100%，核心层均衡分数8.1%、归属覆盖38.6%，组历史内容识别5/40。粗核心标签不证明合法子区域错误；val5完整子区域/核心标签与独立对象查询仍缺，见`docs/grouping-three-capabilities.md`，不以接口完成冒充全面测试完成。
+本轮补分组最终指标：`grouping-evaluation.ts` 实现稳定性（纠错/错误改绑区分）、正确性（same/different均衡、unknown/覆盖单列）和实际prefix组内容查询（不读未来）。新增12项测试，接入`test:visual-pipeline`。val4已有44核心审查样本评分输出`grouping-three-capabilities-val4-v1.json`：关系保持100%，核心层均衡分数8.1%、归属覆盖38.6%，组历史内容识别5/40。粗核心标签不证明合法子区域错误；val5完整子区域/核心标签与独立对象查询仍缺，见`docs/archive/grouping-three-capabilities.md`，不以接口完成冒充全面测试完成。
 
 本轮最终验证：`npm.cmd run test:visual-pipeline`47项全通过（新增分组12项）；构建通过，实际prefix评分CLI已执行。分组能力三项评测已实现，完整真实子区域/独立查询样本验收仍部分完成。
 
-本轮功能清单：`docs/visual-memory-functional-checklist.md`，F01–F13逐项实现/验证；V01–V04单列实际可靠性验收。旧待办保留，不以新清单掩盖未完成项。
+本轮功能清单：`docs/research/visual-memory-functional-checklist.md`，F01–F13逐项实现/验证；V01–V04单列实际可靠性验收。旧待办保留，不以新清单掩盖未完成项。
 
-最新软件状态：F01–F13已有初版及可执行接入；F04/F05为未通过可靠性验收的候选检测器，不是可靠物理穿越识别。旧文中“自动生产器缺失”是之前状态，现已被初版实现覆盖，**自动边界F1仍为0**。当前主说明 `docs/visual-functional-implementation.md`，V01–V04仍未完成。
+最新软件状态：F01–F13已有初版及可执行接入；F04/F05为未通过可靠性验收的候选检测器，不是可靠物理穿越识别。旧文中“自动生产器缺失”是之前状态，现已被初版实现覆盖，**自动边界F1仍为0**。当前主说明 `docs/research/visual-functional-implementation.md`，V01–V04仍未完成。
 
-最新修正：未通过验收的自动门框/开放区模型默认停用（显式`--experimental-boundaries`）；弱变化不再自动切段。修正单视图旋转否决和未验证recoverPose旋转结论；val5移动44→46/97、错误旋转跳过11→0，仍51次直行unknown。35项链路/4项VO测试通过。val4三次Oracle重访均已召回正确候选，但独立结构链接0/1/0未满足确认门槛；见 `docs/visual-motion-and-revisit-diagnosis.md`。不是重访已修好。
+最新修正：未通过验收的自动门框/开放区模型默认停用（显式`--experimental-boundaries`）；弱变化不再自动切段。修正单视图旋转否决和未验证recoverPose旋转结论；val5移动44→46/97、错误旋转跳过11→0，仍51次直行unknown。35项链路/4项VO测试通过。val4三次Oracle重访均已召回正确候选，但独立结构链接0/1/0未满足确认门槛；见 `docs/archive/visual-motion-and-revisit-diagnosis.md`。不是重访已修好。
 
 本轮三问题处理与多维重跑：`sim/revisit_geometry.py` 增加mutual SIFT、双向投影误差、空间分布与两个不同朝向表面核验，接入原matcher不降低独立锚点门槛。Oracle val4正确2/3（原0/3）、val5正确2/2，无新增错误supported；第三次val4仍仅一对结构锚点，保持unknown。新VO val4 139/146、val5 46/97，两套错误旋转跳过0、转动误报移动0/47（均unknown）。失败边界默认停用，自动边界能力仍缺失，不宣称三个问题全解决。
 
@@ -92,13 +102,13 @@
 - 验证：`npm.cmd run test:visual-pipeline`25项、`npm.cmd run test:memory`72项通过；两套真实回放无基线回退。测试组有重叠，不能相加当独立样本。
 - [ ] 所有不足尚未补完：可靠开口/开放空间穿越轨迹、动态场景/静止负例、val5 VO退化诊断、自动层实际返回提升、真实设备/在线验证仍待完成。不得把兼容层或弱变化提案宣称为这些任务完成。
 
-- [x] 整理算法与评测集、多维评分：`docs/visual-experience-algorithms-and-evaluation.md`；`docs/experiments/visual-pipeline-dataset-v1.json` 冻结两开发户型292帧/876三方向图片hash；`visual-pipeline-scorecard-v1.json` 各维度独立分母及算法/输入hash，不合成总体准确率。扩采Oracle成绩单列，不混入当前端到端分数。
+- [x] 整理算法与评测集、多维评分：`docs/research/visual-experience-algorithms-and-evaluation.md`；`docs/experiments/visual-pipeline-dataset-v1.json` 冻结两开发户型292帧/876三方向图片hash；`visual-pipeline-scorecard-v1.json` 各维度独立分母及算法/输入hash，不合成总体准确率。扩采Oracle成绩单列，不混入当前端到端分数。
 - [x] 三方向VO实验模块接入：`visual-experience-pipeline.ts`、`src/sim/visual-experience-replay.ts` 串联按时序窗口运动聚合→跨越状态机→片段→当前历史匹配器→修订存储。57/40窗口实际回放与当前匹配器Oracle对照重跑完成；没有把移动冒充边界证据、生产记忆未替换。
 - [ ] 完整自动识别接入仍未完成：实际自动边界轨迹生产器缺失，新链路0/11切换恢复、0/97窗口确认区域、查找恢复0；已检测错绑0仅因拒答，不能算可靠。VO移动发现93.8%/45.4%，Oracle历史返回0/3及2/2。需要补齐边界生产器才能宣称全算法接入，不先调参。
 - 验证：`npm.cmd run test:visual-pipeline`20项通过（含3项新集成测试）；`npm.cmd run test:memory`72项通过（与前者部分重叠，不相加当独立数）；原VO Python3项单测此前通过。缓存回放9.53/5.78ms不含视觉提取，真实延迟未测。
 
 - [x] 用户要求的三方向图像输入简单运动模块（准确术语VO，无IMU并非VIO）：`sim/three_view_vo.py`、3项单测。双向唯一SIFT匹配→标定单应旋转检查→本质矩阵/RANSAC/正深度验证→低旋转视差候选；至少两方向支持移动，任一可靠旋转信号则跳过。只读front/left/right图像，已知仿真相机内参，不读取GT/方向/IMU。不做三视图立体三角化，不输出米制位移或直接切换。
-- 三方向VO实际回放：val4 146直行步137移动候选(93.8%)、4未知、5误跳过旋转；24转动步全部未知，无假移动。val5 97直行步44候选(45.4%)、42未知、11误跳过；23转动步全部未知，无假移动。90°转动因重叠不足是unknown，不代表成功估计旋转。缺真实静止/动态负例，不能给总体准确率。见 `docs/three-view-vo-trial.md`。
+- 三方向VO实际回放：val4 146直行步137移动候选(93.8%)、4未知、5误跳过旋转；24转动步全部未知，无假移动。val5 97直行步44候选(45.4%)、42未知、11误跳过；23转动步全部未知，无假移动。90°转动因重叠不足是unknown，不代表成功估计旋转。缺真实静止/动态负例，不能给总体准确率。见 `docs/archive/three-view-vo-trial.md`。
 - [ ] 三方向VO后续：实际静止负例、低纹理/重复纹理与平面退化审核、真实标定、移动方向跨视图一致性、连续轨迹及状态机接入；不因原型完成而认为可靠穿越判断完成。
 
 用户新增范围：先处理方向稳定时的明显移动；旋转期间的移动判断暂缓。转动帧应标为skipped/unknown而非静止，转动结束后重新核查连续性，不用跳过策略证明未跨区域。
