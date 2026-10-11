@@ -33,6 +33,11 @@ test("rejection and interpretation history survive atomic load; corrupt load is 
 		const path = join(dir, "bundle.json"); await memory.persist(path);
 		const restored = new VisualExperienceMemory(); await restored.load(path);
 		assert.deepEqual(restored.snapshot(), memory.snapshot());
+		assert.deepEqual(restored.grouping(), memory.grouping());
+		const invalidGrouping=restored.snapshot() as any;
+		invalidGrouping.groupingRevisions[0].assignments.future="current-o1";
+		await writeFile(path,JSON.stringify({protocol:"visual-experience-memory-v1",...invalidGrouping}));
+		await assert.rejects(restored.load(path));assert.deepEqual(restored.snapshot(),memory.snapshot());
 		await writeFile(path, '{"protocol":"visual-experience-memory-v1","baseline":{},"interpretations":[]}');
 		await assert.rejects(restored.load(path)); assert.deepEqual(restored.snapshot(), memory.snapshot());
 	} finally { await rm(dir, { recursive: true, force: true }); }
@@ -81,4 +86,51 @@ test("fresh memory uses formal anchor policy while old bundles preserve legacy b
 	const legacy = new ExperienceAssociation(new ExperienceGraph(), true).getBundle();
 	fresh.association.restoreBundle(legacy);
 	assert.deepEqual(fresh.association.getBundle(), legacy);
+});
+test("online current grouping is actual output, not legacy visual unknowns", () => {
+	const memory=new VisualExperienceMemory();
+	for(let i=1;i<=3;i++) {
+		const result=memory.observe(observation(i),[],[]);
+		assert.equal(result.grouping.assignments[`o${i}`],"current-o1");
+		assert.equal(result.grouping.revision,i);
+	}
+	assert.equal(memory.grouping()!.groups.length,1);
+	assert.equal(memory.effective().unresolvedObservationIds.length,3);
+	assert.equal(memory.searchGroupObjects("current-o1","cup").length,3);
+});
+test("rotation, weak matches and unknown VO do not remove current membership", () => {
+	const memory=new VisualExperienceMemory();memory.observe(observation(1),[],[]);
+	const result=memory.observe(observation(2),[{beforeFrame:"a",afterFrame:"b",status:"skipped-rotation"}],[],[{id:"weak",a:"o1",b:"o2",kind:"visual",confidence:.01,source:"fixture",frames:["f1","f2"]}]);
+	assert.equal(result.grouping.assignments.o2,"current-o1");
+	assert.equal(result.grouping.groups[0]!.historicalIdentityStatus,"unrecognized");
+});
+test("new positive contradiction is atomic, revisable and group search uses current membership", () => {
+	const memory=new VisualExperienceMemory();memory.observe(observation(1),[],[]);memory.observe(observation(2),[],[]);
+	const result=memory.observe(observation(3),[],[],[],[],[],[{id:"c",a:"o1",b:"o3",reason:"verified different context",source:"fixture",frames:["f1","f3"]}]);
+	assert.equal(result.grouping.assignments.o3,"current-o3");
+	assert.equal(memory.searchGroupObjects("current-o1","cup").length,2);
+	const before=memory.snapshot(),groups=memory.grouping();
+	assert.throws(()=>memory.observe(observation(4),[],[],[],[],[],[{id:"future",a:"o4",b:"o5",reason:"bad",source:"fixture",frames:["f4"]}]));
+	assert.deepEqual(memory.snapshot(),before);assert.deepEqual(memory.grouping(),groups);
+});
+test("supported multi-bearing visual anchor changes produce provisional context cuts", () => {
+	const graph=new ExperienceGraph(), association=new ExperienceAssociation(graph), memory=new VisualExperienceMemory(association);
+	for(let i=1;i<=4;i++)memory.addObservation(observation(i));
+	for(const [a,b] of [[1,2],[3,4]])memory.addEvidence({a:`o${a}`,b:`o${b}`,bearings:[1,1],backwardBearings:[1,1],source:"positive anchor fixture"});
+	const result=memory.interpret({observations:[1,2,3,4].map(i=>({...observation(i),motionSteps:[],boundaryEvidence:[]})),links:[],contradictions:[],reason:"available positive context anchors"});
+	assert.deepEqual(result.grouping.groups.map(group=>group.observationIds),[["o1","o2"],["o3","o4"]]);
+	assert.equal(result.grouping.groups[1]!.physicalScopeVerified,false);
+	assert.equal(result.continuity.boundaries.length,0);
+});
+test("historical rejection retracts a group match without deleting temporal membership",()=>{
+	const memory=new VisualExperienceMemory();for(let i=1;i<=6;i++)memory.addObservation(observation(i));
+	const target=memory.association.graph.createNode(["o1","o2"],"fixture historical anchor");
+	const cuts=[3,5].map(i=>({event:{id:`c${i}`,beforeObservationId:`o${i}`,source:"automatic" as const,reason:"context evidence",frames:[`f${i}`]},availableAtMs:6000}));
+	const links=[[1,5],[2,6]].map(([a,b],i)=>({id:`g${i}`,a:`o${a}`,b:`o${b}`,kind:"geometric" as const,confidence:1,source:"fixture",frames:[`f${a}`,`f${b}`]}));
+	memory.interpret({observations:[1,2,3,4,5,6].map(i=>({...observation(i),motionSteps:[],boundaryEvidence:[]})),links,contradictions:[],automaticBoundaryProposals:cuts,reason:"initial group revisit"});
+	assert.equal(memory.grouping()!.assignments.o5,"current-o1");
+	memory.reject("o5",target,{source:"review",reason:"wrong historical association"});
+	assert.equal(memory.grouping()!.assignments.o5,"current-o5");
+	assert.equal(Object.keys(memory.grouping()!.assignments).length,6);
+	assert.equal(memory.searchObjects("cup").length,6);
 });

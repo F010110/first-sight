@@ -4,6 +4,10 @@
 
 ## 当前方向与限制
 
+本轮时间连续接入：`current-experience-grouping.ts`+`VisualExperienceMemory.observe().grouping`实际主归类、`grouping()`/`searchGroupObjects()`，历史unknown不丢当前归属；`effective()`仅旧视觉兼容。加入正视觉锚点变化、双队列上下文变化、正矛盾修订与身份拒绝否决；不要求完整穿越。原包不删改，真实分组输出历史原子保存/加载。
+
+最新实际回放`temporal-current-val4/val5-v3.json`，旧严格视觉包逐项一致。val4正式未归类0、同区域聚合24.7%、错合并13/703、混合组2、即时旧组17/40；**仍不符合**。中间只连续+锚点变化有49个错合并对，保留失败报告。当前两套真实历史supported均0，不能宣称重访修复。见`docs/temporal-continuity-integration.md`；61项链路/75项记忆/8项正式标准测试通过，分组重叠不相加。
+
 正式标准：`docs/temporal-image-classification-standard.md`，单一人工区域标签；同区域多组允许并计分散错误，跨区域混组严重。补最终错合并/聚合/未归类、到达时旧组识别/新组建立/重复建组/不确定，稳定性仅辅助。正式执行器支持label包且不向算法暴露答案。8项正式标准测试通过。
 
 本轮发现旧val4混合组1个（2错合并对）。修正新记忆默认sequence中心锚点双向多方向要求，旧包原策略仍保留。从空记忆同证据回放混合组1→0，但未归类61.4%→68.2%，即时旧组识别0/16，val5必要恢复15/19→12/19。**安全错误减少但整体尚未达标，不得宣布修正完成全部算法能力**。当前正式报告`formal-classification-val4-legacy-controlled-v2.json` / `formal-classification-val4-repaired-v2.json`，旧报告保留。

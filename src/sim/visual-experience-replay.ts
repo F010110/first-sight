@@ -56,11 +56,11 @@ const automaticBoundaryProposals = nativeContinuity.boundaries.flatMap(event => 
 	const mapped: BoundaryEvent = { ...event, id: `native-${event.id}`, beforeObservationId: observations[targetIndex]!.id, reason: `${event.reason}; native-frame crossing mapped to observation window; inferred only` };
 	return [{ event: mapped, availableAtMs: confirmation.confirmedAtMs }];
 });
-const pipeline = replayVisualExperience(observations, links, [], undefined, automaticBoundaryProposals.map(row => row.event));
 const integrated = memory.interpret({ observations, links, contradictions: [], automaticBoundaryProposals, reason: "Add VO/temporal interpretations without replacing original association or retrieval" });
+const pipeline = replayVisualExperience(observations, links, [], undefined, integrated.interpretation.segmentation.boundaries);
 const replayMs = performance.now() - started;
 await mkdir(out, { recursive: false });
 await pipeline.store.persist(resolve(out, "interpretation-bundle.json"));
 await memory.persist(resolve(out, "integrated-memory.json"));
-await writeFile(resolve(out, "pipeline.json"), JSON.stringify({ protocol: "visual-experience-pipeline-v2", ...pipeline.result, nativeContinuity, regions: integrated.regions, effective: integrated.effective, replayMs, extractionMs: { vo: vo.extractionMs ?? null, boundary: boundaryTracks?.extractionMs ?? null }, options: { maxGapMs: 4000, maxCrossingMs: 15000, confirmationFrames: 2 }, boundaryProducer: boundaryTracks ? "image-only-geometric-opening/open-layout-inference; experimental-not-certified" : "automatic-weak-visual-change-only", timing: "synthetic 1000ms/tick; extraction and replay reported separately" }, null, 2), { flag: "wx" });
+await writeFile(resolve(out, "pipeline.json"), JSON.stringify({ protocol: "visual-experience-pipeline-v3", ...pipeline.result, grouping: integrated.grouping, nativeContinuity, regions: integrated.regions, effective: integrated.effective, legacyVisualMemory: integrated.effective, replayMs, extractionMs: { vo: vo.extractionMs ?? null, boundary: boundaryTracks?.extractionMs ?? null }, options: { maxGapMs: 4000, maxCrossingMs: 15000, confirmationFrames: 2 }, boundaryProducer: boundaryTracks ? "image-only-geometric-opening/open-layout-inference; experimental-not-certified" : "positive-visual-context-anchor-changes; not physical crossings", timing: "synthetic 1000ms/tick; extraction and replay reported separately; grouping is current output, effective is legacy compatibility only" }, null, 2), { flag: "wx" });
 console.log(JSON.stringify({ observations: observations.length, boundaries: pipeline.result.continuity.boundaries.length, motionSupportedWindows: pipeline.result.motionSummary.filter(row => row.continuousMovement).length, replayMs }));

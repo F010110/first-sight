@@ -3,6 +3,7 @@ import { SegmentInterpretationStore } from "./segment-interpretation-store.js";
 import type { SegmentObservation, BoundaryEvent } from "./experience-segments.js";
 import type { SegmentLink, SegmentContradiction } from "./segment-association.js";
 import { proposeVisualChangeBoundaries } from "./visual-change-boundaries.js";
+import { proposeCoherentContextChanges } from "./coherent-context-changes.js";
 
 export interface VisualMotionStep {
 	beforeFrame: string; afterFrame: string;
@@ -33,13 +34,27 @@ export function replayVisualExperience(input: VisualPipelineObservation[], links
 		return { observation: { id: row.id, atMs: row.atMs, frames: row.frames }, evidence };
 	});
 	const continuity = proposeTemporalBoundaries(continuityInputs, options);
+	const contextChanges = proposeCoherentContextChanges(input, links, options.maxGapMs);
 	const visualChanges = proposeVisualChangeBoundaries(input, links, options.maxGapMs);
 	const confirmedCuts = new Set(continuity.boundaries.map(event => event.beforeObservationId));
 	const hiatusBoundaries = input.slice(1).flatMap((row, i) => row.atMs - input[i]!.atMs > options.maxGapMs ? [{ id: `recording-hiatus-${row.id}`, beforeObservationId: row.id, source: "automatic" as const, reason: "Recording hiatus: split temporal context only, NOT evidence of physical region crossing", frames: [...input[i]!.frames, ...row.frames] }] : []);
 	if (additionalBoundaries.some(event => event.source !== "automatic")) throw new Error("Inference pipeline refuses oracle boundary overrides");
 	// Failed real replay acceptance: weak changes remain diagnostic only.
 	const boundaries = [...continuity.boundaries, ...hiatusBoundaries];
+	for (const event of contextChanges.boundaries) if (!boundaries.some(other=>other.beforeObservationId===event.beforeObservationId)) boundaries.push(event);
 	for (const event of additionalBoundaries) if (!boundaries.some(other => other.beforeObservationId === event.beforeObservationId)) boundaries.push(event);
+	// Positive grouping contradictions can revise context without a doorway
+	// detector. Absent/weak visual links are NOT contradictions.
+	const order = new Map(input.map((row, i) => [row.id, i]));
+	for (const edge of contradictions) {
+		// Historical identity veto does not by itself prove a spatial/context cut.
+		if(edge.source==="historical-association-veto")continue;
+		const a = order.get(edge.a), b = order.get(edge.b);
+		if (a === undefined || b === undefined || a === b) throw new Error("Invalid context contradiction endpoints");
+		const first = Math.min(a, b), last = Math.max(a, b);
+		if (boundaries.some(event => { const index = order.get(event.beforeObservationId)!; return index > first && index <= last; })) continue;
+		boundaries.push({ id: `context-contradiction-${edge.id}`, beforeObservationId: input[last]!.id, source: "automatic", reason: `Positive same-group contradiction ${edge.id}: ${edge.reason}. Revisable context split, NOT certified physical crossing.`, frames: edge.frames });
+	}
 	const interpretation = store.revise({ boundaries, links, contradictions, reason: "Ordered VO + independent crossing tracks + explicitly weak visual batch changes; preserve raw observations and reversible historical proposals" });
-	return { store, result: { motionSummary, continuity, visualChanges, hiatusBoundaries, interpretation, limitations: "VO and weak visual changes are experimental candidates, not guaranteed physical crossings. Recording hiatus splits temporal contexts, not physical identities. Candidate segments with unresolved scope do not count as assigned region coverage. Baseline identities preserved separately; production memory and RequestAgent unchanged." } };
+	return { store, result: { motionSummary, continuity, contextChanges, visualChanges, hiatusBoundaries, interpretation, limitations: "Current context continuity/departure are revisable grouping hypotheses, not verified physical crossings. Legacy weak single-interval changes remain diagnostic only. Recording hiatus splits temporal contexts, not physical identities. Baseline identities preserved separately; production memory and RequestAgent unchanged." } };
 }
