@@ -1,6 +1,8 @@
 # First Sight · 第一视角视觉助理（手机摄像头 + Qwen VLM）
 
-**当前快照：v1.1.0-test.3 · 研究测试版**（2026-10-12）
+**当前快照：v1.1.0-test.4 · 研究测试版**（2026-10-12）
+
+主体区域＋边界组／边界观察协议已固定为[研究算法v1](docs/research/boundary-region-algorithm-v1.json)，默认qwen3.8-flash，仅离线研究。val4粗粒度44核心查询正确，边界仅4/13检出；val5扩展40观察尚待人工审核，模型引用协议失败已保留并隔离未定。[人工视频审查网站](docs/research/human-review-site.md)支持97样本的播放、跳转、AI标签查看与人工修改导出。
 
 固定查询评测、广角模拟和可选VLM全局聚合已归档；独立聚合试验默认`qwen3.8-flash`。开放生活区粗粒度真实结果32/44（72.7%），12卧室核心查询因组内边界疑点未定；此前plus同粒度44/44不作为Flash成绩或独立可靠性证明。见[拒答诊断](docs/research/vlm-abstention-diagnosis.md)。VLM不接入默认算法，手机为旧实现，头盔采集驱动仍待调试。
 

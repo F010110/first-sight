@@ -1,6 +1,10 @@
 # 实验索引
 
+test.4固定边界算法与扩展：`vlm-boundary-groups-val4-*`、`vlm-boundary-groups-val5-*`及`val5-unreviewed-query-inventory-v1.json`。val5原API缺每组引用的协议失败保留，准确率未评定；[人工视频网站](../research/human-review-site.md)用于审查，不是验收通过证明。
+
 ## v1.1.0-test.2 当前证据
+
+test.3后续边界协议：`vlm-boundary-groups-val4-{input,response,report,review}-v1.json`，[范围与未解决边界召回](../research/vlm-boundary-groups-trial.md)。44核心查询100%，边界4/13检出，不能宣传整段正确。
 
 后续VLM真实全局聚合：`vlm-global-aggregation-val4-input-v1.json`、`vlm-global-aggregation-val4-response-v1.json`、`vlm-global-aggregation-val4-report-v1.json`，[范围与结果](../research/vlm-global-group-aggregation-trial.md)。18→4组，固定查询63.6%，同区域聚合100%但开放功能区混合，非验收通过。
 

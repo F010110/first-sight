@@ -42,8 +42,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('replay', type=Path); parser.add_argument('dataset', type=Path); parser.add_argument('queries', type=Path); parser.add_argument('output', type=Path)
     parser.add_argument('--model', default='qwen3.8-flash')
+    parser.add_argument('--prepare-only', action='store_true', help='Freeze atlases only, without API call or scoring labels')
     args = parser.parse_args()
-    if not os.getenv('QWEN_API_KEY') or not os.getenv('QWEN_BASE_URL'):
+    if not args.prepare_only and (not os.getenv('QWEN_API_KEY') or not os.getenv('QWEN_BASE_URL')):
         raise ValueError('Missing Qwen credentials/base URL')
     read = lambda p: json.loads(p.read_text(encoding='utf-8'))
     replay = read(args.replay); snapshots = replay['online']['snapshots']
@@ -83,6 +84,9 @@ def main():
         manifest['groups'][name] = {'sourceGroupId': group, 'observationIds': members, 'selectedObservationIds': selected, 'sourceImageHashes': source_hashes, 'atlasSha256': hashlib.sha256(atlas.read_bytes()).hexdigest()}
         content.extend([{'type': 'text', 'text': f'输入组{name}，代表引用：' + ','.join(f'{name}:{id}' for id in selected)}, {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,' + base64.b64encode(atlas.read_bytes()).decode('ascii')}}])
     (args.output / 'input-manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+    if args.prepare_only:
+        print(json.dumps({'preparedGroups': len(groups), 'representatives': len(refs), 'apiCalled': False}))
+        return
     from openai import OpenAI
     client = OpenAI(api_key=os.environ['QWEN_API_KEY'], base_url=os.environ['QWEN_BASE_URL'], timeout=240, max_retries=0)
     started = time.perf_counter()

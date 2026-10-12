@@ -1,6 +1,6 @@
 # 文档导航
 
-当前研究版本：**v1.1.0-test.3**。稳定应用基线：**v1.0.0**。
+当前研究版本：**v1.1.0-test.4**。稳定应用基线：**v1.0.0**。
 
 ## 优先阅读
 
@@ -21,6 +21,9 @@
 15. [VLM全局自动聚合：真实调用与失败](research/vlm-global-group-aggregation-trial.md)
 16. [开放生活区评分与qwen3.8-flash真实结果](research/vlm-open-living-granularity.md)
 17. [Flash卧室拒答诊断与版本冻结](research/vlm-abstention-diagnosis.md)
+18. [边界组与部分边界输出真实试验](research/vlm-boundary-groups-trial.md)
+19. [固定边界研究算法v1](research/boundary-region-algorithm-v1.json)
+20. [人工运动视频与样本点审查网站](research/human-review-site.md)
 
 ## 分区
 
