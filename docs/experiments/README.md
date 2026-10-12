@@ -2,6 +2,10 @@
 
 ## v1.1.0-test.2 当前证据
 
+后续VLM真实全局聚合：`vlm-global-aggregation-val4-input-v1.json`、`vlm-global-aggregation-val4-response-v1.json`、`vlm-global-aggregation-val4-report-v1.json`，[范围与结果](../research/vlm-global-group-aggregation-trial.md)。18→4组，固定查询63.6%，同区域聚合100%但开放功能区混合，非验收通过。
+
+后续固定查询开发诊断：`fixed-region-queries-val4-v1.json`与`fixed-region-query-report-val4-v1.json`，[定义和限制](../research/fixed-region-query-evaluation.md)。同44查询最终正确率默认50.0%、可选修复61.4%，不等于随机空间位置或硬件成绩，不替代正式验收。
+
 - 默认时间归类：`temporal-current-val4-formal-v3.json`；v1/v2保留失败过程。
 - 可选回溯修复：`retrospective-repair-review-val4-v2.json`和`retrospective-repair-val4-formal-v2.json`。
 - 误修对照：`retrospective-repair-review-val4-v1.json`和`retrospective-repair-val4-formal-v1.json`。

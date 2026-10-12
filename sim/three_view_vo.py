@@ -80,6 +80,13 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('dataset',type=Path);p.add_argument('output',type=Path);p.add_argument('--calibration',type=Path);a=p.parse_args()
     started=time.perf_counter();cv2.setRNGSeed(0)
     calibration=json.loads(a.calibration.read_text()) if a.calibration else None
+    model_path=a.dataset/'camera-model.json'
+    if model_path.exists():
+        model=json.loads(model_path.read_text())
+        if model.get('projection')!='pinhole':
+            raise ValueError('Fisheye images require calibrated rectification before pinhole VO; raw fisheye is not supported')
+        if model.get('fovDegrees')!=90 and calibration is None:
+            raise ValueError('Wide-angle pinhole renders require explicit intrinsics; refusing default 90-degree calibration')
     paths=sorted((a.dataset/'frames').glob('*.jpg'));trace=[]
     if len(paths)<2:raise ValueError('At least two chronological image triples required')
     names=[path.name for path in paths]

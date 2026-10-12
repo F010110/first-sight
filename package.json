@@ -1,12 +1,13 @@
 {
   "name": "first-sight",
-  "version": "1.1.0-test.2",
+  "version": "1.1.0-test.3",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "test:research-snapshot": "python sim/test_research_snapshot.py",
     "test:helmet-capture": "npm run build && node --test dist/agent/helmet-capture.test.js",
     "test:grouping-benchmark": "python sim/test_grouping_benchmark.py",
     "test:classification-standard": "python sim/test_temporal_classification_standard.py",

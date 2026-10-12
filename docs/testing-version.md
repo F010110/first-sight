@@ -1,6 +1,18 @@
-# v1.1.0-test.2：视觉记忆研究测试版
+# v1.1.0-test.3：固定查询与可选VLM聚合研究测试版
 
-日期：2026-10-11。稳定应用基线仍为 `v1.0.0`；本标签是研究快照，不是可靠性验收通过。
+日期：2026-10-12。稳定应用基线仍为 `v1.0.0`；本标签是研究快照，不是可靠性验收通过。
+
+## 本版新增与冻结
+
+- 44固定查询：即时/10模拟秒/最终可修正分开评分；默认最终50.0%，可选回溯修复61.4%。
+- 全组视觉聚合完整失败曲线18→1，自动停止失败与事后峰值均保留，不挑最好K宣称成功。
+- 可选VLM全局聚合：全部18组、36三视图代表、单次调用。默认模型`qwen3.8-flash`，粗粒度开放生活区32/44=72.7%、未知12；细粒度16/44。plus此前输出粗粒度44/44、细粒度28/44分别保留，不混用模型。
+- 粗粒度是用户认可的厨房/客厅合并标签新版本，不覆盖旧标签。核心开发样本高分不证明13排除图或实际设备归属正确。
+- [Flash拒答原图诊断](research/vlm-abstention-diagnosis.md)：原组含门口过渡代表，整组不可拆接口使不确定性扩散。尚未解决，不强迫模型输出。
+- 广角渲染可选FOV/合成鱼眼，针孔VO拒绝未经校正鱼眼；未运行新THOR广角路线，未实物标定。
+- 头盔采集接口保留，硬件仅采集、电脑处理；手机方案归档，真实驱动尚未实现。
+
+算法/选择/接口/数据和旧模型响应固定；提示词微调须另立版本，保存新输入hash与结果，不能覆盖此基线。拆组或改变代表采样是接口/算法变更，不算单纯提示微调。上述模块均独立实验，默认pipeline及生产请求链路不接VLM聚合。
 
 ## 固定范围
 
@@ -25,10 +37,15 @@ npm.cmd run test:visual-pipeline
 npm.cmd run test:retrospective-repair
 npm.cmd run test:classification-standard
 npm.cmd run test:grouping-benchmark
+npm.cmd run test:helmet-capture
+npm.cmd run test:research-snapshot
+python scripts/check-doc-links.py
 python sim/test_navigation.py
 ```
 
 这些是软件机制回归，不是可靠性认证。离线真实回放需要本地录制与缓存证据，`run/`数据不随版本发布。依赖见根目录 `requirements.txt`。
+
+本版实际检查：memory 75、visual-pipeline 61、helmet/repair 7、Python research-snapshot 38、navigation 1通过，文档链接检查通过。Python套件含classification/benchmark等重叠测试，不相加为独立能力数；不调用付费模型API。真实模型两次原响应已归档，不因发布重复调用。
 
 ## 阅读与复现
 

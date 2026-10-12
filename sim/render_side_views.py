@@ -16,7 +16,11 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--windows", type=int, default=40)
     parser.add_argument("--substeps", type=int, default=1, help="Visualization-only interpolated camera poses per recorded action")
+    parser.add_argument("--fov", type=float, default=90, help="Square pinhole horizontal/vertical FOV, not diagonal lens FOV")
+    parser.add_argument("--projection", choices=["pinhole", "equidistant-fisheye"], default="pinhole")
     args = parser.parse_args()
+    if not 0 < args.fov < 180:
+        raise ValueError("FOV must be strictly between 0 and 180")
     manifest = json.loads((args.episode / "manifest.json").read_text())
     if hashlib.sha256(args.house.read_bytes()).hexdigest() != manifest["house_sha256"]:
         raise ValueError("House differs from source recording")
@@ -42,7 +46,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     for name in ("frames", "left", "right", "triple"):
         (args.output / name).mkdir()
-    controller = Controller(scene=json.loads(args.house.read_text()), width=manifest["image_size"], height=manifest["image_size"], fieldOfView=90, platform=Linux64, gridSize=0.25, rotateStepDegrees=90, snapToGrid=False, quality=manifest["quality"], server_timeout=120)
+    controller = Controller(scene=json.loads(args.house.read_text()), width=manifest["image_size"], height=manifest["image_size"], fieldOfView=args.fov, platform=Linux64, gridSize=0.25, rotateStepDegrees=90, snapToGrid=False, quality=manifest["quality"], server_timeout=120)
     audits = []
     try:
         for row in rows:
@@ -65,6 +69,13 @@ def main():
                     raise RuntimeError("Side optical center differs from front")
                 sides.append(Image.fromarray(event.frame.copy()))
             left, right = sides
+            if args.projection == "equidistant-fisheye":
+                import numpy as np
+                from wide_angle_camera import equidistant_fisheye
+                projected = [equidistant_fisheye(np.asarray(image), args.fov) for image in (front, left, right)]
+                front, left, right = [Image.fromarray(image) for image, _ in projected]
+                if row == rows[0]:
+                    Image.fromarray(projected[0][1]).save(args.output / "valid-pixels.png")
             size = front.width
             triple = Image.new("RGB", (size * 3, size + 24), "white")
             draw = ImageDraw.Draw(triple)
@@ -83,6 +94,7 @@ def main():
         (args.output / "windows.jsonl").write_text("".join(json.dumps(row) + "\n" for row in windows))
         (args.output / "observations.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows if row["tick"] <= max_tick))
         (args.output / "pose-audit.json").write_text(json.dumps(audits, indent=2))
+        (args.output / "camera-model.json").write_text(json.dumps({"projection": args.projection, "fovDegrees": args.fov, "fovConvention": "horizontal/vertical on square pinhole; circle diameter for equidistant fisheye", "synthetic": True, "hardwareCalibration": False, "voRequiresExplicitCalibration": args.fov != 90 or args.projection != "pinhole", "limitations": "Same-center static renders; no rig baseline, synchronization, measured lens distortion or edge blur. Pinhole-to-fisheye resampling may undersample the center at large FOV."}, indent=2))
         (args.output / "manifest.json").write_text(json.dumps({**manifest, "sourceEpisode": str(args.episode), "sourceFrames": source_max_tick + 1, "frames": max_tick + 1, "substeps": args.substeps, "visualizationOnly": args.substeps > 1, "views": ["front", "left-90", "right+90"], "rendering": "same optical center in static scene, sequential orientation-only main-camera renders to exclude avatar self-occlusion; NOT hardware synchronization. Substeps >1 are interpolated visualization poses, NOT measured robot dynamics and NOT agent evaluation inputs.", "triptych": "left/front/right, labeled; weak CV uses front only in both conditions"}, indent=2))
         print(args.output, flush=True)
     finally:

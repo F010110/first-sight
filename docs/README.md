@@ -1,6 +1,6 @@
 # 文档导航
 
-当前研究版本：**v1.1.0-test.2**。稳定应用基线：**v1.0.0**。
+当前研究版本：**v1.1.0-test.3**。稳定应用基线：**v1.0.0**。
 
 ## 优先阅读
 
@@ -13,6 +13,14 @@
 7. [原始建议材料索引](notes/suggestions/README.md)
 8. [头盔采集兼容接口](research/helmet-capture-interface.md)
 9. [旧手机实现状态](archive/mobile-implementation-status.md)
+10. [160°广角模拟与边缘畸变准备](research/wide-angle-camera-preparation.md)
+11. [固定查询点：可修正区域识别与标签定义](research/fixed-region-query-evaluation.md)
+12. [同区域不同组聚合：方法核查与建议试验](research/same-region-group-aggregation-review.md)
+13. [组聚合试验：恢复碎片与传播混组的失败](research/group-aggregation-hypothesis-trial.md)
+14. [全部组参与的18→1聚合完整结果](research/full-group-aggregation-trial.md)
+15. [VLM全局自动聚合：真实调用与失败](research/vlm-global-group-aggregation-trial.md)
+16. [开放生活区评分与qwen3.8-flash真实结果](research/vlm-open-living-granularity.md)
+17. [Flash卧室拒答诊断与版本冻结](research/vlm-abstention-diagnosis.md)
 
 ## 分区
 
