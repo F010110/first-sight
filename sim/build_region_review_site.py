@@ -24,7 +24,7 @@ def export_display_video(frames, output, fps, subdivisions=12):
     import imageio_ffmpeg
     first = display_triptych(cv2.imread(str(frames[0])))
     height, width = first.shape[:2]
-    writer = imageio_ffmpeg.write_frames(str(output), (width, height), fps=fps * subdivisions, codec='libx264', pix_fmt_out='yuv420p', output_params=['-crf', '18', '-movflags', '+faststart'])
+    writer = imageio_ffmpeg.write_frames(str(output), (width, height), fps=fps * subdivisions, codec='libx264', pix_fmt_out='yuv420p', output_params=['-crf', '18', '-g', '24', '-movflags', '+faststart'])
     writer.send(None)
     try:
         for index, path in enumerate(frames):

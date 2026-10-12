@@ -94,11 +94,41 @@ def review_boundary_detection(boundaries, label_rows):
             'note': 'AI-reviewed boundary convention, not independent physical boundary validation; unused image representatives limit recall. Does not change the core query denominator.'}
 
 
+def request_with_protocol_retries(request, content, groups, refs, retries, save_attempt):
+    """Bounded schema repair only; never receives scoring labels."""
+    messages = [{'role': 'user', 'content': content}]
+    history = []
+    for attempt in range(retries + 1):
+        response = request(messages)
+        text = response.choices[0].message.content or ''
+        error = None
+        try:
+            answer = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip()))
+            validate_boundary_answer(answer, groups, refs)
+        except (ValueError, KeyError, TypeError, AttributeError) as failure:
+            error = str(failure) or type(failure).__name__
+            if error == 'Region group lacks non-boundary representative':
+                boundary_refs = {row['observationRef'] for row in answer['boundaryObservations']}
+                unsupported = [name for region in answer['regions'] for name in region['groupIds']
+                               if not any(ref.split(':')[0] == name and ref not in boundary_refs for ref in region['evidence'])]
+                error += '; groups=' + ','.join(unsupported)
+                error += '; available representative references=' + ','.join(sorted(ref for ref in refs if ref.split(':')[0] in unsupported))
+        save_attempt(attempt, response, text, error)
+        history.append({'attempt': attempt, 'valid': error is None, 'error': error})
+        if error is None or attempt == retries:
+            return response, text, history
+        messages.extend([{'role': 'assistant', 'content': text}, {'role': 'user', 'content':
+                         '输出协议校验失败：' + error + '。请依据原始图片重新核对并完整输出JSON。每个主体组必须引用至少一个本组实际非边界代表；不能编造引用，无法支持则放uncertainGroupIds。没有新增视觉证据，不要为了通过校验强行确定区域。'}])
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('frozen_input', type=Path); parser.add_argument('replay', type=Path); parser.add_argument('queries', type=Path); parser.add_argument('output', type=Path)
     parser.add_argument('--resume-saved-response', action='store_true', help='Validate already saved response; no new API call')
+    parser.add_argument('--protocol-retries', type=int, choices=[0, 1, 2], default=0, help='Separate v2 trial: bounded validation repair, never score-based retry')
     args = parser.parse_args()
+    if args.resume_saved_response and args.protocol_retries:
+        raise ValueError('Resume is offline only; use a new output directory for retry trial')
     read = lambda p: json.loads(p.read_text(encoding='utf-8'))
     original = read(args.frozen_input / 'input-manifest.json')
     args.output.mkdir(parents=True, exist_ok=args.resume_saved_response)
@@ -112,6 +142,8 @@ def main():
         selected = [f'{name}:{id}' for id in group['selectedObservationIds']]; refs.update(selected)
         content.extend([{'type': 'text', 'text': f'输入组{name}，代表引用：' + ','.join(selected)}, {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,' + base64.b64encode(image).decode('ascii')}}])
     manifest = {**original, 'protocol': 'vlm-boundary-groups-v1', 'modelRequested': 'qwen3.8-flash', 'prompt': PROMPT, 'sourceInputSha256': hashlib.sha256((args.frozen_input / 'input-manifest.json').read_bytes()).hexdigest(), 'scope': 'Same v1 image evidence; changed output protocol AND prompt. Not a prompt-only causal ablation.'}
+    if args.protocol_retries:
+        manifest.update({'protocol': 'vlm-boundary-groups-retry-v2', 'maxProtocolRetries': args.protocol_retries, 'retryPolicy': 'First schema-valid answer; no scoring labels. Preserve every response. Exhaustion uses existing fail-closed validation/quarantine.'})
     manifest_path = args.output / 'input-manifest.json'
     if args.resume_saved_response:
         if read(manifest_path) != manifest:
@@ -119,6 +151,7 @@ def main():
     else:
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
     started = time.perf_counter()
+    retry_history = []
     if args.resume_saved_response:
         from openai.types.chat import ChatCompletion
         response = ChatCompletion.model_validate(read(args.output / 'response.json'))
@@ -127,7 +160,17 @@ def main():
     else:
         from openai import OpenAI
         client = OpenAI(api_key=os.environ['QWEN_API_KEY'], base_url=os.environ['QWEN_BASE_URL'], timeout=240, max_retries=0)
-        response = client.chat.completions.create(model='qwen3.8-flash', messages=[{'role': 'user', 'content': content}], temperature=0, max_tokens=8000)
+        def request(messages):
+            return client.chat.completions.create(model='qwen3.8-flash', messages=messages, temperature=0, max_tokens=8000)
+        def save_attempt(attempt, response, text, error):
+            (args.output / f'attempt-{attempt}-response.json').write_text(response.model_dump_json(indent=2), encoding='utf-8')
+            (args.output / f'attempt-{attempt}-answer.txt').write_text(text, encoding='utf-8')
+            (args.output / 'retry-history.json').write_text(json.dumps([*retry_history, {'attempt': attempt, 'error': error}], ensure_ascii=False, indent=2), encoding='utf-8')
+            retry_history.append({'attempt': attempt, 'error': error})
+        if args.protocol_retries:
+            response, text, retry_history = request_with_protocol_retries(request, content, original['groups'], refs, args.protocol_retries, save_attempt)
+        else:
+            response = request([{'role': 'user', 'content': content}])
         elapsed = (time.perf_counter() - started) * 1000
         (args.output / 'response.json').write_text(response.model_dump_json(indent=2), encoding='utf-8')
         text = response.choices[0].message.content or ''
@@ -149,7 +192,7 @@ def main():
     contract = read(args.queries)  # Read labels only after prediction.
     revised = [*snapshots[:-1], {**snapshots[-1], 'assignments': assignments}]
     boundary_ids = {id for row in boundaries for id in row['observationIds']}
-    report = {'protocol': manifest['protocol'], 'modelReturned': response.model, 'elapsedMs': elapsed, 'answer': answer, 'finalAssignments': assignments, 'boundaryGroups': boundaries,
+    report = {'protocol': manifest['protocol'], 'retryHistory': retry_history, 'modelReturned': response.model, 'elapsedMs': elapsed, 'answer': answer, 'finalAssignments': assignments, 'boundaryGroups': boundaries,
               'rawAnswer': raw_answer, 'rawProtocolValid': protocol_error is None, 'protocolError': protocol_error, 'quarantinedGroups': quarantined, 'resumedWithoutApiCall': args.resume_saved_response,
               'after': score_queries(contract, revised), 'groupingMetrics': grouping_metrics({id: group if group else f'unknown-{id}' for id, group in assignments.items()}, contract['labels']),
               'boundaryReview': {'coreImagesMarkedBoundary': sorted(id for id in boundary_ids if contract['labels'][id] is not None), 'excludedImagesMarkedBoundary': sorted(id for id in boundary_ids if contract['labels'][id] is None), 'unreviewedBoundaryMeaning': 'Excluded labels do not certify actual physical boundary; independent review needed.'},

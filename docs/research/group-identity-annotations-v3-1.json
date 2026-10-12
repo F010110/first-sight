@@ -1,0 +1,18 @@
+{
+  "version": "1.1.0-test.5",
+  "protocol": "group-identity-image-annotations-v3.1",
+  "status": "current frozen research baseline",
+  "model": "qwen3.8-flash",
+  "temperature": 0,
+  "maxTokens": 8000,
+  "promptSha256": "99f0885913f286e0ee32f63ad971688f3998eb6e86888fdcffc180cf4c7ac7f0",
+  "input": "All chronological local groups; first/middle/last up to three left/front/right triptychs per group. No scoring labels, simulator positions or expected region count.",
+  "identity": "Each group exactly once in one concrete region or boundary group; insufficient evidence may remain unknown. Unshown images inherit group identity provisionally.",
+  "annotations": "Optional actual representative references only: near-door, boundary or different-region. Preserve per-image dissent without automatically overriding group identity. No mandatory annotation quota.",
+  "validation": "Actual per-group evidence required. Collect detected field/reference/coverage errors together; return previous answer and actionable feedback. Never manufacture image evidence.",
+  "maxProtocolRetries": 2,
+  "retrySelection": "First valid answer, not highest score; preserve all responses and feedback. Transport failures recorded separately, no implicit SDK retries.",
+  "evaluation": "Fixed core queries keep unknowns in denominator. Evaluate whole-boundary detection and annotation instability separately. No annotation automatically becomes location ground truth.",
+  "scope": "Offline research only; production unchanged. Two val5 runs core28/28, boundary recall25%/0%, near-door annotations5/0. No established general reliability or complete40-image acceptance.",
+  "supersedes": "test.4 boundary-region v1 as preferred research baseline; original code, input hashes, failures, scores and tags remain reproducible. Website keeps its existing predictions; no arbitrary choice of a repeat."
+}

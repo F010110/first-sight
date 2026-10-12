@@ -1,0 +1,19 @@
+{
+  "attempt": 2,
+  "exceptionType": "APITimeoutError",
+  "timeoutSeconds": 240,
+  "completedAttempts": [
+    {
+      "attempt": 0,
+      "valid": false,
+      "error": "Invalid boundary neighbors"
+    },
+    {
+      "attempt": 1,
+      "valid": false,
+      "error": "Invalid boundary neighbors"
+    }
+  ],
+  "hasValidReport": false,
+  "secondRepeatStarted": false
+}

@@ -1,6 +1,9 @@
 # 文档导航
 
-当前研究版本：**v1.1.0-test.4**。稳定应用基线：**v1.0.0**。
+当前研究版本：**v1.1.0-test.5**。稳定应用基线：**v1.0.0**。
+
+- [当前主体＋单图标注冻结协议](research/group-identity-annotations-v3-1.json)
+- [空间记忆版本历史与旧方案归档](archive/spatial-memory-version-history.md)
 
 ## 优先阅读
 

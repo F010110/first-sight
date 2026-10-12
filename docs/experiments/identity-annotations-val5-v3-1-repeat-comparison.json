@@ -1,0 +1,183 @@
+{
+  "groupingChangedPairs": [
+    [
+      "observation-10",
+      "observation-37"
+    ],
+    [
+      "observation-10",
+      "observation-38"
+    ],
+    [
+      "observation-10",
+      "observation-7"
+    ],
+    [
+      "observation-11",
+      "observation-37"
+    ],
+    [
+      "observation-11",
+      "observation-38"
+    ],
+    [
+      "observation-11",
+      "observation-7"
+    ],
+    [
+      "observation-12",
+      "observation-37"
+    ],
+    [
+      "observation-12",
+      "observation-38"
+    ],
+    [
+      "observation-12",
+      "observation-7"
+    ],
+    [
+      "observation-32",
+      "observation-37"
+    ],
+    [
+      "observation-32",
+      "observation-38"
+    ],
+    [
+      "observation-32",
+      "observation-7"
+    ],
+    [
+      "observation-33",
+      "observation-37"
+    ],
+    [
+      "observation-33",
+      "observation-38"
+    ],
+    [
+      "observation-33",
+      "observation-7"
+    ],
+    [
+      "observation-34",
+      "observation-37"
+    ],
+    [
+      "observation-34",
+      "observation-38"
+    ],
+    [
+      "observation-34",
+      "observation-7"
+    ],
+    [
+      "observation-35",
+      "observation-37"
+    ],
+    [
+      "observation-35",
+      "observation-38"
+    ],
+    [
+      "observation-35",
+      "observation-7"
+    ],
+    [
+      "observation-36",
+      "observation-37"
+    ],
+    [
+      "observation-36",
+      "observation-38"
+    ],
+    [
+      "observation-36",
+      "observation-7"
+    ],
+    [
+      "observation-37",
+      "observation-38"
+    ],
+    [
+      "observation-37",
+      "observation-7"
+    ],
+    [
+      "observation-37",
+      "observation-8"
+    ],
+    [
+      "observation-37",
+      "observation-9"
+    ],
+    [
+      "observation-38",
+      "observation-7"
+    ],
+    [
+      "observation-38",
+      "observation-8"
+    ],
+    [
+      "observation-38",
+      "observation-9"
+    ],
+    [
+      "observation-7",
+      "observation-8"
+    ],
+    [
+      "observation-7",
+      "observation-9"
+    ]
+  ],
+  "unknownStatusChangedIds": [
+    "observation-7",
+    "observation-37",
+    "observation-38"
+  ],
+  "annotationCounts": [
+    5,
+    0
+  ],
+  "annotationDensity": [
+    0.16129032258064516,
+    0.0
+  ],
+  "annotationChangedRefs": [
+    "G05:observation-11",
+    "G06:observation-12",
+    "G11:observation-18",
+    "G15:observation-30",
+    "G16:observation-32"
+  ],
+  "scores": [
+    {
+      "total": 28,
+      "correct": 28,
+      "accuracy": 1.0,
+      "outcomes": {
+        "correct": 28,
+        "wrong-region": 0,
+        "duplicate-new": 0,
+        "wrong-old": 0,
+        "unknown": 0
+      }
+    },
+    {
+      "total": 28,
+      "correct": 28,
+      "accuracy": 1.0,
+      "outcomes": {
+        "correct": 28,
+        "wrong-region": 0,
+        "duplicate-new": 0,
+        "wrong-old": 0,
+        "unknown": 0
+      }
+    }
+  ],
+  "note": "Region numbers normalized by group membership; wording differences ignored. Only two repeats on similar-route development data; no reliability claim."
+}

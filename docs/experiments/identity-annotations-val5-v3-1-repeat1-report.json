@@ -1,0 +1,1238 @@
+{
+  "protocol": "group-identity-image-annotations-v3.1",
+  "modelReturned": "qwen3.8-flash",
+  "elapsedMs": 137556.35200010147,
+  "attempts": [
+    {
+      "attempt": 0,
+      "valid": true
+    }
+  ],
+  "answer": {
+    "regions": [
+      {
+        "groupIds": [
+          "G01",
+          "G22",
+          "G23"
+        ],
+        "reason": "同一开放生活区：灰色石质厨房岛台、棕色门、镜面与浅蓝地板（G01:observation-1、G23:observation-40），与木地板起居室（台灯、白色矮柜、海滩挂画、木窗）通过敞开玻璃门连通（G22:observation-39），布局连续无实墙分隔，视为同一厨房-客厅开放区。",
+        "evidence": [
+          "G01:observation-1",
+          "G22:observation-39",
+          "G23:observation-40"
+        ]
+      },
+      {
+        "groupIds": [
+          "G03",
+          "G04",
+          "G05",
+          "G06",
+          "G16",
+          "G17",
+          "G18",
+          "G19"
+        ],
+        "reason": "同一卧室实例：白色地板、蓝床头白被床配黄色枕头、棕色床头柜、斜顶飘窗及墙上风景画反复共现（G03:observation-8、G19:observation-36），各图观察者均站在该白色地板卧室内，门缝透见的客厅或浴室仅为邻室视野。",
+        "evidence": [
+          "G03:observation-8",
+          "G04:observation-9",
+          "G05:observation-10",
+          "G06:observation-12",
+          "G16:observation-32",
+          "G17:observation-33",
+          "G18:observation-34",
+          "G19:observation-36"
+        ]
+      },
+      {
+        "groupIds": [
+          "G07",
+          "G08",
+          "G09",
+          "G10",
+          "G11",
+          "G12",
+          "G13",
+          "G14",
+          "G15"
+        ],
+        "reason": "同一浴室实例：浅色木地板上坐便器、立柱盆、垃圾桶、红色皮搋子与峡谷挂画构成固定布局（G08:observation-15、G10:observation-17），双开玻璃门通向卧室白地板（G14:observation-29），观察者均位于浴室内部。",
+        "evidence": [
+          "G07:observation-13",
+          "G08:observation-14",
+          "G09:observation-16",
+          "G10:observation-17",
+          "G11:observation-18",
+          "G12:observation-19",
+          "G13:observation-28",
+          "G14:observation-29",
+          "G15:observation-30"
+        ]
+      }
+    ],
+    "boundaryGroups": [
+      {
+        "groupIds": [
+          "G02"
+        ],
+        "reason": "观察者站在卧室门槛处：左侧为客厅木地板与海滩挂画墙，正前为卧室白地板与床，右侧玻璃门外可见厨房岛台，脚下同时呈现两种地板，属客厅-卧室过渡位置。",
+        "evidence": [
+          "G02:observation-7"
+        ],
+        "adjacentRegionIndices": [
+          1,
+          2
+        ]
+      },
+      {
+        "groupIds": [
+          "G20"
+        ],
+        "reason": "观察者位于卧室门口：左侧见床与飘窗（卧室侧），右侧透过玻璃门见客厅木窗、矮柜与台灯（客厅侧），正前为门框，处于门槛过渡带。",
+        "evidence": [
+          "G20:observation-37"
+        ],
+        "adjacentRegionIndices": [
+          1,
+          2
+        ]
+      },
+      {
+        "groupIds": [
+          "G21"
+        ],
+        "reason": "观察者站在卧室-客厅门洞：左侧飘窗与右侧床属卧室，正前透过门框见客厅木地板、矮柜、台灯与海滩挂画墙，为两区交界位置。",
+        "evidence": [
+          "G21:observation-38"
+        ],
+        "adjacentRegionIndices": [
+          1,
+          2
+        ]
+      }
+    ],
+    "boundaryObservations": [],
+    "uncertainGroupIds": [],
+    "uncertaintyReasons": {},
+    "imageAnnotations": [
+      {
+        "observationRef": "G06:observation-12",
+        "kind": "near-door",
+        "claimedRegionIndex": 2,
+        "reason": "正前与右侧地板为卧室白色地板且床在右，左侧立柱盆与坐便器系透过玻璃门所见浴室，观察者侧在卧室内，属门旁图。"
+      },
+      {
+        "observationRef": "G16:observation-32",
+        "kind": "near-door",
+        "claimedRegionIndex": 2,
+        "reason": "正前为卧室白地板与床，右侧近处为卧室玻璃门框；左侧立柱盆经门框可见，观察者站在卧室门内侧。"
+      },
+      {
+        "observationRef": "G05:observation-11",
+        "kind": "near-door",
+        "claimedRegionIndex": 2,
+        "reason": "右侧见床角与卧室挂画，正前玻璃门外为浴室木地板与立柱盆，观察者位于卧室内门旁。"
+      },
+      {
+        "observationRef": "G11:observation-18",
+        "kind": "near-door",
+        "claimedRegionIndex": 3,
+        "reason": "正前立柱盆与左下坐便器均在浴室木地板上，右侧双开玻璃门透见卧室床，观察者站在浴室内门旁。"
+      },
+      {
+        "observationRef": "G15:observation-30",
+        "kind": "near-door",
+        "claimedRegionIndex": 3,
+        "reason": "左侧立柱盆与脚下浅色木地板属浴室，正前双开玻璃门外为卧室白地板与床，观察者在浴室门内侧。"
+      }
+    ]
+  },
+  "finalAssignments": {
+    "observation-1": "vlm-boundary-region-1",
+    "observation-2": "vlm-boundary-region-1",
+    "observation-3": "vlm-boundary-region-1",
+    "observation-4": "vlm-boundary-region-1",
+    "observation-5": "vlm-boundary-region-1",
+    "observation-6": "vlm-boundary-region-1",
+    "observation-7": null,
+    "observation-8": "vlm-boundary-region-2",
+    "observation-9": "vlm-boundary-region-2",
+    "observation-10": "vlm-boundary-region-2",
+    "observation-11": "vlm-boundary-region-2",
+    "observation-12": "vlm-boundary-region-2",
+    "observation-13": "vlm-boundary-region-3",
+    "observation-14": "vlm-boundary-region-3",
+    "observation-15": "vlm-boundary-region-3",
+    "observation-16": "vlm-boundary-region-3",
+    "observation-17": "vlm-boundary-region-3",
+    "observation-18": "vlm-boundary-region-3",
+    "observation-19": "vlm-boundary-region-3",
+    "observation-20": "vlm-boundary-region-3",
+    "observation-21": "vlm-boundary-region-3",
+    "observation-22": "vlm-boundary-region-3",
+    "observation-23": "vlm-boundary-region-3",
+    "observation-24": "vlm-boundary-region-3",
+    "observation-25": "vlm-boundary-region-3",
+    "observation-26": "vlm-boundary-region-3",
+    "observation-27": "vlm-boundary-region-3",
+    "observation-28": "vlm-boundary-region-3",
+    "observation-29": "vlm-boundary-region-3",
+    "observation-30": "vlm-boundary-region-3",
+    "observation-31": "vlm-boundary-region-3",
+    "observation-32": "vlm-boundary-region-2",
+    "observation-33": "vlm-boundary-region-2",
+    "observation-34": "vlm-boundary-region-2",
+    "observation-35": "vlm-boundary-region-2",
+    "observation-36": "vlm-boundary-region-2",
+    "observation-37": null,
+    "observation-38": null,
+    "observation-39": "vlm-boundary-region-1",
+    "observation-40": "vlm-boundary-region-1"
+  },
+  "boundaryGroups": [
+    {
+      "id": "boundary-group-1",
+      "observationIds": [
+        "observation-7"
+      ],
+      "sourceGroups": [
+        "G02"
+      ],
+      "reason": "观察者站在卧室门槛处：左侧为客厅木地板与海滩挂画墙，正前为卧室白地板与床，右侧玻璃门外可见厨房岛台，脚下同时呈现两种地板，属客厅-卧室过渡位置。",
+      "adjacentRegionIndices": [
+        1,
+        2
+      ]
+    },
+    {
+      "id": "boundary-group-2",
+      "observationIds": [
+        "observation-37"
+      ],
+      "sourceGroups": [
+        "G20"
+      ],
+      "reason": "观察者位于卧室门口：左侧见床与飘窗（卧室侧），右侧透过玻璃门见客厅木窗、矮柜与台灯（客厅侧），正前为门框，处于门槛过渡带。",
+      "adjacentRegionIndices": [
+        1,
+        2
+      ]
+    },
+    {
+      "id": "boundary-group-3",
+      "observationIds": [
+        "observation-38"
+      ],
+      "sourceGroups": [
+        "G21"
+      ],
+      "reason": "观察者站在卧室-客厅门洞：左侧飘窗与右侧床属卧室，正前透过门框见客厅木地板、矮柜、台灯与海滩挂画墙，为两区交界位置。",
+      "adjacentRegionIndices": [
+        1,
+        2
+      ]
+    }
+  ],
+  "score": {
+    "overall": {
+      "total": 28,
+      "correct": 28,
+      "accuracy": 1.0,
+      "outcomes": {
+        "correct": 28,
+        "wrong-region": 0,
+        "duplicate-new": 0,
+        "wrong-old": 0,
+        "unknown": 0
+      }
+    },
+    "old": {
+      "total": 25,
+      "correct": 25,
+      "accuracy": 1.0,
+      "outcomes": {
+        "correct": 25,
+        "wrong-region": 0,
+        "duplicate-new": 0,
+        "wrong-old": 0,
+        "unknown": 0
+      }
+    },
+    "new": {
+      "total": 3,
+      "correct": 3,
+      "accuracy": 1.0,
+      "outcomes": {
+        "correct": 3,
+        "wrong-region": 0,
+        "duplicate-new": 0,
+        "wrong-old": 0,
+        "unknown": 0
+      }
+    },
+    "events": [
+      {
+        "id": "observation-1",
+        "atMs": 3000,
+        "label": "open-living-area",
+        "scenario": "new",
+        "historicalIds": [],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 117000,
+        "groupId": "vlm-boundary-region-1",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-6",
+          "observation-39"
+        ]
+      },
+      {
+        "id": "observation-2",
+        "atMs": 6000,
+        "label": "open-living-area",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 114000,
+        "groupId": "vlm-boundary-region-1",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-6",
+          "observation-39"
+        ]
+      },
+      {
+        "id": "observation-3",
+        "atMs": 9000,
+        "label": "open-living-area",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 111000,
+        "groupId": "vlm-boundary-region-1",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-6",
+          "observation-39"
+        ]
+      },
+      {
+        "id": "observation-4",
+        "atMs": 12000,
+        "label": "open-living-area",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 108000,
+        "groupId": "vlm-boundary-region-1",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-6",
+          "observation-39"
+        ]
+      },
+      {
+        "id": "observation-5",
+        "atMs": 15000,
+        "label": "open-living-area",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 105000,
+        "groupId": "vlm-boundary-region-1",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-6",
+          "observation-39"
+        ]
+      },
+      {
+        "id": "observation-8",
+        "atMs": 24000,
+        "label": "bedroom",
+        "scenario": "new",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 96000,
+        "groupId": "vlm-boundary-region-2",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-10",
+          "observation-11",
+          "observation-12",
+          "observation-32"
+        ]
+      },
+      {
+        "id": "observation-9",
+        "atMs": 27000,
+        "label": "bedroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 93000,
+        "groupId": "vlm-boundary-region-2",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-10",
+          "observation-11",
+          "observation-12",
+          "observation-32"
+        ]
+      },
+      {
+        "id": "observation-14",
+        "atMs": 42000,
+        "label": "bathroom",
+        "scenario": "new",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 78000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-15",
+        "atMs": 45000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 75000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-16",
+        "atMs": 48000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 72000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-17",
+        "atMs": 51000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 69000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-18",
+        "atMs": 54000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 66000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-19",
+        "atMs": 57000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 63000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-20",
+        "atMs": 60000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 60000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-21",
+        "atMs": 63000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 57000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-22",
+        "atMs": 66000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 54000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-23",
+        "atMs": 69000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 51000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-24",
+        "atMs": 72000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22",
+          "observation-23"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 48000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-25",
+        "atMs": 75000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22",
+          "observation-23",
+          "observation-24"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 45000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-26",
+        "atMs": 78000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22",
+          "observation-23",
+          "observation-24",
+          "observation-25"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 42000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-27",
+        "atMs": 81000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22",
+          "observation-23",
+          "observation-24",
+          "observation-25",
+          "observation-26"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 39000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-28",
+        "atMs": 84000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22",
+          "observation-23",
+          "observation-24",
+          "observation-25",
+          "observation-26",
+          "observation-27"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 36000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-29",
+        "atMs": 87000,
+        "label": "bathroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22",
+          "observation-23",
+          "observation-24",
+          "observation-25",
+          "observation-26",
+          "observation-27",
+          "observation-28"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 33000,
+        "groupId": "vlm-boundary-region-3",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-13",
+          "observation-30",
+          "observation-31"
+        ]
+      },
+      {
+        "id": "observation-33",
+        "atMs": 99000,
+        "label": "bedroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22",
+          "observation-23",
+          "observation-24",
+          "observation-25",
+          "observation-26",
+          "observation-27",
+          "observation-28",
+          "observation-29"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 21000,
+        "groupId": "vlm-boundary-region-2",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-10",
+          "observation-11",
+          "observation-12",
+          "observation-32"
+        ]
+      },
+      {
+        "id": "observation-34",
+        "atMs": 102000,
+        "label": "bedroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22",
+          "observation-23",
+          "observation-24",
+          "observation-25",
+          "observation-26",
+          "observation-27",
+          "observation-28",
+          "observation-29",
+          "observation-33"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 18000,
+        "groupId": "vlm-boundary-region-2",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-10",
+          "observation-11",
+          "observation-12",
+          "observation-32"
+        ]
+      },
+      {
+        "id": "observation-35",
+        "atMs": 105000,
+        "label": "bedroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22",
+          "observation-23",
+          "observation-24",
+          "observation-25",
+          "observation-26",
+          "observation-27",
+          "observation-28",
+          "observation-29",
+          "observation-33",
+          "observation-34"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 15000,
+        "groupId": "vlm-boundary-region-2",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-10",
+          "observation-11",
+          "observation-12",
+          "observation-32"
+        ]
+      },
+      {
+        "id": "observation-36",
+        "atMs": 108000,
+        "label": "bedroom",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22",
+          "observation-23",
+          "observation-24",
+          "observation-25",
+          "observation-26",
+          "observation-27",
+          "observation-28",
+          "observation-29",
+          "observation-33",
+          "observation-34",
+          "observation-35"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 12000,
+        "groupId": "vlm-boundary-region-2",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-10",
+          "observation-11",
+          "observation-12",
+          "observation-32"
+        ]
+      },
+      {
+        "id": "observation-40",
+        "atMs": 120000,
+        "label": "open-living-area",
+        "scenario": "old",
+        "historicalIds": [
+          "observation-1",
+          "observation-2",
+          "observation-3",
+          "observation-4",
+          "observation-5",
+          "observation-8",
+          "observation-9",
+          "observation-14",
+          "observation-15",
+          "observation-16",
+          "observation-17",
+          "observation-18",
+          "observation-19",
+          "observation-20",
+          "observation-21",
+          "observation-22",
+          "observation-23",
+          "observation-24",
+          "observation-25",
+          "observation-26",
+          "observation-27",
+          "observation-28",
+          "observation-29",
+          "observation-33",
+          "observation-34",
+          "observation-35",
+          "observation-36"
+        ],
+        "evaluatedAtMs": 120000,
+        "availableDelayMs": 0,
+        "groupId": "vlm-boundary-region-1",
+        "result": "correct",
+        "unreviewedTargetMembers": [
+          "observation-6",
+          "observation-39"
+        ]
+      }
+    ]
+  },
+  "annotationReview": {
+    "count": 5,
+    "shownRepresentatives": 31,
+    "density": 0.16129032258064516,
+    "rows": [
+      {
+        "observationRef": "G06:observation-12",
+        "kind": "near-door",
+        "claimedRegionIndex": 2,
+        "reason": "正前与右侧地板为卧室白色地板且床在右，左侧立柱盆与坐便器系透过玻璃门所见浴室，观察者侧在卧室内，属门旁图。",
+        "developmentLabel": {
+          "observationId": "observation-12",
+          "kind": "boundary",
+          "regions": [
+            "bedroom",
+            "bathroom"
+          ],
+          "reason": "门框或门槛近距离横跨视野，三视图分别显示邻接房间地面与家具；按宽门口过渡约定单列，精确观察者侧待人工核对。",
+          "frames": [
+            "triple/0036.jpg"
+          ],
+          "imageSha256": "55e38321d56eff5cf3265dec98392f683e1ad70059d69d38833ceef35728745e"
+        },
+        "note": "Near-door may be compatible with a core label; boundary/core disagreement needs review, not automatic error."
+      },
+      {
+        "observationRef": "G16:observation-32",
+        "kind": "near-door",
+        "claimedRegionIndex": 2,
+        "reason": "正前为卧室白地板与床，右侧近处为卧室玻璃门框；左侧立柱盆经门框可见，观察者站在卧室门内侧。",
+        "developmentLabel": {
+          "observationId": "observation-32",
+          "kind": "boundary",
+          "regions": [
+            "bedroom",
+            "bathroom"
+          ],
+          "reason": "门框或门槛近距离横跨视野，三视图分别显示邻接房间地面与家具；按宽门口过渡约定单列，精确观察者侧待人工核对。",
+          "frames": [
+            "triple/0096.jpg"
+          ],
+          "imageSha256": "4d5d524f2cb3bc72b97889f6b8a72374bae25ac7a8a4dfbab7a697d9fda85bdb"
+        },
+        "note": "Near-door may be compatible with a core label; boundary/core disagreement needs review, not automatic error."
+      },
+      {
+        "observationRef": "G05:observation-11",
+        "kind": "near-door",
+        "claimedRegionIndex": 2,
+        "reason": "右侧见床角与卧室挂画，正前玻璃门外为浴室木地板与立柱盆，观察者位于卧室内门旁。",
+        "developmentLabel": {
+          "observationId": "observation-11",
+          "kind": "boundary",
+          "regions": [
+            "bedroom",
+            "bathroom"
+          ],
+          "reason": "门框或门槛近距离横跨视野，三视图分别显示邻接房间地面与家具；按宽门口过渡约定单列，精确观察者侧待人工核对。",
+          "frames": [
+            "triple/0033.jpg"
+          ],
+          "imageSha256": "e25644f0ab6df139a0c760ef1df1d34f9d2193c9418cc4d8a0cd0cb6216ababe"
+        },
+        "note": "Near-door may be compatible with a core label; boundary/core disagreement needs review, not automatic error."
+      },
+      {
+        "observationRef": "G11:observation-18",
+        "kind": "near-door",
+        "claimedRegionIndex": 3,
+        "reason": "正前立柱盆与左下坐便器均在浴室木地板上，右侧双开玻璃门透见卧室床，观察者站在浴室内门旁。",
+        "developmentLabel": {
+          "observationId": "observation-18",
+          "kind": "core",
+          "regions": [
+            "bathroom"
+          ],
+          "reason": "马桶、洗手池、垃圾桶与木色地面构成卫生间布局；角落旋转及门外可见床不产生新区域。",
+          "frames": [
+            "triple/0054.jpg"
+          ],
+          "imageSha256": "58eaf43270e0c12c75b77e9a7a486183ac7e7083bacfeb9ae64e07460ae84fbc"
+        },
+        "note": "Near-door may be compatible with a core label; boundary/core disagreement needs review, not automatic error."
+      },
+      {
+        "observationRef": "G15:observation-30",
+        "kind": "near-door",
+        "claimedRegionIndex": 3,
+        "reason": "左侧立柱盆与脚下浅色木地板属浴室，正前双开玻璃门外为卧室白地板与床，观察者在浴室门内侧。",
+        "developmentLabel": {
+          "observationId": "observation-30",
+          "kind": "boundary",
+          "regions": [
+            "bedroom",
+            "bathroom"
+          ],
+          "reason": "门框或门槛近距离横跨视野，三视图分别显示邻接房间地面与家具；按宽门口过渡约定单列，精确观察者侧待人工核对。",
+          "frames": [
+            "triple/0090.jpg"
+          ],
+          "imageSha256": "5cf327460f8c115606c6b8b30df8fb5a3076adc8436281c16cdef60457949028"
+        },
+        "note": "Near-door may be compatible with a core label; boundary/core disagreement needs review, not automatic error."
+      }
+    ]
+  },
+  "limitations": "Two repeats do not establish reliability. Annotations never change identities. Post-prediction AI development labels; original v1 unaffected."
+}

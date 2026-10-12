@@ -1,4 +1,8 @@
-# v1.1.0-test.4：固定边界聚合算法与人工视频审查研究版
+# v1.1.0-test.5：主体＋单图标注固定研究版
+
+当前固定[主体＋单图标注v3.1](research/group-identity-annotations-v3-1.json)，入口`sim/vlm_group_identity_annotations_trial.py`。每组唯一身份，附注不覆盖；全量具体纠错反馈最多2次修复。val5两次初答均通过、核心28/28；边界召回25%/0%、靠近附注5/0，不证明边界稳定。详见[真实重复结果](research/identity-annotations-v3-1-repair.md)与[历史归档](archive/spatial-memory-version-history.md)。旧版本默认/报告保持，网页预测不替换。下面test.4/test.3范围保留为历史证据。
+
+test.5实际检查：构建、50项离线研究回归、文档链接通过；回归不调用付费API。50项不等于50个独立能力验收，实际浏览器交互仍未全面验收。
 
 日期：2026-10-12。稳定应用基线仍为 `v1.0.0`；本标签是研究快照，不是可靠性验收通过。
 
