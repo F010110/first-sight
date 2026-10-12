@@ -7,6 +7,34 @@ import subprocess
 from pathlib import Path
 
 
+def display_triptych(image, gap=24):
+    """Separate recorded left/front/right panels; never alter inference images."""
+    import numpy as np
+    height, width = image.shape[:2]
+    if width % 3:
+        raise ValueError('Triptych width must divide into three equal views')
+    panels = np.split(image, 3, axis=1)
+    spacer = np.full((height, gap, 3), 24, dtype=image.dtype)
+    return np.concatenate([panels[0], spacer, panels[1], spacer, panels[2]], axis=1)
+
+
+def export_display_video(frames, output, fps, subdivisions=12):
+    """24fps frame holds; no blending or invented motion."""
+    import cv2
+    import imageio_ffmpeg
+    first = display_triptych(cv2.imread(str(frames[0])))
+    height, width = first.shape[:2]
+    writer = imageio_ffmpeg.write_frames(str(output), (width, height), fps=fps * subdivisions, codec='libx264', pix_fmt_out='yuv420p', output_params=['-crf', '18', '-movflags', '+faststart'])
+    writer.send(None)
+    try:
+        for index, path in enumerate(frames):
+            current = display_triptych(cv2.imread(str(path)))
+            for step in range(subdivisions):
+                writer.send(cv2.cvtColor(current, cv2.COLOR_BGR2RGB))
+    finally:
+        writer.close()
+
+
 def make_payload(windows, report, review=None):
     ids = sorted(report['finalAssignments'], key=lambda id: int(id.removeprefix('observation-')))
     if len(ids) != len(windows):
@@ -40,12 +68,14 @@ def main():
     if not frames or numbers != list(range(numbers[0], numbers[-1] + 1)) or numbers[0] != 0 or any(sample['tick'] > numbers[-1] for sample in payload['samples']):
         raise ValueError('Require contiguous recorded triple frames starting at zero')
     args.output.mkdir(parents=True, exist_ok=False); (args.output / 'images').mkdir()
-    subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), '-framerate', str(args.fps), '-start_number', '0', '-i', str(args.dataset / 'triple' / '%04d.jpg'), '-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(args.output / 'motion.mp4')], check=True, capture_output=True)
+    export_display_video(frames, args.output / 'motion-hold.mp4', args.fps)
     for sample, window in zip(payload['samples'], windows):
         source = args.dataset / 'triple' / Path(window['frame']).name
         sample['imageSha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
-        shutil.copyfile(source, args.output / sample['image'])
+        import cv2
+        cv2.imwrite(str(args.output / sample['image']), display_triptych(cv2.imread(str(source))))
     payload.update({'fps': args.fps, 'frameCount': len(frames), 'reportSha256': hashlib.sha256(args.report.read_bytes()).hexdigest(), 'datasetId': args.dataset.name, 'regionReasons': report.get('answer', {}).get('regions', []), 'reviewScope': 'AI suggestions visible; assisted human review, NOT blind independent labels. Playback fps is presentation speed, not real capture time.'})
+    payload['displayInterpolation'] = {'method': 'frame-hold', 'subdivisions': 12, 'outputFps': args.fps * 12, 'syntheticDisplayOnly': True, 'viewGapPixels': 24}
     (args.output / 'data.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
     template = Path(__file__).with_name('region_review_site.html').read_text(encoding='utf-8')
     (args.output / 'index.html').write_text(template, encoding='utf-8')
