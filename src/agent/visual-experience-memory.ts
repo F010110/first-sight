@@ -9,7 +9,7 @@ import { organizeRegionInterpretation } from "./region-interpretation.js";
 import { validateRegionHierarchy, type RegionScope } from "./revisable-region-hierarchy.js";
 import type { BoundaryEvent } from "./experience-segments.js";
 import { currentExperienceGrouping } from "./current-experience-grouping.js";
-interface InterpretationInput { observations: VisualPipelineObservation[]; links: SegmentLink[]; contradictions: SegmentContradiction[]; reason: string; automaticBoundaryProposals?: { event: BoundaryEvent; availableAtMs: number }[] }
+interface InterpretationInput { observations: VisualPipelineObservation[]; links: SegmentLink[]; contradictions: SegmentContradiction[]; reason: string; automaticBoundaryProposals?: { event: BoundaryEvent; availableAtMs: number }[]; coherentAnchorPolicy?: "legacy-first-pair" | "recover-weak-anchors" | "updating-context" | "updating-context-v2" }
 
 /** Additive integration: new temporal hypotheses NEVER erase baseline abilities. */
 export class VisualExperienceMemory {
@@ -78,7 +78,7 @@ export class VisualExperienceMemory {
 			if (previousAnchor && previousAnchor !== nodeId) anchorCuts.push({ id: `visual-context-${row.id}`, beforeObservationId: row.id, source: "automatic", reason: `Positive visual anchor changes from ${previousAnchor} to ${nodeId}; revisable local context, not certified physical region change.`, frames: row.frames });
 			previousAnchor = nodeId;
 		}
-		return replayVisualExperience(input.observations, input.links, [...input.contradictions,...rejectionVetoes], undefined, [...proposals.map(row => row.event), ...anchorCuts]).result;
+		return replayVisualExperience(input.observations, input.links, [...input.contradictions,...rejectionVetoes], {maxGapMs:4000,maxCrossingMs:15000,confirmationFrames:2,coherentAnchorPolicy:input.coherentAnchorPolicy??"legacy-first-pair"}, [...proposals.map(row => row.event), ...anchorCuts]).result;
 	}
 	interpret(input: InterpretationInput) {
 		const staged = structuredClone(input), result = this.evaluate(staged);
@@ -88,7 +88,7 @@ export class VisualExperienceMemory {
 		return { revision: this.interpretations.length, ...result, grouping, regions: organizeRegionInterpretation(result.interpretation), effective: this.effective() };
 	}
 	/** Online append; only already observed correspondence endpoints are accepted. */
-	observe(input: Parameters<ExperienceGraph["addObservation"]>[0], motionSteps: VisualPipelineObservation["motionSteps"], boundaryEvidence: VisualPipelineObservation["boundaryEvidence"], links: SegmentLink[] = [], correspondences: CorrespondenceEvidence[] = [], automaticBoundaryProposals: NonNullable<InterpretationInput["automaticBoundaryProposals"]> = [], contradictions: SegmentContradiction[] = []) {
+	observe(input: Parameters<ExperienceGraph["addObservation"]>[0], motionSteps: VisualPipelineObservation["motionSteps"], boundaryEvidence: VisualPipelineObservation["boundaryEvidence"], links: SegmentLink[] = [], correspondences: CorrespondenceEvidence[] = [], automaticBoundaryProposals: NonNullable<InterpretationInput["automaticBoundaryProposals"]> = [], contradictions: SegmentContradiction[] = [], coherentAnchorPolicy?: InterpretationInput["coherentAnchorPolicy"]) {
 		const before = this.snapshot();
 		try {
 			this.addObservation(input);
@@ -96,7 +96,7 @@ export class VisualExperienceMemory {
 			if (correspondences.length) this.association.reconsider();
 			const previous = this.interpretations.at(-1);
 			const observations = [...(previous?.observations ?? []), { id: input.id, atMs: input.atMs, frames: input.frames, motionSteps, boundaryEvidence }];
-			return this.interpret({ observations, links: [...(previous?.links ?? []), ...links], contradictions: [...(previous?.contradictions ?? []), ...contradictions], automaticBoundaryProposals: [...(previous?.automaticBoundaryProposals ?? []), ...automaticBoundaryProposals], reason: `Online prefix through ${input.id}` });
+			return this.interpret({ observations, links: [...(previous?.links ?? []), ...links], contradictions: [...(previous?.contradictions ?? []), ...contradictions], automaticBoundaryProposals: [...(previous?.automaticBoundaryProposals ?? []), ...automaticBoundaryProposals], coherentAnchorPolicy:coherentAnchorPolicy??previous?.coherentAnchorPolicy??"legacy-first-pair", reason: `Online prefix through ${input.id}` });
 		} catch (error) { this.association.restoreBundle(before.baseline); this.interpretations = before.interpretations; this.groupingRevisions = before.groupingRevisions; throw error; }
 	}
 	/** Explicit reviewed edits; never automatic acceptance of uncertain temporal scope. */

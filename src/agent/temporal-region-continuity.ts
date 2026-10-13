@@ -8,7 +8,7 @@ export interface ContinuityEvidence {
 	boundaryTrackId?: string;
 }
 export interface ContinuityInput { observation: SegmentObservation; evidence: ContinuityEvidence[] }
-export interface ContinuityOptions { maxGapMs: number; maxCrossingMs: number; confirmationFrames: number }
+export interface ContinuityOptions { maxGapMs: number; maxCrossingMs: number; confirmationFrames: number; coherentAnchorPolicy?: "legacy-first-pair" | "recover-weak-anchors" | "updating-context" | "updating-context-v2" }
 const defaults: ContinuityOptions = { maxGapMs: 1500, maxCrossingMs: 10000, confirmationFrames: 2 };
 
 /** Ordered replay. Continuation is provisional, never stationary/region truth. */

@@ -34,7 +34,7 @@ export function replayVisualExperience(input: VisualPipelineObservation[], links
 		return { observation: { id: row.id, atMs: row.atMs, frames: row.frames }, evidence };
 	});
 	const continuity = proposeTemporalBoundaries(continuityInputs, options);
-	const contextChanges = proposeCoherentContextChanges(input, links, options.maxGapMs);
+	const contextChanges = proposeCoherentContextChanges(input, links, options.maxGapMs, options.coherentAnchorPolicy);
 	const visualChanges = proposeVisualChangeBoundaries(input, links, options.maxGapMs);
 	const confirmedCuts = new Set(continuity.boundaries.map(event => event.beforeObservationId));
 	const hiatusBoundaries = input.slice(1).flatMap((row, i) => row.atMs - input[i]!.atMs > options.maxGapMs ? [{ id: `recording-hiatus-${row.id}`, beforeObservationId: row.id, source: "automatic" as const, reason: "Recording hiatus: split temporal context only, NOT evidence of physical region crossing", frames: [...input[i]!.frames, ...row.frames] }] : []);

@@ -87,6 +87,15 @@ test("fresh memory uses formal anchor policy while old bundles preserve legacy b
 	fresh.association.restoreBundle(legacy);
 	assert.deepEqual(fresh.association.getBundle(), legacy);
 });
+test("frozen grouping default remains legacy; research policies require explicit opt-in",()=>{
+	const memory=new VisualExperienceMemory();memory.observe(observation(1),[],[]);
+	assert.equal(memory.snapshot().interpretations[0]!.coherentAnchorPolicy,"legacy-first-pair");
+	memory.observe(observation(2),[],[]);
+	assert.equal(memory.snapshot().interpretations[1]!.coherentAnchorPolicy,"legacy-first-pair");
+	const research=new VisualExperienceMemory();research.observe(observation(1),[],[],[],[],[],[],"updating-context-v2");
+	research.observe(observation(2),[],[]);
+	assert.equal(research.snapshot().interpretations[1]!.coherentAnchorPolicy,"updating-context-v2");
+});
 test("online current grouping is actual output, not legacy visual unknowns", () => {
 	const memory=new VisualExperienceMemory();
 	for(let i=1;i<=3;i++) {
