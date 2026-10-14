@@ -114,6 +114,7 @@ def main():
     parser = argparse.ArgumentParser()
     for name in ['input', 'replay', 'queries', 'review', 'output']:
         parser.add_argument(name, type=Path)
+    parser.add_argument('--unscored', action='store_true', help='New data without accepted labels: infer with unchanged frozen prompt, report correctness as unmeasured')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     read = lambda p: json.loads(p.read_text(encoding='utf-8'))
@@ -162,16 +163,18 @@ def main():
     elapsed = (time.perf_counter() - started) * 1000
     assignments, boundaries = assignments_from_answer(answer, original['groups'])
     # Scoring labels read only after inference; not part of retry messages.
-    snapshots = read(args.replay)['online']['snapshots']; contract = read(args.queries); review = read(args.review)
+    snapshots = read(args.replay)['online']['snapshots']
+    contract = None if args.unscored else read(args.queries)
+    review = {'labels': []} if args.unscored else read(args.review)
     labels = {row['observationId']: row for row in review['labels']}
     if set(assignments) != set(snapshots[-1]['assignments']):
         raise ValueError('Replay mismatch')
     annotations = answer['imageAnnotations']
     report = {'protocol': manifest['protocol'], 'modelReturned': response.model, 'elapsedMs': elapsed, 'attempts': attempts,
               'answer': answer, 'finalAssignments': assignments, 'boundaryGroups': boundaries,
-              'score': score_queries(contract, [*snapshots[:-1], {**snapshots[-1], 'assignments': assignments}]),
+              'score': {'overall': None, 'status': 'unmeasured-awaiting-human-review'} if args.unscored else score_queries(contract, [*snapshots[:-1], {**snapshots[-1], 'assignments': assignments}]),
               'annotationReview': {'count': len(annotations), 'shownRepresentatives': len(refs), 'density': len(annotations)/len(refs),
-                                  'rows': [{**row, 'developmentLabel': labels[row['observationRef'].split(':')[1]], 'note': 'Near-door may be compatible with a core label; boundary/core disagreement needs review, not automatic error.'} for row in annotations]},
+                                  'rows': [{**row, 'developmentLabel': labels.get(row['observationRef'].split(':')[1]), 'note': 'Near-door may be compatible with a core label; boundary/core disagreement needs review, not automatic error.'} for row in annotations]},
               'limitations': 'Two repeats do not establish reliability. Annotations never change identities. Post-prediction AI development labels; original v1 unaffected.'}
     (args.output / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps({'score': report['score']['overall'], 'annotationCount': len(annotations), 'attempts': attempts, 'elapsedMs': elapsed}, ensure_ascii=True, indent=2))
