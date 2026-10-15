@@ -26,6 +26,7 @@ export class SpatialTopologyService {
 		if (!Number.isInteger(maxPendingObservations) || maxPendingObservations < maxWindowObservations) throw new Error("Invalid pending capacity");
 	}
 	snapshot(): TopologyState { return structuredClone(this.state); }
+	summary(){const s=this.state;return {pending:s.pending.length,lastConfirmedAtMs:s.assignments.at(-1)?s.observations.find(o=>o.id===s.assignments.at(-1)!.observationId)?.atMs ?? null:null,currentPlaceId:s.currentPlaceId};}
 	private identityState(s: TopologyState): string { return JSON.stringify({nodes:s.nodes,assignments:s.assignments,edges:s.edges,currentPlaceId:s.currentPlaceId}); }
 	private rebuild(s: TopologyState): void {
 		s.edges=[];

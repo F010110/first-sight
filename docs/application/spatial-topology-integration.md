@@ -1,5 +1,7 @@
 # 增量拓扑记忆软件接入v1
 
+> 以下为阶段记录；最终SQLite默认、分页API与限制以`long-term-memory-v1.md`为准。旧JSON服务仍用于兼容回放/回归，不再是新增空间API默认后端。
+
 保留既有`PlaceMemory`生产链路；新入口`src/agent/spatial-topology-service.ts`独立文件，不静默迁移旧Place/Space语义。当前验证目标是回放/后台记忆底座，不是RequestAgent已接入。
 
 ## 数据结构

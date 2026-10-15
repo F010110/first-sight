@@ -30,6 +30,26 @@ export class SpatialSqliteStore {
 		this.db.prepare("INSERT OR IGNORE INTO metadata VALUES('schema','1')").run();
 	}
 	close():void{this.db.close();}
+	hasObservation(id:string):boolean{return !!this.db.prepare("SELECT 1 FROM observations WHERE id=?").get(id);}
+	summary(){
+		const pending=(this.db.prepare("SELECT COUNT(*) AS n FROM observations WHERE pending=1").get() as {n:number}).n;
+		const row=this.db.prepare("SELECT a.place_id,o.at_ms FROM assignments a JOIN observations o ON o.id=a.observation_id ORDER BY o.seq DESC LIMIT 1").get() as {place_id:string|null;at_ms:number}|undefined;
+		return {pending,currentPlaceId:row?.place_id ?? null,lastConfirmedAtMs:row?.at_ms ?? null};
+	}
+	lastObservationTime():number{return (this.db.prepare("SELECT at_ms FROM observations ORDER BY seq DESC LIMIT 1").get() as {at_ms:number}|undefined)?.at_ms ?? -1;}
+	page(limit=100,after=0){
+		this.limit(limit);if(!Number.isSafeInteger(after)||after<0)throw new Error("Invalid cursor");
+		const rows=this.db.prepare("SELECT o.seq,o.raw,a.raw AS assignment FROM observations o LEFT JOIN assignments a ON a.observation_id=o.id WHERE o.seq>? ORDER BY o.seq LIMIT ?").all(after,limit) as Array<{seq:number;raw:string;assignment:string|null}>;
+		return {observations:rows.map(r=>JSON.parse(r.raw) as SpatialObservation),assignments:rows.filter(r=>r.assignment).map(r=>JSON.parse(r.assignment!) as TopologyAssignment),nextCursor:rows.at(-1)?.seq ?? after};
+	}
+	context(query="",limit=6):TopologyState {
+		this.limit(limit);const recent=this.candidates("",limit),matched=query.trim().length>=3?this.candidates(query,limit):[];
+		const current=this.summary().currentPlaceId;
+		const neighbors=current ? (this.db.prepare("SELECT p.raw FROM places p JOIN (SELECT to_place AS id,COUNT(*) AS n FROM transitions WHERE from_place=? GROUP BY to_place) t ON t.id=p.id WHERE p.status!='retired' ORDER BY t.n DESC,p.last_seen_ms DESC LIMIT ?").all(current,Math.min(limit,2)) as Array<{raw:string}>).map(r=>JSON.parse(r.raw) as TopologyNode) : [];
+		const nodes=[...new Map([...recent.slice(0,1),...matched,...neighbors,...recent].map(n=>[n.id,n])).values()].slice(0,limit);
+		const rows=this.db.prepare("SELECT a.raw FROM assignments a JOIN observations o ON o.id=a.observation_id ORDER BY o.seq DESC LIMIT 4").all() as Array<{raw:string}>;
+		return {version:1,observations:[],pending:[],assignments:rows.reverse().map(r=>JSON.parse(r.raw) as TopologyAssignment),nodes,edges:[],currentPlaceId:this.summary().currentPlaceId,revisions:[]};
+	}
 	private atomic<T>(action:()=>T):T {
 		this.db.exec("BEGIN IMMEDIATE");try{const value=action();this.db.exec("COMMIT");return value;}catch(error){this.db.exec("ROLLBACK");throw error;}
 	}
@@ -83,7 +103,10 @@ export class SpatialSqliteStore {
 			const expected=this.pending(assignments.length).map(o=>o.id);
 			if(expected.length!==assignments.length || assignments.some((a,i)=>a.observationId!==expected[i] || !a.reason.trim()))throw new Error("Commit must match pending prefix");
 			for(const node of nodes)this.upsertPlace(node);
-			for(const assignment of assignments)this.appendAssignment(assignment);
+			for(const assignment of assignments){
+				if(assignment.placeId!==null && !this.db.prepare("SELECT 1 FROM places WHERE id=? AND status!='retired'").get(assignment.placeId))throw new Error("Assignment needs active known place");
+				this.appendAssignment(assignment);
+			}
 		});
 	}
 	/** Bounded candidates; FTS handles partial English/Chinese substrings of >=3 chars. */
@@ -94,6 +117,13 @@ export class SpatialSqliteStore {
 		return (rows as Array<{raw:string}>).map(r=>JSON.parse(r.raw) as TopologyNode);
 	}
 	visits(placeId:string,limit=10){this.limit(limit);return this.db.prepare("SELECT * FROM visits WHERE place_id=? ORDER BY end_ms DESC LIMIT ?").all(placeId,limit);}
+	place(id:string):TopologyNode|null{const row=this.db.prepare("SELECT raw FROM places WHERE id=?").get(id) as {raw:string}|undefined;return row?JSON.parse(row.raw) as TopologyNode:null;}
+	visitSummaries(placeId:string,limit=10){
+		this.limit(limit);
+		// Fold each visit to interval, endpoint evidence and stable place description.
+		return this.db.prepare("SELECT v.*,p.summary AS place_summary FROM visits v JOIN places p ON p.id=v.place_id WHERE v.place_id=? ORDER BY v.end_ms DESC LIMIT ?").all(placeId,limit);
+	}
+	neighbors(placeId:string,limit=20){this.limit(limit);return this.db.prepare("SELECT from_place,to_place,COUNT(*) AS evidence_count FROM transitions WHERE from_place=? OR to_place=? GROUP BY from_place,to_place LIMIT ?").all(placeId,placeId,limit);}
 	private capture(nodeIds:string[],observationIds:string[]) {
 		return {format:"sqlite-local-v1",nodes:nodeIds.map(id=>({id,raw:(this.db.prepare("SELECT raw FROM places WHERE id=?").get(id) as {raw:string}|undefined)?.raw ?? null,references:(this.db.prepare("SELECT COUNT(*) AS n FROM assignments WHERE place_id=?").get(id) as {n:number}).n})),assignments:observationIds.map(id=>({id,raw:(this.db.prepare("SELECT raw FROM assignments WHERE observation_id=?").get(id) as {raw:string}|undefined)?.raw ?? null}))};
 	}

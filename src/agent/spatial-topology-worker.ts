@@ -7,7 +7,7 @@ export class SpatialTopologyWorker {
 	private active: Promise<void> | null = null;
 	private paused = false;
 	private lastError: string | null = null;
-	constructor(private readonly service: SpatialTopologyService, private readonly clock: () => number = Date.now, private readonly intervalMs = 1000) {
+	constructor(private readonly service: Pick<SpatialTopologyService,"ingest"|"tick"|"summary">, private readonly clock: () => number = Date.now, private readonly intervalMs = 1000) {
 		if (!Number.isFinite(intervalMs) || intervalMs < 1) throw new Error("Invalid timer interval");
 	}
 	start(): void {
@@ -20,8 +20,8 @@ export class SpatialTopologyWorker {
 		if(this.timer)void this.pump(); // Stopped workers accept durably without starting paid calls.
 	}
 	status() {
-		const state = this.service.snapshot();
-		return { running:this.timer!==null, busy:this.active!==null, paused:this.paused, lastError:this.lastError, pending:state.pending.length, lastConfirmedAtMs:state.assignments.at(-1) ? state.observations.find(o=>o.id===state.assignments.at(-1)!.observationId)?.atMs ?? null : null, currentPlaceId:state.currentPlaceId, hasUnprocessedObservations:state.pending.length>0 };
+		const state = this.service.summary();
+		return { running:this.timer!==null, busy:this.active!==null, paused:this.paused, lastError:this.lastError,...state, hasUnprocessedObservations:state.pending>0 };
 	}
 	resume(): void { this.paused=false; this.lastError=null; }
 	pump(): Promise<void> {

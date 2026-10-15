@@ -24,13 +24,15 @@ class SpatialHttpTest(unittest.TestCase):
                 scheme='https' if Path('run/tls/vlm-server.pfx').exists() else 'http'
                 context=ssl._create_unverified_context() if scheme=='https' else None
                 base=f'{scheme}://127.0.0.1:{port}'
+                opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPSHandler(context=context))
                 def request(path,payload,token=None):
                     headers={'Content-Type':'application/json','Origin':base}
                     if token:headers['Authorization']='Bearer '+token
                     req=urllib.request.Request(base+path,data=json.dumps(payload).encode(),headers=headers)
-                    with urllib.request.urlopen(req,timeout=5,context=context) as response:return response.status,json.load(response)
+                    with opener.open(req,timeout=2) as response:return response.status,json.load(response)
                 token=None
-                for _ in range(50):
+                for _ in range(15):
+                    if process.poll() is not None:self.fail('Trial server exited during startup')
                     try:_,login=request('/api/login',{'passcode':'spatial-test-only'});token=login['token'];break
                     except (OSError,urllib.error.URLError):time.sleep(.1)
                 self.assertIsNotNone(token)
@@ -47,6 +49,19 @@ class SpatialHttpTest(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError) as error:request('/api/spatial',{'action':'start'},second)
                 self.assertEqual(error.exception.code,503)
                 error.exception.close()
+                process.terminate();process.wait(timeout=10)
+                process=subprocess.Popen(['node','dist/trial-server.js'],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                restarted=None
+                for _ in range(15):
+                    if process.poll() is not None:self.fail('Trial server exited during restart')
+                    try:_,login=request('/api/login',{'passcode':'spatial-test-only'});restarted=login['token'];break
+                    except (OSError,urllib.error.URLError):time.sleep(.1)
+                self.assertIsNotNone(restarted)
+                request('/api/spatial',{'action':'open-library','libraryId':credentials['libraryId'],'recoveryKey':credentials['recoveryKey']},restarted)
+                _,snapshot=request('/api/spatial',{'action':'snapshot','limit':1,'cursor':0},restarted)
+                self.assertEqual(snapshot['status']['pending'],1);self.assertFalse(snapshot['status']['running'])
+                self.assertEqual(snapshot['graph']['observations'][0]['id'],'r:1')
+                self.assertGreater(snapshot['graph']['nextCursor'],0)
             finally:
                 process.terminate();process.wait(timeout=10)
 

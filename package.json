@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "scripts": {
+    "test:long-term-memory": "npm run build && node --test dist/agent/spatial-*.test.js",
     "test:research-snapshot": "python sim/test_research_snapshot.py",
     "test:helmet-capture": "npm run build && node --test dist/agent/helmet-capture.test.js",
     "test:grouping-benchmark": "python sim/test_grouping_benchmark.py",

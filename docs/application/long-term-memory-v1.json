@@ -1,0 +1,27 @@
+{
+  "version": "long-term-memory-v1",
+  "date": "2026-10-15",
+  "scope": "SQLite-backed incremental topology memory and authenticated library API; not full product acceptance",
+  "nodeMinimum": "22.13",
+  "model": "qwen3.8-flash",
+  "enableThinking": false,
+  "windowWaitMs": 10000,
+  "minimumCallIntervalMs": 5000,
+  "maximumWindowObservations": 4,
+  "maximumPendingObservations": 120,
+  "maximumCandidateNodes": 6,
+  "maximumHistoricalObservations": 3,
+  "maximumHistoricalImages": 12,
+  "maximumTokens": 1800,
+  "requestTimeoutMs": 120000,
+  "maximumProtocolRepairs": 1,
+  "networkRetries": 0,
+  "sha256OfLfNormalizedSources": {
+    "src/agent/spatial-sqlite-store.ts": "71c58dc5a767c6406a2391e56304b7bf39b75703b343ec639d45558cf6d19bbc",
+    "src/agent/spatial-sqlite-service.ts": "78cc008b2ccb6b1f39d01c407af145b5a5cd3ad2b27b5d05c6fde6502a6fa2ce",
+    "src/agent/spatial-topology-worker.ts": "a14c3b9c689cf065b423e61a46fcbf8be60f28a6315512f439bc5e3fdff50512",
+    "src/agent/spatial-topology-api.ts": "287fd5fdc3aabd3faad45b5b2fe08117c0ee9b4a0d0815793979b184b824c731",
+    "src/agent/spatial-topology-vlm.ts": "97777d6dda84d3c936e1dc80f7710bb77cd87aee79c1fbe1ac06d5e6be101b16",
+    "src/agent/spatial-library.ts": "61125f7750b506d1296ff457f01b34366ef1ece4995456044c6b5e5da5a7d2c6"
+  }
+}

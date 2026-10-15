@@ -1,16 +1,17 @@
-import { mkdir,writeFile } from "node:fs/promises";
+import { mkdir,writeFile,statfs } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { SpatialTopologyService, type WindowRecognizer } from "./spatial-topology-service.js";
+import { type WindowRecognizer } from "./spatial-topology-service.js";
+import { SpatialSqliteService } from "./spatial-sqlite-service.js";
 import { SpatialTopologyWorker } from "./spatial-topology-worker.js";
 
 /** Auth/session ownership is enforced by the caller; client paths are never accepted. */
 export class SpatialTopologyApi {
-	readonly service: SpatialTopologyService;
+	readonly service: SpatialSqliteService;
 	readonly worker: SpatialTopologyWorker;
 	private operations: Promise<void> = Promise.resolve();
 	constructor(private readonly root: string, recognize: WindowRecognizer) {
-		this.service=new SpatialTopologyService(join(root,"topology.json"),recognize);
+		this.service=new SpatialSqliteService(join(root,"topology.sqlite"),recognize,join(root,"topology.json"));
 		this.worker=new SpatialTopologyWorker(this.service);
 	}
 	async load(): Promise<void>{await this.service.load();} // Never starts billing on load.
@@ -20,7 +21,15 @@ export class SpatialTopologyApi {
 	private async handle(input: Record<string,unknown>): Promise<unknown> {
 		const action=input.action ?? "status";
 		if(action==="status")return this.worker.status();
-		if(action==="snapshot")return {status:this.worker.status(),graph:this.service.snapshot()};
+		if(action==="snapshot")return {status:this.worker.status(),graph:{...this.service.page(typeof input.limit==="number"?input.limit:100,typeof input.cursor==="number"?input.cursor:0),nodes:this.service.context().nodes},note:"Paged observations; nodes are bounded recent candidates, not the complete graph."};
+		if(action==="search"){
+			if(typeof input.query!=="string" || input.query.length>1000)throw new Error("Invalid search query");
+			return {status:this.worker.status(),nodes:this.service.context(input.query).nodes};
+		}
+		if(action==="place"){
+			if(typeof input.placeId!=="string" || input.placeId.length>160)throw new Error("Invalid place ID");
+			return this.service.place(input.placeId);
+		}
 		if(action==="start"){this.worker.resume();this.worker.start();return this.worker.status();}
 		if(action==="stop"){await this.worker.stop();return this.worker.status();}
 		if(action==="observe"){
@@ -31,13 +40,16 @@ export class SpatialTopologyApi {
 				const extension=row.mimeType==="image/jpeg"?"jpg":row.mimeType==="image/png"?"png":row.mimeType==="image/webp"?"webp":null;
 				const bytes=Buffer.from(row.dataBase64,"base64");
 				if(!extension || !bytes.length || bytes.length>1500000)throw new Error("Invalid image type/size");
+				const valid=extension==="png" ? bytes.length>=33 && bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) && bytes.toString("ascii",12,16)==="IHDR" && bytes.readUInt32BE(16)>0 && bytes.readUInt32BE(20)>0 && bytes.readUInt32BE(16)*bytes.readUInt32BE(20)<=20000000 : extension==="jpg" ? bytes.length>=4 && bytes[0]===255 && bytes[1]===216 && bytes.at(-2)===255 && bytes.at(-1)===217 : bytes.length>=12 && bytes.toString("ascii",0,4)==="RIFF" && bytes.toString("ascii",8,12)==="WEBP";
+				if(!valid)throw new Error("Image header does not match MIME type");
 				return {extension,bytes};
 			});
-			const state=this.service.snapshot();
-			if(state.pending.length>=120)throw new Error("Spatial inbox full; retain source and retry later");
-			if(state.observations.some(o=>o.id===input.id))throw new Error("Duplicate observation");
-			const atMs=Math.max(Date.now(),(state.observations.at(-1)?.atMs ?? 0)+1);
-			const directory=join(this.root,"images",randomUUID());await mkdir(directory,{recursive:true});
+			if(this.service.summary().pending>=120)throw new Error("Spatial inbox full; retain source and retry later");
+			if(this.service.hasObservation(input.id))throw new Error("Duplicate observation");
+			await mkdir(this.root,{recursive:true});const disk=await statfs(this.root);
+			if(disk.bavail*disk.bsize<512*1024*1024+frames.reduce((n,f)=>n+f.bytes.length,0))throw new Error("Low disk space; retain source and retry later");
+			const atMs=Math.max(Date.now(),this.service.lastObservationTime()+1);
+			const directory=join(this.root,"images",new Date().toISOString().slice(0,7),input.recordingId,randomUUID());await mkdir(directory,{recursive:true});
 			const paths=[];
 			for(let i=0;i<frames.length;i++){const frame=frames[i]!,path=join(directory,`${i}.${frame.extension}`);await writeFile(path,frame.bytes,{flag:"wx"});paths.push(path);}
 			await this.worker.accept({id:input.id,recordingId:input.recordingId,sourceAtMs:input.sourceAtMs,atMs,frames:paths});
