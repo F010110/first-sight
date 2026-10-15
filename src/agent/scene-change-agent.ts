@@ -108,8 +108,8 @@ export class SceneChangeAgent {
 	private baselines = new Map<string, Baseline>();
 	private events: SceneChangeEvent[] = [];
 
-	constructor(private readonly workDir: string | null = null) {
-		const configured = createQwenModel(512);
+	constructor(private readonly workDir: string | null = null, nonthinkingFlash=false) {
+		const configured = createQwenModel(512,nonthinkingFlash);
 		this.model = configured.model;
 		this.streamFn = configured.streamFn;
 	}

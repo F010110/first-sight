@@ -4,6 +4,7 @@ import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { createQwenModel } from "./qwen-provider.js";
 import type { FrameRef } from "./types.js";
+import type { RetrievalSession } from "./spatial-retrieve.js";
 
 /**
  * RequestAgent (role 3 of 3): handles the user's *explicit* requirement.
@@ -44,6 +45,8 @@ export interface RequestState {
 }
 
 export interface RequestResult {
+	historicalEvidenceIds?: string[];
+	historicalTrace?: { inspectedIds:string[]; modelCalls:number; tokens:number; elapsedMs:number };
 	kind: RequestKind;
 	answer: string;
 	shouldSpeak: boolean;
@@ -126,10 +129,23 @@ export class RequestAgent {
 		mode: null, kind: null, text: null, status: "idle", spoken: false, lastAnswer: null, turns: [], startedAtMs: null, updatedAtMs: null,
 	};
 
-	constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null) {
-		const configured = createQwenModel(512);
+	constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: RetrievalSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null) {
+		const configured = createQwenModel(512, retrieval!==null);
 		this.model = configured.model;
 		this.streamFn = configured.streamFn;
+	}
+
+	private historicalTool(): AgentTool<any> {
+		return {
+			name:"retrieve_visual_history",label:"历史视觉证据",
+			description:"Search historical observations by keywords, then inspect returned IDs. No match means unknown, not absent. Only inspected images support historical claims.",
+			parameters:{type:"object",properties:{query:{type:"string"},ids:{type:"array",items:{type:"string"}},cursor:{type:"integer"}},required:[]},
+			execute:async(_id:string,params:unknown)=>{
+				const p=params as {query?:string;ids?:string[];cursor?:number};
+				if(p.ids){const images=await this.retrieval!.inspect(p.ids);return {content:images.flatMap(image=>[{type:"text" as const,text:JSON.stringify({historicalEvidenceId:image.id,atMs:image.atMs,placeId:image.placeId,notCurrentTruth:true})},{type:"image" as const,data:image.data,mimeType:image.mimeType}]),details:{ids:p.ids}};}
+				const result=this.retrieval!.search({...p.query!==undefined?{query:p.query}:{},...p.cursor!==undefined?{cursor:p.cursor}:{},limit:4});return {content:[{type:"text" as const,text:JSON.stringify(result)}],details:{status:result.status}};
+			},
+		};
 	}
 
 	/** Optional tool: look up visited places and recent changes. The agent decides when to call it. */
@@ -192,6 +208,7 @@ export class RequestAgent {
 	}
 
 	async observe(frames: FrameRef[], motionDescription: string | null, sceneLabel: string | null): Promise<RequestResult> {
+		const started=Date.now();
 		if (this.state.status !== "active" || !this.state.text) throw new Error("No active user requirement");
 		if (frames.length === 0) throw new Error("RequestAgent needs at least one frame");
 		const ordered = frames.slice().sort((a, b) => a.timestampMs - b.timestampMs).slice(-3);
@@ -211,14 +228,35 @@ export class RequestAgent {
 		promptLines.push("Reply with only the JSON object.");
 		const prompt = promptLines.join("\n\n");
 
-		const tools = this.getSceneMemory ? [this.sceneMemoryTool()] : [];
-		const agent = new Agent({ initialState: { systemPrompt: SYSTEM_PROMPT, model: this.model, tools }, streamFn: this.streamFn });
-		await agent.prompt(prompt, imageContents);
+		const tools = this.retrieval ? [this.historicalTool()] : this.getSceneMemory ? [this.sceneMemoryTool()] : [];
+		const historyInstructions=this.retrieval ? " The search_scene_memory tool is replaced by retrieve_visual_history. Its use for historical place OR object questions overrides the earlier place-only restriction. Search then inspect before making historical claims. Add historicalEvidenceIds (only inspected IDs) and abstained boolean to JSON. For insufficient history abstain; historical sightings do not establish current presence. Never infer physical navigability from observed transitions." : "";
+		const agent = new Agent({ initialState: { systemPrompt: SYSTEM_PROMPT+historyInstructions, model: this.model, tools }, streamFn: this.streamFn });
+		let turns=0;
+		const unsubscribe=this.retrieval?agent.subscribe(event=>{
+			if(event.type==="message_end"&&(event.message.role==="assistant"||event.message.role==="toolResult")){
+				const message=event.message;this.onTrace?.({atMs:Date.now(),role:message.role,content:message.content.filter(block=>block.type!=="image"),...message.role==="assistant"?{usage:message.usage,stopReason:message.stopReason}:{} });
+			}
+			if(event.type==="turn_end"){
+				turns++;
+				if(turns===6&&event.toolResults.length){agent.state.tools=[];agent.steer({role:"user",content:"Tool budget exhausted. Return final JSON now. If inspected evidence does not support a historical match, set abstained=true. Never guess additional IDs.",timestamp:Date.now()});}
+				if(turns>=8)agent.abort();
+			}
+		}):()=>{};
+		const timeout=this.retrieval?setTimeout(()=>agent.abort(),120000):null;
+		try{await agent.prompt(prompt, imageContents);}finally{if(timeout)clearTimeout(timeout);unsubscribe();}
 		if (agent.state.errorMessage) throw new Error(`RequestAgent request failed: ${agent.state.errorMessage}`);
 		const assistant = [...agent.state.messages].reverse().find((message) => message.role === "assistant");
 		if (!assistant || assistant.role !== "assistant") throw new Error("RequestAgent returned no assistant message");
 		const raw = assistant.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
 		const parsed = parseRequest(raw, this.state.mode === "watch" ? "watch" : null);
+		let historicalEvidenceIds:string[]|undefined;
+		if(this.retrieval){
+			const root=JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")) as {historicalEvidenceIds?:string[];abstained?:boolean};
+			historicalEvidenceIds=root.historicalEvidenceIds ?? [];
+			if(historicalEvidenceIds.length)this.retrieval.validateCitations(historicalEvidenceIds);
+			if(typeof root.abstained!=="boolean")throw new Error("Historical request needs explicit abstention flag");
+			if(root.abstained!==true)this.retrieval.validateCitations(historicalEvidenceIds);
+		}
 
 		// A watch condition fires once; a question is done after answering.
 		const shouldSpeak = parsed.kind === "watch" ? parsed.shouldSpeak && !this.state.spoken : parsed.shouldSpeak;
@@ -231,6 +269,7 @@ export class RequestAgent {
 		if (done) this.state.status = "done";
 		this.state.updatedAtMs = Date.now();
 
-		return { ...parsed, shouldSpeak, done, frameIds: [ordered[ordered.length - 1]!.id], raw };
+		const messages=agent.state.messages.filter(message=>message.role==="assistant");
+		return { ...parsed, shouldSpeak, done, frameIds: [ordered[ordered.length - 1]!.id], raw, ...historicalEvidenceIds?{historicalEvidenceIds}:{} ,...this.retrieval?{historicalTrace:{inspectedIds:[...this.retrieval.inspected],modelCalls:messages.length,tokens:messages.reduce((sum,message)=>sum+message.usage.totalTokens,0),elapsedMs:Date.now()-started}}:{} };
 	}
 }

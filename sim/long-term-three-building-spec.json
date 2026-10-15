@@ -1,0 +1,7 @@
+{
+  "buildings": [
+    {"id":"108736779_177263484","split":"dev","sessions":[{"id":"hssd108-initial","role":"initial","capture":"../run/hssd-six-v1/108736779_177263484/attempt-1791814189135223300/capture"}]},
+    {"id":"107734188_176000034","split":"test","sessions":[{"id":"hssd107-initial","role":"initial","capture":"../run/hssd-six-v1/107734188_176000034/attempt-1791815406739945500/capture"}]},
+    {"id":"105515151_173104068","split":"test","sessions":[{"id":"hssd105-initial","role":"initial","capture":"../run/hssd-six-v1/105515151_173104068/attempt-1791816418920547500/capture"}]}
+  ]
+}

@@ -59,6 +59,25 @@ test.3发布检查：memory 75、visual-pipeline 61、helmet/repair 7、research
 
 ### 本轮整理及研究/应用边界
 
+#### 新阶段：模拟器开发闭环（用户要求2026-10-15）
+
+- [x] 本轮验证：13空间相关TS测试、模拟器真实HTTP重启/拒绝未确认付费/GT无路由、数据打包/评测防泄漏测试、v1冻结hash通过。真实Request前两次预算失败均留档；修复最终收口后，同房间样本7调用/16632tokens/16.866秒、读取并引用两条旧原观察；变化Agent恢复旧front并VLM fallback判未变化。记录`docs/application/spatial-dev-console.md`，不把这一例当新轨迹/变化准确率。
+- [x] 比较结果新增独立`changes.sqlite`有来源审计，可经retrieve读历史变化；同观察对幂等、重启恢复与录制/截止权限测试通过。原身份事件保留，merge/split尚不自动重标旧事件。
+- [ ] 明确阻塞：桌面browser未连接；WSL Habitat独立路线渲染3次EGL_NOT_INITIALIZED，保留失败目录，未改系统权限/驱动、未伪造新路线。3建筑已有初探118三摄观察已打包，但跨session任务0，不能勾选完整Benchmark；HM3DSEM授权/资产和可编辑变化尚缺。开发入口`http://127.0.0.1:3417`，启动/限制见`docs/application/spatial-dev-console.md`。
+
+- [x] 1. 已阅读EAM主线visual_memory/controller及实现状态，核对原证据、时间权限、代表恢复/inspect预算与引用约束；不引入oracle位姿/房间服务，不将其诊断当本项目效果。见`docs/application/spatial-memory-v2-plan.md`。
+- [x] 2a. 新增独立`spatial-retrieve.ts`只读检索v1库：观察理由词项AND检索、地点/录制/历史截止过滤、按游标恢复非代表原观察、每查询12次search/8图默认预算、已inspect引用校验、同录制有界真实历史序列；无匹配unknown。词法/时间召回不是视觉向量算法；原v1冻结hash不改。
+- [x] 3a. 独立模拟器本机开发服务`src/sim/spatial-dev-server.ts`和`sim/spatial-dev.html`：三摄/录制切换、逐观察入队、显式付费识别、状态/分页归属、历史证据图、访问/边、Agent结构化预置任务、修订。只绑定127.0.0.1，CSRF随机token、GT无路由、不接产品trial-server。HTTP入队/拒绝未确认付费/重启恢复通过；桌面浏览器未连接，未声称可视验收。
+- [x] 4a. RequestAgent新增可选历史检索/inspect工具及引用拒绝、8轮/120秒预算，模拟器模式qwen3.8-flash显式enable_thinking=false；旧产品模式不改。SceneChange桥接同已赋身份严格早于当前原观察的front图，unknown不比较、重启可重建基线；桥接测试无付费通过。真实模型完整运行待验证。
+- [x] 5a. `build_long_term_dataset.py`按真实capture输出三同步相机、跨session时钟、原时间、媒体hash；GT/tasks分离到evaluation-only，拒绝重复轨迹冒充独立session/同建筑跨split/覆盖输出。首个真实HSSD40观察包`run/long-term-pilot-v2-initial`完成，0跨会话任务（只有初探，明确不冒充Benchmark）。新独立路线两次EGL失败保留，正在核查系统Mesa/WSL依赖。HM3DSEM许可/资产、可编辑变化和5类会话尚待完成。
+- [ ] 2. 实现有预算、证据来源及unknown的retrieve算法，供地点识别、RequestAgent与场景变化Agent共用；覆盖久远地点、时间约束、无匹配、过时记忆、录制隔离测试，不向模型泄露模拟真值。
+- [ ] 3. 仅模拟器增加电脑开发者界面：录制/轨迹选择与回放、当前多摄图、队列/调用状态、记忆节点/访问/边、检索证据、变化与Agent结果、人工修订；不加语言输入输出，不改实际产品前端。
+- [ ] 4. 接入现有RequestAgent和场景变化Agent，结构化调试任务触发，共用持久记忆/retrieve，区分历史证据与当前确认，完成重启及错误回归。
+- [ ] 5. 按`建议9.md`构建多会话长期记忆数据协议/生成器：初探、不同路线重访、相似区域干扰、可编辑环境变化、仅依赖历史的任务。算法只获图像/时间/允许事件；位姿/房间/全局图真值仅评测使用。核实场景可用性/许可，不把文档中的论文或数据规模直接当已验证事实。
+- [ ] 6. 分别报告身份、Recall@K、历史路径检索（非导航成功）、变化/过时记忆和成本；真实数据与合成工程测试分开。完成可运行端到端验证，分阶段commit，不覆盖旧实验与冻结库。
+
+
+
 ### 当前三条工作线（2026-10-11更新）
 
 当前设备方向：头盔只采集前/左/右图像及方向，可选后摄；所有算法、存储和其他功能在电脑执行。手机方案标为旧实现，保留代码和维护文档，不作为新接入目标。下面优先级取代此前“硬件/应用全部暂缓”的安排；单摄手机适配仍暂缓。

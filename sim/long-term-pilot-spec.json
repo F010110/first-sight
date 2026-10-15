@@ -1,0 +1,15 @@
+{
+  "buildings": [
+    {
+      "id": "108736779_177263484",
+      "split": "dev",
+      "sessions": [
+        {
+          "id": "hssd108-initial",
+          "role": "initial",
+          "capture": "../run/hssd-six-v1/108736779_177263484/attempt-1791814189135223300/capture"
+        }
+      ]
+    }
+  ]
+}
