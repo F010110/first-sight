@@ -12,6 +12,9 @@ import { VlmHarness, type AnalysisMode, type AttentionMode, type FrameRef, type 
 import { SceneAgent } from "./agent/scene-agent.js";
 import { SceneChangeAgent } from "./agent/scene-change-agent.js";
 import { RequestAgent } from "./agent/request-agent.js";
+import { SpatialTopologyApi } from "./agent/spatial-topology-api.js";
+import { topologyVlm } from "./agent/spatial-topology-vlm.js";
+import { SpatialLibraryStore } from "./agent/spatial-library.js";
 
 const PORT = Number(process.env.VLM_TRIAL_PORT || "8765");
 /** LAN IPv4 captured by scripts/setup-lan-tls.ps1, used only for console hints. */
@@ -43,6 +46,35 @@ const sceneChangeAgents = new Map<string, SceneChangeAgent>();
 const requestAgents = new Map<string, RequestAgent>();
 const badLogins = new Map<string, number[]>();
 const experimentRoot = resolve(process.env.VLM_EXPERIMENT_ROOT || "run/experiments");
+const spatialApis = new Map<string, Promise<SpatialTopologyApi>>();
+const spatialLibraries = new SpatialLibraryStore(resolve(experimentRoot,"spatial-libraries"));
+const spatialBindings = new Map<string,string>();
+
+async function handleSpatial(req: IncomingMessage, res: ServerResponse, session: { id: string }): Promise<void> {
+	const input=await bodyJson(req);
+	if(input.action==="create-library"){
+		const credentials=await spatialLibraries.create();
+		spatialBindings.set(session.id,credentials.libraryId);
+		json(res,201,{...credentials,note:"Save recoveryKey securely; possession grants library access. It is returned only at creation."});return;
+	}
+	if(input.action==="open-library"){
+		await spatialLibraries.open(input.libraryId,input.recoveryKey);
+		spatialBindings.set(session.id,input.libraryId as string);
+		json(res,200,{libraryId:input.libraryId,opened:true});return;
+	}
+	if(input.action==="start" && (!process.env.QWEN_API_KEY || !process.env.QWEN_BASE_URL)){json(res,503,{error:"VLM API is not configured"});return;}
+	const libraryId=spatialBindings.get(session.id);
+	const memoryKey=libraryId?`library:${libraryId}`:`session:${session.id}`;
+	let api=spatialApis.get(memoryKey);
+	if(!api){
+		if(spatialApis.size>=MAX_SESSIONS){json(res,503,{error:"Spatial worker capacity reached"});return;}
+		const root=libraryId?resolve(experimentRoot,"spatial-libraries",libraryId,"memory"):resolve(experimentRoot,session.id,"spatial-topology");
+		api=(async()=>{const value=new SpatialTopologyApi(root,topologyVlm(resolve(root,"requests")));await value.load();return value;})();
+		spatialApis.set(memoryKey,api);
+		void api.catch(()=>spatialApis.delete(memoryKey));
+	}
+	json(res,input.action==="observe"?202:200,await (await api).execute(input));
+}
 
 type ActivityRecordingManifest = {
 	schemaVersion: 1;
@@ -968,6 +1000,7 @@ async function main(): Promise<void> {
 			const session = authorized(req, res);
 			if (!session) return;
 			rateLimit(session);
+			if (pathname === "/api/spatial") { await handleSpatial(req,res,session); return; }
 			if (pathname === "/api/live/batch") { await handleLiveBatch(req, res, session); return; }
 			if (pathname === "/api/observe") {
 				if (!process.env.QWEN_API_KEY || !process.env.QWEN_BASE_URL) { json(res, 503, { error: "VLM API is not configured" }); return; }
