@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { SpatialObservation } from "./incremental-spatial-memory.js";
 import type { TopologyAssignment, TopologyNode, TopologyState } from "./spatial-topology-service.js";
 
@@ -93,6 +94,88 @@ export class SpatialSqliteStore {
 		return (rows as Array<{raw:string}>).map(r=>JSON.parse(r.raw) as TopologyNode);
 	}
 	visits(placeId:string,limit=10){this.limit(limit);return this.db.prepare("SELECT * FROM visits WHERE place_id=? ORDER BY end_ms DESC LIMIT ?").all(placeId,limit);}
+	private capture(nodeIds:string[],observationIds:string[]) {
+		return {format:"sqlite-local-v1",nodes:nodeIds.map(id=>({id,raw:(this.db.prepare("SELECT raw FROM places WHERE id=?").get(id) as {raw:string}|undefined)?.raw ?? null,references:(this.db.prepare("SELECT COUNT(*) AS n FROM assignments WHERE place_id=?").get(id) as {n:number}).n})),assignments:observationIds.map(id=>({id,raw:(this.db.prepare("SELECT raw FROM assignments WHERE observation_id=?").get(id) as {raw:string}|undefined)?.raw ?? null}))};
+	}
+	private rebuildRecordings(observationIds:string[]):void {
+		const recordings=new Set(observationIds.map(id=>(this.db.prepare("SELECT recording_id FROM observations WHERE id=?").get(id) as {recording_id:string|null}).recording_id));
+		for(const recording of recordings){
+			this.db.prepare("DELETE FROM transitions WHERE to_observation_id IN (SELECT id FROM observations WHERE recording_id IS ?)").run(recording);
+			this.db.prepare("DELETE FROM visits WHERE recording_id IS ?").run(recording);
+			const rows=this.db.prepare("SELECT a.raw AS assignment,o.raw AS observation FROM assignments a JOIN observations o ON a.observation_id=o.id WHERE o.recording_id IS ? ORDER BY o.seq").iterate(recording);
+			let previous:TopologyAssignment|null=null,visitId:string|null=null;
+			for(const value of rows){
+				const row=value as {assignment:string;observation:string},a=JSON.parse(row.assignment) as TopologyAssignment,o=JSON.parse(row.observation) as SpatialObservation;
+				if(previous?.placeId && a.placeId && previous.placeId!==a.placeId)this.db.prepare("INSERT INTO transitions VALUES(?,?,?,?)").run(previous.observationId,a.observationId,previous.placeId,a.placeId);
+				if(a.placeId){
+					if(visitId && previous?.placeId===a.placeId)this.db.prepare("UPDATE visits SET end_observation_id=?,end_ms=? WHERE id=?").run(o.id,o.atMs,visitId);
+					else {visitId=`visit:${o.id}`;this.db.prepare("INSERT INTO visits VALUES(?,?,?,?,?,?,?)").run(visitId,a.placeId,recording,o.id,o.id,o.atMs,o.atMs);}
+				}else visitId=null;
+				previous=a;
+			}
+		}
+	}
+	private refreshPlace(id:string):void {
+		const row=this.db.prepare("SELECT raw FROM places WHERE id=?").get(id) as {raw:string}|undefined;if(!row)return;
+		const node=JSON.parse(row.raw) as TopologyNode;
+		const first=this.db.prepare("SELECT o.raw FROM assignments a JOIN observations o ON o.id=a.observation_id WHERE a.place_id=? ORDER BY o.seq LIMIT 1").get(id) as {raw:string}|undefined;
+		const last=this.db.prepare("SELECT o.raw FROM assignments a JOIN observations o ON o.id=a.observation_id WHERE a.place_id=? ORDER BY o.seq DESC LIMIT 1").get(id) as {raw:string}|undefined;
+		node.representatives=[];if(first)node.representatives.push(JSON.parse(first.raw) as SpatialObservation);if(last && last.raw!==first?.raw)node.representatives.push(JSON.parse(last.raw) as SpatialObservation);
+		node.lastSeenMs=node.representatives.at(-1)?.atMs ?? 0;this.upsertPlace(node);
+	}
+	private logRevision(value:Record<string,unknown>):void {
+		const seq=(this.db.prepare("SELECT COALESCE(MAX(seq),-1)+1 AS n FROM revisions").get() as {n:number}).n;
+		this.db.prepare("INSERT INTO revisions VALUES(?,?,?)").run(value.id as string,seq,JSON.stringify(value));
+	}
+	/** Local reversible identity edits. No complete graph snapshots are stored. */
+	revise(kind:"merge"|"split"|"confirm",sourceId:string,reason:string,evidenceIds:string[],options:{targetId?:string;summary?:string}={}):string {
+		return this.atomic(()=>{
+			const sourceRow=this.db.prepare("SELECT raw FROM places WHERE id=? AND status!='retired'").get(sourceId) as {raw:string}|undefined;
+			if(!sourceRow || !reason.trim() || !evidenceIds.length || new Set(evidenceIds).size!==evidenceIds.length)throw new Error("Invalid revision source/reason/evidence");
+			for(const id of evidenceIds)if(!this.db.prepare("SELECT 1 FROM assignments WHERE observation_id=?").get(id))throw new Error("Evidence must be processed");
+			const source=JSON.parse(sourceRow.raw) as TopologyNode;
+			let affected:string[]=[],nodeIds=[sourceId],newId:string|undefined;
+			if(kind==="merge"){
+				if(!options.targetId || options.targetId===sourceId || !this.db.prepare("SELECT 1 FROM places WHERE id=? AND status!='retired'").get(options.targetId))throw new Error("Invalid merge target");
+				nodeIds.push(options.targetId);affected=(this.db.prepare("SELECT observation_id FROM assignments WHERE place_id=? ORDER BY observation_id").all(sourceId) as Array<{observation_id:string}>).map(r=>r.observation_id);
+			}else if(kind==="split"){
+				if(!options.summary?.trim() || evidenceIds.some(id=>!(this.db.prepare("SELECT 1 FROM assignments WHERE observation_id=? AND place_id=?").get(id,sourceId))) || evidenceIds.length >= (this.db.prepare("SELECT COUNT(*) AS n FROM assignments WHERE place_id=?").get(sourceId) as {n:number}).n)throw new Error("Split needs proper source subset and summary");
+				newId=randomUUID();nodeIds.push(newId);affected=[...evidenceIds];
+			}else if(kind!=="confirm")throw new Error("Unknown revision kind");
+			const before=this.capture(nodeIds,affected);
+			if(kind==="confirm"){source.status="confirmed";this.upsertPlace(source);}
+			if(kind==="merge"){source.status="retired";this.upsertPlace(source);}
+			if(newId)this.upsertPlace({id:newId,summary:options.summary!,status:"candidate",representatives:[],lastSeenMs:0});
+			for(const id of affected){
+				const a=JSON.parse((this.db.prepare("SELECT raw FROM assignments WHERE observation_id=?").get(id) as {raw:string}).raw) as TopologyAssignment;
+				if(a.originalPlaceId===undefined)a.originalPlaceId=a.placeId;a.placeId=kind==="merge"?options.targetId!:newId!;
+				this.db.prepare("UPDATE assignments SET place_id=?,raw=? WHERE observation_id=?").run(a.placeId,JSON.stringify(a),id);
+			}
+			this.rebuildRecordings(affected);for(const id of nodeIds)this.refreshPlace(id);
+			const id=randomUUID();this.logRevision({id,kind,reason,evidenceIds,before:JSON.stringify(before),after:JSON.stringify(this.capture(nodeIds,affected)),format:"sqlite-local-v1"});return id;
+		});
+	}
+	undo(revisionId:string,reason:string):void {
+		this.atomic(()=>{
+			const row=this.db.prepare("SELECT raw FROM revisions WHERE id=?").get(revisionId) as {raw:string}|undefined;
+			if(!row || !reason.trim())throw new Error("Invalid undo request");
+			const revision=JSON.parse(row.raw) as {kind:string;format?:string;before:string;after:string;evidenceIds:string[]};
+			if(revision.kind==="undo" || revision.format!=="sqlite-local-v1")throw new Error("Only local SQLite edits support this undo");
+			const before=JSON.parse(revision.before) as ReturnType<SpatialSqliteStore['capture']>,after=JSON.parse(revision.after) as ReturnType<SpatialSqliteStore['capture']>;
+			const nodes=after.nodes.map(n=>n.id),ids=after.assignments.map(a=>a.id);
+			if(JSON.stringify(this.capture(nodes,ids))!==revision.after)throw new Error("Undo conflicts with subsequent identity changes");
+			// A newly split node must not have acquired additional assignments since the edit.
+			for(const node of before.nodes.filter(n=>n.raw===null)){
+				const references=this.db.prepare("SELECT observation_id FROM assignments WHERE place_id=?").all(node.id) as Array<{observation_id:string}>;
+				if(references.some(r=>!ids.includes(r.observation_id)))throw new Error("Undo conflicts with new assignments");
+			}
+			for(const node of before.nodes)if(node.raw)this.upsertPlace(JSON.parse(node.raw) as TopologyNode);
+			for(const entry of before.assignments){const a=JSON.parse(entry.raw!) as TopologyAssignment;this.db.prepare("UPDATE assignments SET place_id=?,raw=? WHERE observation_id=?").run(a.placeId,entry.raw,entry.id);}
+			this.rebuildRecordings(ids);
+			for(const node of before.nodes)if(node.raw===null){this.db.prepare("DELETE FROM place_search WHERE id=?").run(node.id);this.db.prepare("DELETE FROM places WHERE id=?").run(node.id);}
+			this.logRevision({id:randomUUID(),kind:"undo",undoOf:revisionId,reason,evidenceIds:revision.evidenceIds,format:"sqlite-local-v1",before:revision.after,after:revision.before});
+		});
+	}
 	importSnapshot(snapshot:TopologyState):void {
 		this.atomic(()=>{
 			if(this.counts().observations || this.counts().places)throw new Error("Import requires empty database");
