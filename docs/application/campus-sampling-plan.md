@@ -1,5 +1,14 @@
 # 校园多会话采样草案
 
+## 实际进展（本轮）
+
+- 两个原始zip均已SHA256验证通过，下载完成；没有覆盖现有THOR环境。
+- `sim/catalog_mansion_schools.py`审计30个教育候选，报告`D:\Datasets\MansionWorld\school-audit-v2\catalog.json`，原始JSON/预览图提取到其`selected`目录。
+- 主候选`public_education_4f_400_fp001#0`：37房间、源多边形面积1576㎡；备选`public_education_4f_300_fp001#0`：26房间、1268㎡。选择不同layout前缀，不把同布局变体当独立建筑。面积不是实际可行走面积。
+- 定制THOR解压在`D:\Datasets\MansionWorld\runtime-isolated`。用现有Python客户端指定local executable，内置房间三摄实测通过，报告`run/mansion-custom-runtime-probe-v1/`。
+- 主候选第一层原始CreateHouse成功，GetReachablePositions返回2658点，截图`run/mansion-school-load-v2/front.png`。但源235个顶层object ID与运行元数据不完全匹配（运行163对象，含其他类型/命名可能性），不能把CreateHouse成功等同于家具齐全；必须核实ID映射、缺资产加载及视觉质量。当前图片仅证明有墙/地面/门，不代表完整教室或校园。
+- 还未确认室外可走区、其他层完整加载、真实连续楼梯、物体编辑与独立路线。未将缺家具版本作为正式数据采集；本轮0付费模型调用。下一步优先检查资源hook及逐asset依赖，随后做可达点到房间映射与室内外验收。
+
 本轮用户授权下载无需身份验证的学校场景到D盘，优先AI2-THOR路线；不再等待MansionWorld许可澄清才下载。保留原始许可，不将下载授权解释为公开分发、云端处理授权。下载目标`D:\Datasets\MansionWorld\8dd4f01dbf78`，脚本`sim/download_mansionworld.py`固定revision并校验大小/SHA256，下载未完成不标成功。官方目前以整库zip提供场景，因此先下载场景库及patch，非全部Objaverse依赖。
 
 ## 第一道门：选出实际学校
