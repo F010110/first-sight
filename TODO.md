@@ -61,6 +61,18 @@ test.3发布检查：memory 75、visual-pipeline 61、helmet/repair 7、research
 
 #### 新阶段：模拟器开发闭环（用户要求2026-10-15）
 
+##### 当前优先纠偏：可靠超大空间数据集（用户强调）
+
+- [ ] 用户进一步明确目标为中小型学校/校园，最好室内外连通，不局限超大楼宇；候选需核实教室/走廊/楼梯/庭院或操场实际可走，不用多小屋/室外贴图拼接替代。用户选择先核实MansionWorld许可；发现CC-BY与research-only冲突、官网license仍TODO，未代签/未下载资产/未向作者发帖。完整办理入口和询问模板`docs/application/campus-dataset-access.md`，HM3D仅真实室内支线。
+- [x] 独立Chrome实际DOM/点击/三摄及历史图加载/未确认付费拒绝验收通过，报告/截图`run/dev-browser-acceptance-v3/`，0模型调用；不再将“内置browser bridge未连”当无法做浏览器自动化的唯一阻塞。bridge本身仍未连，完整人工验收未做。
+- [x] 替代内核AI2-THOR5.0/WSLg同步三摄320px实渲染通过`run/thor-alternative-runtime-v1/`；Habitat只读设备权限诊断`run/large-building-preflight-v1/habitat.json`、MansionWorld固定revision/zip大小/hash/冲突许可审计`run/mansionworld-license-audit-v1/`已保存。前者FloorPlan1不是学校数据，后者只是元数据，不当已取得大楼资产。
+
+- [ ] 把旧HSSD小场景路线验证与新大楼数据方案分开；不能将3建筑初探118观察、重复采样或多小屋拼接称为超大连续场景。定义可测的可通行面积、最大连通区、房间/楼层、路径直径、跨会话覆盖和图像质量准入门槛。
+- [ ] Habitat已查明当前用户无`/dev/dri/renderD128`读写权限（不在render/video组），sudo需要交互认证；补环境预检和明确修复步骤，修复后实际渲染/路线重测，不自动改系统权限。AI2-THOR Linux64已本机实测FloorPlan1渲染成功，是可运行替代内核，不代表大楼资产已就绪。
+- [ ] 核查MANSION/MansionWorld作为大型可编辑主候选：已确认公开代码/数据入口及固定HF revision；额外资产、定制THOR包、真实大楼尺寸与连通性待核验。CC-BY4.0与数据卡research-only文字冲突须确认；多层加载型移动与连续楼梯分开记录。HM3DSEM保留真实扫描支线，不代签个人授权。
+- [ ] 浏览器内置桥接仍未连接，尝试独立本机Chrome自动化完成实际DOM/点击/图片与截图验收，不再只停在HTTP测试。
+
+
 - [x] 本轮验证：13空间相关TS测试、模拟器真实HTTP重启/拒绝未确认付费/GT无路由、数据打包/评测防泄漏测试、v1冻结hash通过。真实Request前两次预算失败均留档；修复最终收口后，同房间样本7调用/16632tokens/16.866秒、读取并引用两条旧原观察；变化Agent恢复旧front并VLM fallback判未变化。记录`docs/application/spatial-dev-console.md`，不把这一例当新轨迹/变化准确率。
 - [x] 比较结果新增独立`changes.sqlite`有来源审计，可经retrieve读历史变化；同观察对幂等、重启恢复与录制/截止权限测试通过。原身份事件保留，merge/split尚不自动重标旧事件。
 - [ ] 明确阻塞：桌面browser未连接；WSL Habitat独立路线渲染3次EGL_NOT_INITIALIZED，保留失败目录，未改系统权限/驱动、未伪造新路线。3建筑已有初探118三摄观察已打包，但跨session任务0，不能勾选完整Benchmark；HM3DSEM授权/资产和可编辑变化尚缺。开发入口`http://127.0.0.1:3417`，启动/限制见`docs/application/spatial-dev-console.md`。
