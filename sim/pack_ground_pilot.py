@@ -37,4 +37,4 @@ def pack(source,output,session,interval):
     (private/'coverage.json').write_text(json.dumps(report,indent=2));print(json.dumps(report,indent=2))
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('source',type=Path);p.add_argument('output',type=Path);p.add_argument('--session',default='P0000');p.add_argument('--interval',type=float,default=10);a=p.parse_args();pack(a.source,a.output,a.session,a.interval)
+    p=argparse.ArgumentParser();p.add_argument('source',type=Path);p.add_argument('output',type=Path);p.add_argument('--session',default='P0000');p.add_argument('--interval',type=float,default=2);a=p.parse_args();pack(a.source,a.output,a.session,a.interval)
