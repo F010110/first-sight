@@ -63,6 +63,10 @@ test.3发布检查：memory 75、visual-pipeline 61、helmet/repair 7、research
 
 ##### 当前优先纠偏：可靠超大空间数据集（用户强调）
 
+- [x] 学校/社区Ground P0000三摄+metadata全部下载并哈希；学校177.5s/210m，确认室外至室内，社区53.5s此路线主要室外。学校19观察原图/私有位姿分离打包，8观察2窗口真实Flash非thinking校准：12850输入/1133输出token，pending0，1个80s几何代理重访ID一致。`docs/application/spatial-calibration-protocol.md`记录方法/失败/局限，不当15分钟或8小时通过。
+- [x] 新实验校准入口增加真实单价配置、窗口/观察限制、保守请求预留、usage缺失停机；mock成功计费/调用前预算拒绝/usage缺失停止测试通过。未改v1冻结源。
+- [ ] 长测前仍需旧地点视觉候选扩展（本轮未实现）、多独立路线、15–30分钟校准和真实端点价格；当前不启动8小时，token小校准不等于金额硬限或实际账单。
+
 - [ ] 用户进一步明确目标为中小型学校/校园，最好室内外连通，不局限超大楼宇；候选需核实教室/走廊/楼梯/庭院或操场实际可走，不用多小屋/室外贴图拼接替代。用户选择先核实MansionWorld许可；发现CC-BY与research-only冲突、官网license仍TODO，未代签/未下载资产/未向作者发帖。完整办理入口和询问模板`docs/application/campus-dataset-access.md`，HM3D仅真实室内支线。
 - [x] 独立Chrome实际DOM/点击/三摄及历史图加载/未确认付费拒绝验收通过，报告/截图`run/dev-browser-acceptance-v3/`，0模型调用；不再将“内置browser bridge未连”当无法做浏览器自动化的唯一阻塞。bridge本身仍未连，完整人工验收未做。
 - [x] 替代内核AI2-THOR5.0/WSLg同步三摄320px实渲染通过`run/thor-alternative-runtime-v1/`；Habitat只读设备权限诊断`run/large-building-preflight-v1/habitat.json`、MansionWorld固定revision/zip大小/hash/冲突许可审计`run/mansionworld-license-audit-v1/`已保存。前者FloorPlan1不是学校数据，后者只是元数据，不当已取得大楼资产。
