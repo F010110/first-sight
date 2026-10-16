@@ -63,6 +63,8 @@ test.3发布检查：memory 75、visual-pipeline 61、helmet/repair 7、research
 
 ##### 当前优先纠偏：可靠超大空间数据集（用户强调）
 
+- [ ] 学校重复建点已做固定上下文诊断：原17响应reasoning_content均空，只有输出reason可审计；100s只改参考措辞后恢复旧ID，116s仍失败，去掉重复摘要候选后恢复。支持提示歧义+历史重复身份污染，非单纯召回/数据库错；单次非统计证明。`docs/application/school-replay-diagnosis.md`，新增3请求26556输入/1806输出token，原库未改。仍需新增点复核/独立负例验证，不能把摘要相同自动合并。
+
 - [ ] 学校门控整段已跑完但建模未通过：90→62组/17请求，135906输入+8673输出token、pending0、9候选点；人工发现同一红砖通道P4/P5/P3重复建点，候选已召回，理由误读“参考禁止分类”。失败轮另计3请求17434/1651token。提示歧义已修正+mock验证，尚未第三次付费复测，不扩大8小时；详见`docs/application/school-gated-replay.md`。
 
 - [ ] 按90组2秒学校流实跑本地门控→召回→VLM：选62/跳28/17窗口，跳过帧不伪造身份。首轮第二窗历史参考多输出assignment，协议修复仍失败，3请求17434输入/1651输出token已保留；新增独立v2严格目标白名单提示并测试，新目录重跑。结果与局限`docs/application/school-gated-replay.md`。
