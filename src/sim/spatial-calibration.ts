@@ -3,10 +3,13 @@ import { mkdir,readFile,writeFile,readdir } from 'node:fs/promises';
 import { resolve,join } from 'node:path';
 import { SpatialSqliteService } from '../agent/spatial-sqlite-service.js';
 import { topologyVlm } from '../agent/spatial-topology-vlm.js';
+import { SpatialV2Service } from '../agent/spatial-v2-service.js';
+import { SpatialVisualRecall,pythonFeatureExtractor } from '../agent/spatial-visual-recall.js';
+import { appendFileSync } from 'node:fs';
 
 const [datasetArg,outputArg,configArg,paid]=process.argv.slice(2);
 if(!datasetArg||!outputArg||!configArg||paid!=='--confirm-paid')throw Error('Usage: spatial-calibration dataset NEW-output config.json --confirm-paid');
-const config=JSON.parse(await readFile(configArg,'utf8')) as {inputPerMillion:number;outputPerMillion:number;maxCost:number;maxWindows:number;maxObservations:number;currency:string;tokenCalibrationOnly?:boolean};
+const config=JSON.parse(await readFile(configArg,'utf8')) as {inputPerMillion:number;outputPerMillion:number;maxCost:number;maxWindows:number;maxObservations:number;currency:string;tokenCalibrationOnly?:boolean;visualRecall?:{command:string;args:string[]}};
 const tokenOnly=config.tokenCalibrationOnly===true;
 for(const key of (tokenOnly?['maxWindows','maxObservations']:['inputPerMillion','outputPerMillion','maxCost','maxWindows','maxObservations']) as Array<'inputPerMillion'|'outputPerMillion'|'maxCost'|'maxWindows'|'maxObservations'>)if(!Number.isFinite(config[key])||config[key]<=0)throw Error(`Missing/invalid ${key}; actual endpoint prices required`);
 if(!Number.isInteger(config.maxWindows)||!Number.isInteger(config.maxObservations)||(!tokenOnly&&!config.currency))throw Error('Integer limits and currency required');
@@ -18,7 +21,7 @@ let cost=0,windows=0,input=0,output=0,calls=0;const logRoot=join(root,'requests'
 // Conservative monetary stop, conditional on supplied rates and endpoint token limits.
 const reservation=tokenOnly?0:2*(128000*config.inputPerMillion+1800*config.outputPerMillion)/1e6;
 const base=topologyVlm(logRoot);
-const service=new SpatialSqliteService(join(root,'topology.sqlite'),async(batch,history)=>{
+const recognize:ReturnType<typeof topologyVlm>=async(batch,history)=>{
  if(windows>=config.maxWindows||(!tokenOnly&&cost+reservation>config.maxCost))throw Error('Budget/maximum windows reached before model call');
  const before=new Set(await readdir(logRoot).catch(()=>[]));windows++;
  try{return await base(batch,history);}finally{
@@ -35,7 +38,8 @@ const service=new SpatialSqliteService(join(root,'topology.sqlite'),async(batch,
   await writeFile(join(root,'usage.json'),JSON.stringify({windows,calls,inputTokens:input,outputTokens:output,estimatedCost:tokenOnly?null:cost,currency:tokenOnly?null:config.currency,unknownUsage,reservationPerWindow:tokenOnly?null:reservation,tokenCalibrationOnly:tokenOnly,maximumProviderCalls:config.maxWindows*2,priceSource:tokenOnly?'No monetary estimate; limited token calibration only':'user config, not verified provider invoice'},null,2));
   if(unknownUsage)throw Error('Usage unavailable: halt rather than assume zero cost');
  }
-});
+};
+const service=config.visualRecall ? new SpatialV2Service(join(root,'topology.sqlite'),recognize,new SpatialVisualRecall(join(root,'visual-recall.sqlite'),join(root,'topology.sqlite'),pythonFeatureExtractor(config.visualRecall.command,config.visualRecall.args)),value=>appendFileSync(join(root,'recall-trace.jsonl'),JSON.stringify(value)+'\n')) : new SpatialSqliteService(join(root,'topology.sqlite'),recognize);
 await service.load();
 try{
  const lines=(await readFile(join(data,'observations.jsonl'),'utf8')).trim().split(/\r?\n/).slice(0,config.maxObservations);
