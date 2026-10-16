@@ -10,7 +10,7 @@ export function spatialV2Vlm(root:string):WindowRecognizer{
   const directory=join(root,randomUUID());await mkdir(directory,{recursive:true});
   const ids=batch.map(o=>o.id);const content:Array<Record<string,unknown>>=[{type:'text',text:`逐观察判断观察者所在具体空间，不是隔门看见的空间。一个短窗口可包含多个地点。不要按旋转新建地点，不凭共同家具合并。旧地点须引用目录ID，新地点用new-1等，证据不足placeId=null。仅输出JSON {"places":[{"id":"历史ID或new-1","summary":"布局摘要"}],"assignments":[{"observationId":"当前目标ID","placeId":"已声明ID或null","reason":"原图证据"}]}。历史只供比较，严禁给历史参考图输出assignment。当前目标ID白名单=${JSON.stringify(ids)}；assignments必须恰好${ids.length}项，ID集合严格等于此白名单，不多不少。目录=${JSON.stringify(history.nodes.map(n=>({id:n.id,summary:n.summary})))}`}];
   const add=async(label:string,frames:string[])=>{content.push({type:'text',text:label});for(const path of frames){const mime=/\.png$/i.test(path)?'image/png':'image/jpeg';content.push({type:'image_url',image_url:{url:`data:${mime};base64,${(await readFile(path)).toString('base64')}`}});}};
-  for(const node of history.nodes.slice(0,3)){const ref=node.representatives.at(-1);if(ref)await add(`REFERENCE_ONLY 禁止分类 placeId=${node.id} 历史证据，不属于本轮目标`,ref.frames);}
+  for(const node of history.nodes.slice(0,3)){const ref=node.representatives.at(-1);if(ref)await add(`HISTORICAL_PLACE_EVIDENCE placeId=${node.id}。当前目标若与这里相同，应复用这个placeId。仅参考图本身不需要assignment；这不是禁止复用该地点。`,ref.frames);}
   for(const row of batch)await add(`CURRENT_TARGET observationId=${row.id} atMs=${row.atMs}`,row.frames);
   content.push({type:'text',text:`再次核对：只回答当前ID ${JSON.stringify(ids)}，恰好${ids.length}项。参考图不是目标。`});
   await writeFile(join(directory,'input.json'),JSON.stringify({batch,history,model:'qwen3.8-flash',enable_thinking:false,promptVersion:'strict-targets-v2'},null,2));

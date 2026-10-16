@@ -28,6 +28,18 @@ mock回归验证：首次输出历史assignment被拒绝，第二次合法才返
 
 ## 结果审计
 
+### 完成结果及缺陷
+
+重跑完成：17窗口/17请求、无协议重试，62选中观察全部入库，pending0，生成9个candidate地点。输入135906token、输出8673token；请求耗时合计164.242秒（单请求6.062–13.080秒，不含全部本地特征/文件处理）。包括首轮失败合计20请求、153340输入/10324输出token。未核对单价，不报人民币账单。门控选帧减少31.1%，计划窗口相对23减少26.1%；未跑全量无门控付费对照，因此不能称费用下降26.1%或准确率不降。
+
+`evaluation.json`报告14个相互重叠代理对中9对双端有分类、7对身份一致。**7/9不是房间准确率或独立重访成功率**：近距离可能隔围栏/门口，且这些对不独立。人工抽查室外→室内（128s附近）和体育馆（176s）确实产生不同ID。
+
+发现明确的重复建点风险：review临时标签P4/P5/P3的源summary完全相同，均为红砖墙旁的狭窄通道；P4用于0–24s及90–98s，P5用于100–104s，P3用于116s。各相关窗口均已提供旧通道候选和原图，不是简单“候选没召回”。100s的理由明确说符合旧ID但实际输出new；116s理由说“与被禁止分类的参考图场景一致，故新建”，指向本轮REFERENCE_ONLY禁止分类措辞歧义。人工对照sheet-00/05显示同一沿墙通道，当前v2语义建模**不通过验收**，不能以pending0称成功。
+
+结果原样保留，未自动合并/改标签美化。提示已另行改为“历史地点可复用，只不给参考图本身输出assignment”，并加mock检查；**尚未进行第三次付费重跑，修正效果未验证**。不要继续扩大8小时。需先固定这些失败窗口做局部回归，再用新独立样本验证，不用当前样本无限调提示。
+
+证据文件：`run/tartanground-school-gated-real-v2/evaluation.json`、`recall-trace.jsonl`、`review/sheet-00.jpg`至`sheet-08.jpg`、`review/labels.json`。这些P1..P9仅为审查时UUID别名，非GT。
+
 完成后执行：
 ```text
 python sim/evaluate_gated_spatial_run.py run/tartanground-school-fixed2s-v1 run/tartanground-school-gated2s-v1 run/tartanground-school-gated-real-v2 NEW-report.json

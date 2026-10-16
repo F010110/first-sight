@@ -10,6 +10,8 @@ test('v2 rejects historical reference assignment and explicitly repairs target w
  const root=await mkdtemp(join(tmpdir(),'strict-target-'));let calls=0;
  const previous={key:process.env.QWEN_API_KEY,base:process.env.QWEN_BASE_URL};
  const server=createServer(async(req,res)=>{let body='';for await(const c of req)body+=c;const payload=JSON.parse(body);calls++;
+  assert.ok(payload.messages[0].content.some((c:{text?:string})=>c.text?.includes('当前目标若与这里相同，应复用这个placeId')));
+  assert.ok(!payload.messages[0].content.some((c:{text?:string})=>c.text?.includes('REFERENCE_ONLY 禁止分类')));
   if(calls===2||calls===4)assert.match(payload.messages.at(-1).content,/EXACTLY/);
   const assignments=[{observationId:'current',placeId:'p1',reason:'fixture'}];if(calls===1||calls>=3)assignments.push({observationId:'old',placeId:'p1',reason:'invalid historical assignment'});
   res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{content:JSON.stringify({places:[],assignments})}}],usage:{prompt_tokens:100,completion_tokens:30}}));
