@@ -63,6 +63,8 @@ test.3发布检查：memory 75、visual-pipeline 61、helmet/repair 7、research
 
 ##### 当前优先纠偏：可靠超大空间数据集（用户强调）
 
+- [ ] 按90组2秒学校流实跑本地门控→召回→VLM：选62/跳28/17窗口，跳过帧不伪造身份。首轮第二窗历史参考多输出assignment，协议修复仍失败，3请求17434输入/1651输出token已保留；新增独立v2严格目标白名单提示并测试，新目录重跑。结果与局限`docs/application/school-gated-replay.md`。
+
 - [x] 固定小开发样本：学校已渲染P0000/19观察全集及8观察校准子集，不重新渲染/不伪造一天；`docs/application/spatial-v2-visual-recall.md`。
 - [x] 独立v2旧地点视觉候选接入校准service：本地RGB布局/直方图sidecar，2视觉+1近期候选、原图交VLM判定；当前归属JOIN支持修订/重启。10地点夹具召回退出近期6节点旧ID；真实RGB代理对rank1；同8观察真实v2两调用12838输入/1071输出token，pending0。冻结v1和默认API未改。
 - [ ] v2仍是粗视觉基线，磁盘查询O(N)，尚未接UI通用retrieve；本次真实数据仅3地点，没有证明超过近期候选预算的真实召回改善。需独立多路线、相似地点负例和更久重访评测，必要时升级学习型视觉索引；门控/8小时未启动。

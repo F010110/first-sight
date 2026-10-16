@@ -1,0 +1,30 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { mkdtemp,writeFile,rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { spatialV2Vlm } from './spatial-v2-vlm.js';
+
+test('v2 rejects historical reference assignment and explicitly repairs target whitelist',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'strict-target-'));let calls=0;
+ const previous={key:process.env.QWEN_API_KEY,base:process.env.QWEN_BASE_URL};
+ const server=createServer(async(req,res)=>{let body='';for await(const c of req)body+=c;const payload=JSON.parse(body);calls++;
+  if(calls===2||calls===4)assert.match(payload.messages.at(-1).content,/EXACTLY/);
+  const assignments=[{observationId:'current',placeId:'p1',reason:'fixture'}];if(calls===1||calls>=3)assignments.push({observationId:'old',placeId:'p1',reason:'invalid historical assignment'});
+  res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{content:JSON.stringify({places:[],assignments})}}],usage:{prompt_tokens:100,completion_tokens:30}}));
+ });
+ await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));const address=server.address();assert.ok(address&&typeof address!=='string');
+ process.env.QWEN_API_KEY='mock';process.env.QWEN_BASE_URL=`http://127.0.0.1:${address.port}`;
+ try{const image=join(root,'image.png');await writeFile(image,Buffer.from('fixture'));
+  const row={id:'current',atMs:10,frames:[image]};const old={id:'old',atMs:0,frames:[image]};
+  const result=await spatialV2Vlm(join(root,'requests'))([row],{version:1,nodes:[{id:'p1',summary:'fixture',lastSeenMs:0,representatives:[old]}],observations:[],pending:[],assignments:[],edges:[],currentPlaceId:'p1',revisions:[]});
+  assert.equal(calls,2);assert.deepEqual(result.assignments.map(a=>a.observationId),['current']);
+  await assert.rejects(()=>spatialV2Vlm(join(root,'persistent-invalid'))([row],{version:1,nodes:[{id:'p1',summary:'fixture',lastSeenMs:0,representatives:[old]}],observations:[],pending:[],assignments:[],edges:[],currentPlaceId:'p1',revisions:[]}),/EXACTLY/);
+  assert.equal(calls,4);
+ }finally{
+  if(previous.key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=previous.key;
+  if(previous.base===undefined)delete process.env.QWEN_BASE_URL;else process.env.QWEN_BASE_URL=previous.base;
+  await new Promise<void>(r=>server.close(()=>r()));await rm(root,{recursive:true,force:true});
+ }
+});
