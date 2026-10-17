@@ -1,11 +1,32 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp,writeFile,mkdir,rm } from 'node:fs/promises';
+import { mkdtemp,writeFile,mkdir,rm,readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { SpatialEvidenceRetriever } from './spatial-evidence-retrieve.js';
+
+test('auxiliary lexical retrieval preserves archive scope, inspection and hash binding',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'text-evidence-'));
+ try{
+  const index=join(root,'index');await mkdir(index);await mkdir(join(root,'images'));await writeFile(join(root,'images/a.png'),'fixture');await writeFile(join(root,'complete.json'),'{}');
+  const db=new DatabaseSync(join(root,'evidence.sqlite'));db.exec('CREATE TABLE observations(seq INTEGER PRIMARY KEY,id TEXT,session TEXT,at_ms REAL,raw TEXT)');
+  const td=new DatabaseSync(join(index,'text.sqlite'));td.exec('CREATE TABLE documents(id TEXT PRIMARY KEY,observation_id TEXT,recording TEXT,at_ms REAL,day INTEGER,hour INTEGER,channel TEXT,text TEXT,provenance TEXT);CREATE VIRTUAL TABLE terms USING fts5(text)');
+  for(let i=0;i<3;i++){
+   const e={id:`o${i}`,sessionId:i===2?'other':'r',atMs:i*2,cameras:Object.fromEntries(['front','left','right'].map(v=>[v,'images/a.png'])),sha256:Object.fromEntries(['front','left','right'].map(v=>[v,createHash('sha256').update('fixture').digest('hex')]))};
+   db.prepare('INSERT INTO observations VALUES(?,?,?,?,?)').run(i+1,e.id,e.sessionId,e.atMs,JSON.stringify(e));
+   td.prepare('INSERT INTO documents VALUES(?,?,?,?,?,?,?,?,?)').run(`d${i}`,e.id,e.sessionId,e.atMs,0,0,'ocr','library sign','{}');td.prepare('INSERT INTO terms(rowid,text) VALUES(?,?)').run(i+1,'library sign');
+  }db.close();td.close();
+  const hash=async(p:string)=>createHash('sha256').update(await readFile(p)).digest('hex');
+  await writeFile(join(index,'complete.json'),JSON.stringify({method:'bounded-temporal-fts5',documents:3,archiveSha256:await hash(join(root,'evidence.sqlite')),indexSha256:await hash(join(index,'text.sqlite'))}));
+  for(let restart=0;restart<2;restart++){
+   const r=new SpatialEvidenceRetriever(root,index);
+   try{const s=r.session({recordingId:'r',asOfMs:2},3);assert.deepEqual(s.search({query:'library'}).hits.map(h=>h.id),['o0']);assert.throws(()=>s.validateCitations(['o0']));await s.inspect(['o0']);s.validateCitations(['o0']);assert.equal(s.search({query:'missing'}).status,'unknown');assert.throws(()=>s.search({query:'library',cursor:1}));}finally{r.close();}
+  }
+  await writeFile(join(index,'text.sqlite'),'tampered');assert.throws(()=>new SpatialEvidenceRetriever(root,index),/binding/);
+ }finally{await rm(root,{recursive:true,force:true});}
+});
 
 test('raw evidence: unclassified search, strict scope, restart, inspect integrity and citations',async()=>{
  const root=await mkdtemp(join(tmpdir(),'raw-evidence-'));

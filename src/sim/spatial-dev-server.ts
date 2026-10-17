@@ -35,7 +35,8 @@ await service.load();
 const events=new SpatialEventStore(join(workspace,"changes.sqlite"));
 const retriever=new SpatialRetriever(join(workspace,"topology.sqlite"),events);
 // Trusted operator opt-in only; never accept an archive path from browser/model input.
-const archive=process.env.SPATIAL_EVIDENCE_ARCHIVE?new SpatialEvidenceRetriever(process.env.SPATIAL_EVIDENCE_ARCHIVE):null;
+if(process.env.SPATIAL_AUXILIARY_TEXT_INDEX&&!process.env.SPATIAL_EVIDENCE_ARCHIVE)throw Error('Auxiliary text index requires evidence archive');
+const archive=process.env.SPATIAL_EVIDENCE_ARCHIVE?new SpatialEvidenceRetriever(process.env.SPATIAL_EVIDENCE_ARCHIVE,process.env.SPATIAL_AUXILIARY_TEXT_INDEX):null;
 const token=randomBytes(32).toString("hex");let busy=false;
 const frameRefs=(row:SpatialObservation):FrameRef[]=>row.frames.map((path,i)=>({id:`${row.id}:${i}`,path,timestampMs:row.atMs}));
 const server=createServer(async(req,res)=>{
