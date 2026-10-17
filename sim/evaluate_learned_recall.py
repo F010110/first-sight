@@ -29,6 +29,7 @@ def evaluate(source, features_path, output, exclusion_ms=30000, metric='cosine')
     checks = [{**pair, 'rank': ranks[pair['laterFrame']].get(pair['earlierFrame'])} for pair in pairs]
     eligible = [p for p in checks if p['rank'] is not None]
     report = {'sourceObservations': len(rows), 'features': str(features_path), 'metric': metric, 'exclusionMs': exclusion_ms, 'proxyPairs': len(checks), 'eligiblePairs': len(eligible), 'proxyRecallAt1': sum(p['rank'] <= 1 for p in eligible) / len(eligible) if eligible else None, 'proxyRecallAt2': sum(p['rank'] <= 2 for p in eligible) / len(eligible) if eligible else None, 'checks': checks, 'roomAccuracyMeasured': False, 'limitations': 'Overlapping evaluator-only geometric pairs, not independent place labels. No held-out improvement or identity correctness established. Symmetric per-view nearest aggregation is our adapter, not a claimed official three-camera protocol.'}
+    report['rankingTarget'] = 'Exact earlier observation in each proxy pair, not any image of the same place; adjacent correct-place frames can outrank that endpoint.'
     output.write_text(json.dumps(report, indent=2), encoding='utf8')
     print(json.dumps({k: v for k, v in report.items() if k != 'checks'}, indent=2))
 

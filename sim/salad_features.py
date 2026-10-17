@@ -27,9 +27,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--salad', required=True, type=Path); parser.add_argument('--dinov2', required=True, type=Path)
     parser.add_argument('--weights', required=True, type=Path); parser.add_argument('--weights-sha256', required=True)
+    parser.add_argument('--salad-revision', default='6aede13a3f6c25750bf7fde10209c06cb73060bb')
+    parser.add_argument('--dinov2-revision', default='7764ea0f912e53c92e82eb78a2a1631e92725fc8')
     parser.add_argument('--device', choices=['cpu', 'cuda'], default='cpu'); parser.add_argument('--threads', type=int, default=4)
     parser.add_argument('--dataset', type=Path); parser.add_argument('--output', type=Path)
     args = parser.parse_args()
+    revision = lambda path: subprocess.check_output(['git', '-C', str(path), 'rev-parse', 'HEAD'], text=True).strip()
+    for path, expected in [(args.salad, args.salad_revision), (args.dinov2, args.dinov2_revision)]:
+        if revision(path) != expected or subprocess.check_output(['git', '-C', str(path), 'diff', '--name-only', 'HEAD'], text=True).strip():
+            raise ValueError('Upstream source revision/cleanliness mismatch')
     if sha(args.weights) != args.weights_sha256: raise ValueError('Weight hash mismatch')
     if not 1 <= args.threads <= 16: raise ValueError('Thread budget exceeded')
     if bool(args.dataset) != bool(args.output): raise ValueError('Dataset extraction requires a new output directory')
@@ -41,14 +47,23 @@ def main():
     from torchvision import transforms
     torch.set_num_threads(args.threads)
     sys.path.insert(0, str(args.salad.resolve()))
-    from vpr_model import VPRModel
+    from models.backbones.dinov2 import DINOv2
+    from models.aggregators.salad import SALAD
     original = torch.hub.load
     def load_local(repo, model, *pos, **kw):
         if repo != 'facebookresearch/dinov2': raise ValueError('Unexpected implicit model repository')
         return original(str(args.dinov2.resolve()), model, source='local', pretrained=False)
     torch.hub.load = load_local
     try:
-        model = VPRModel(backbone_arch='dinov2_vitb14', backbone_config={'num_trainable_blocks': 4, 'return_token': True, 'norm_layer': True}, agg_arch='SALAD', agg_config={'num_channels': 768, 'num_clusters': 64, 'cluster_dim': 128, 'token_dim': 256})
+        # Compose official inference modules with the same state_dict names/forward
+        # as VPRModel, without importing its Lightning training/loss dependencies.
+        class Inference(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.backbone = DINOv2('dinov2_vitb14', num_trainable_blocks=4, return_token=True, norm_layer=True)
+                self.aggregator = SALAD(num_channels=768, num_clusters=64, cluster_dim=128, token_dim=256)
+            def forward(self, x): return self.aggregator(self.backbone(x))
+        model = Inference()
     finally: torch.hub.load = original
     model.load_state_dict(torch.load(args.weights, map_location='cpu', weights_only=True), strict=True)
     model.eval().to(args.device)
@@ -81,7 +96,6 @@ def main():
     finally:
         if stream: stream.close()
     if args.output:
-        revision = lambda path: subprocess.check_output(['git', '-C', str(path), 'rev-parse', 'HEAD'], text=True).strip()
         report = {'method': 'salad-dinov2-vitb14', 'dimensions': 8448, 'metric': 'cosine', 'saladRevision': revision(args.salad), 'dinov2Revision': revision(args.dinov2), 'weightsSha256': args.weights_sha256, 'images': count, 'elapsedSeconds': time.monotonic() - started, 'torchVersion': torch.__version__, 'device': args.device, 'threads': args.threads, 'modelCalls': 0, 'note': 'Official model inference only; no physical identity assigned; dataset features contain no evaluation truth.'}
         (args.output / 'complete.json').write_text(json.dumps(report, indent=2), encoding='utf8')
         print(json.dumps(report), file=protocol)

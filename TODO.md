@@ -9,7 +9,7 @@
 按顺序独立完成、测试、记录实跑结果和commit；不把接口完成当模型复现完成。详见`docs/application/research-method-comparison.md`、`docs/application/vlm-memory-benchmark-findings.md`。保持冻结v1、原图/时间来源、unknown、可逆修订及evaluation-only隔离；不开启无预算付费长测。
 
 - [x] R1 原图证据档案：`sim/spatial_evidence_archive.py`＋`src/agent/spatial-evidence-retrieve.ts`，全部观察含门控跳过帧按录制/严格历史时间有界读取、原图hash验证、无虚假地点；模拟器可信环境变量启用archive retrieve/request。RequestAgent实际流式mock经过search/inspect/citation，旧topology兼容；Python2测试、空间TS18测试通过。真实学校90组270图已存，TS恢复门控跳过帧40的3图，placeId=null，0真实模型调用。尚无语义索引/真实QA效果保证，详见`docs/application/research-integration-progress.md`。
-- [ ] R2 SALAD：固定官方源码revision/模型权重哈希/许可，隔离环境；版本化描述子/距离接口，真实90组三摄离线提取，对照RGB召回、延迟/内存/存储，不自动用相似度合并。
+- [ ] R2 SALAD：固定官方源码revision/模型权重哈希/许可，隔离环境；版本化描述子/距离接口，真实90组三摄离线提取，对照RGB召回、延迟/内存/存储，不自动用相似度合并。进行中：官方源码与352040378字节权重已锁，GPLv3保留外部；有界versioned cosine接口/官方推理适配/评测脚本已实现。RGB90组精确代理端点top1/top2=3/14（非地点准确率）；首次SALAD运行torch未安装完成而失败，原目录保留，待隔离环境完成再新目录重跑。见`docs/application/research-integration-progress.md`，不得勾选模型已验证。
 - [ ] R3 AnyLoc：固定骨干、特征层、VLAD词表/缓存来源及拟合范围；与SALAD同输入同候选预算比较，作为可切换分支，不默认双开；相似地点、反向视角、久远重访负例。
 - [ ] R4 ALIKED或DISK＋LightGlue＋适合的RANSAC：许可/权重核实，有界候选/关键点/缓存；保存对应点与内点证据，匹配失败不直接新建，成功不直接认定同房间；复核通道100/116秒案例及隔门/重复窗格负例。
 - [ ] R5 DirectMe式多样性代表帧：embedding最远点选择与首尾基线对照，限制候选池，持久化恢复；临时匹配证据不覆盖原始来源；与VLM调用门控区分。

@@ -17,3 +17,6 @@
 - `spatial-visual-recall.ts`支持可选版本/维度/余弦距离，默认RGB不变；sidecar绑定描述子规格拒绝不同模型覆盖；仍是O(N)历史扫描而非ANN。
 - 隔离WSL CPU环境`/mnt/d/Datasets/research-code/venv-visual-memory`安装依赖，不改已有EAM venv或全局Python。官方335.7MiB检查点已下载；哈希及实跑记录待补。
 - `sim/evaluate_learned_recall.py`在独立评测端读取几何代理对，模型提取端不读GT；支持与原RGB距离同候选时间排除规则对照。不将几何代理排名称房间身份准确率。
+- 检查点352040378字节，SHA256 `6b3f1720954293e83da6966c5cfcfc6713200d7fefadcca76fc51aeb80b3cada`；DINOv2 revision `7764ea0f912e53c92e82eb78a2a1631e92725fc8`。锁文件`D:\Datasets\research-code\salad-lock.json`；推理直接调用官方backbone/aggregator，不加载Lightning训练依赖，严格加载全部权重。
+- 第一轮真实提取`run/tartanground-school-salad-v1`在导入torch失败：隔离环境安装尚未完成，保留失败目录，不覆盖。没有SALAD结果，更没有改善结论。安装完成后必须新目录重试。
+- RGB同90组离线对照已运行：精确历史观察端点排名14代理对，top1/top2各3/14；不是地点Recall@K，因为同地点相邻帧可能排在指定端点之前。评测脚本新增明确rankingTarget和因果/字段完整性/拒绝覆盖回归测试，WSL通过1项。
