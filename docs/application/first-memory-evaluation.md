@@ -49,3 +49,17 @@ node --use-env-proxy dist/sim/memory-evaluation-grade.js run/school-memory-evalu
 ```
 
 以上是顺序入口，不表示后续阶段已跑完；真实进度以每阶段complete/stopped与usage为准。
+
+## 中断恢复记录
+
+首次进程在131/217已提交窗口处退出，未产生正常结束标记；数据库有514已提交观察与4个pending。请求目录263个已落盘响应，另1个只有input、响应/实际计费未知，不能按0计。恢复时重新统计所有原始响应，未知请求保留128k输入/1800输出的完整预算预留；实际金额保持未知，另报公开价估算上界。原始请求、失败标记及每次resume快照均保留。
+
+首次恢复触发重复插入pending观察的顺序校验，未发起新模型请求。已修复为保留已提交前缀、跳过已落盘pending的重复ingest，在原窗口flush处重试未提交窗口；识别器/题库/QA与评分冻结文件不改。mock测试验证：已提交观察不重复计费、pending正常恢复、历史缺用量请求仍占保守预算。不要把恢复称为所有旧调用均已查明账单。
+
+后续可用事件驱动顺序执行器（等待子进程退出，不轮询）衔接阶段：
+
+```powershell
+node --use-env-proxy dist/sim/run-memory-evaluation.js run/school-memory-evaluation-v1 <90-question-bank> --confirm-paid
+```
+
+完成阶段通过标记跳过；未完成失败阶段不自动覆盖。日志`pipeline-state.json`和各阶段文件共同审计；只有`full-grading/complete.json`与完整270条执行/判分才可宣称首次评测完成。
