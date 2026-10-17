@@ -3,10 +3,30 @@ import argparse
 import concurrent.futures
 import json
 import os
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 from download_ground_pilot import get
 from salad_features import sha
+
+def get_tree(url, cache):
+    """Cache immutable-revision listings; retry transport failures, not bad JSON."""
+    if cache.exists():return json.loads(cache.read_text())
+    for attempt in range(5):
+        try:
+            raw=get(url)
+            break
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+            if isinstance(error,urllib.error.HTTPError) and error.code not in (408,429,500,502,503,504):raise
+            if attempt==4:raise
+            print(f'Metadata transport failed; retry {attempt+1}/4: {error}',flush=True)
+            time.sleep(2**attempt)
+    tree=json.loads(raw)
+    if not isinstance(tree,list):raise ValueError('Invalid source tree response')
+    cache.parent.mkdir(parents=True,exist_ok=True)
+    cache.write_text(json.dumps(tree))
+    return tree
 
 def download(catalog_path, output, outdoor_only=False):
     catalog=json.loads(catalog_path.read_text());rows=catalog['trajectories'];selected=[r for r in rows if r['environment'] in ['AbandonedSchool','Hospital','ModularNeighborhoodIntExt']]
@@ -25,7 +45,8 @@ def download(catalog_path, output, outdoor_only=False):
         output.mkdir(parents=True);(output/'plan.json').write_text(json.dumps(plan,indent=2))
     print('RGB plan GB',total/1e9,flush=True)
     def fetch(row):
-        directory=row['metadataPath'].rsplit('/',1)[0];tree=json.loads(get(f"https://huggingface.co/api/datasets/{catalog['repo']}/tree/{catalog['revision']}/{directory}"));verified=[]
+        directory=row['metadataPath'].rsplit('/',1)[0]
+        tree=get_tree(f"https://huggingface.co/api/datasets/{catalog['repo']}/tree/{catalog['revision']}/{directory}",output/directory/'source-tree.json');verified=[]
         for name in row['rgbFiles']:
             entry=next(e for e in tree if e['path']==name);digest=entry.get('lfs',{}).get('oid');size=entry['size']
             if not digest or size>3_000_000_000:raise ValueError('Source hash/file size budget invalid')
@@ -42,16 +63,24 @@ def download(catalog_path, output, outdoor_only=False):
                 for attempt in range(3):
                     try:
                         offset=partial.stat().st_size if partial.exists() else 0
+                        if offset==size:break
+                        if offset>size:raise ValueError('Partial file exceeds source size')
                         req=urllib.request.Request(f"https://huggingface.co/datasets/{catalog['repo']}/resolve/{catalog['revision']}/{name}",headers={'Range':f'bytes={offset}-'})
                         with urllib.request.urlopen(req,timeout=120) as response:
                             if response.status==206:
                                 if not response.headers.get('Content-Range','').startswith(f'bytes {offset}-'):raise ValueError('Invalid resume')
                             else:offset=0
                             with partial.open('ab' if offset else 'wb') as stream:
-                                while block:=response.read(4*1024*1024):stream.write(block)
+                                while block:=response.read(4*1024*1024):
+                                    if stream.tell()+len(block)>size:raise ValueError('Response exceeds source size')
+                                    stream.write(block)
+                        if partial.stat().st_size!=size:raise ConnectionError('Truncated source response')
                         break
-                    except Exception:
+                    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as error:
+                        if isinstance(error,urllib.error.HTTPError) and error.code not in (408,429,500,502,503,504):raise
                         if attempt==2:raise
+                        print(f'RGB transport failed; retry {attempt+1}/2: {name}: {error}',flush=True)
+                        time.sleep(2**attempt)
                 if partial.stat().st_size!=size or sha(partial)!=digest:raise ValueError('RGB source integrity mismatch')
                 partial.rename(path)
             verified.append({'path':name,'bytes':size,'sha256':digest});print('Verified',name,flush=True)
