@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 
 const [datasetArg,outputArg,configArg,paid]=process.argv.slice(2);
 if(!datasetArg||!outputArg||!configArg||paid!=='--confirm-paid')throw Error('Usage: spatial-calibration dataset NEW-output config.json --confirm-paid');
-const config=JSON.parse(await readFile(configArg,'utf8')) as {inputPerMillion:number;outputPerMillion:number;maxCost:number;maxWindows:number;maxObservations:number;currency:string;tokenCalibrationOnly?:boolean;boundedSampleRun?:boolean;plannedScheduling?:boolean;identityReview?:boolean;reviewReuse?:boolean;temporalOverlap?:boolean;visualRecall?:{command:string;args:string[];descriptor?:DescriptorSpec;maxOutputBytes?:number}};
+const config=JSON.parse(await readFile(configArg,'utf8')) as {inputPerMillion:number;outputPerMillion:number;maxCost:number;maxWindows:number;maxObservations:number;maxInputTokens?:number;maxOutputTokens?:number;maxProviderCalls?:number;currency:string;tokenCalibrationOnly?:boolean;boundedSampleRun?:boolean;plannedScheduling?:boolean;identityReview?:boolean;reviewReuse?:boolean;temporalOverlap?:boolean;visualRecall?:{command:string;args:string[];descriptor?:DescriptorSpec;maxOutputBytes?:number}};
 const tokenOnly=config.tokenCalibrationOnly===true||config.boundedSampleRun===true;
 for(const key of (tokenOnly?['maxWindows','maxObservations']:['inputPerMillion','outputPerMillion','maxCost','maxWindows','maxObservations']) as Array<'inputPerMillion'|'outputPerMillion'|'maxCost'|'maxWindows'|'maxObservations'>)if(!Number.isFinite(config[key])||config[key]<=0)throw Error(`Missing/invalid ${key}; actual endpoint prices required`);
 if(!Number.isInteger(config.maxWindows)||!Number.isInteger(config.maxObservations)||(!tokenOnly&&!config.currency))throw Error('Integer limits and currency required');
@@ -34,6 +34,7 @@ const initial=config.visualRecall?spatialV2Vlm(logRoot):topologyVlm(logRoot);
 const base=config.identityReview?reviewedIdentityRecognizer(initial,(batch,history,proposal)=>spatialV2Vlm(logRoot,proposal)(batch,history),async value=>{appendFileSync(join(root,'identity-review.jsonl'),JSON.stringify(value)+'\n');},config.reviewReuse===true):initial;
 const recognize:ReturnType<typeof topologyVlm>=async(batch,history)=>{
  if(windows>=config.maxWindows||(!tokenOnly&&cost+reservation>config.maxCost))throw Error('Budget/maximum windows reached before model call');
+ if((config.maxInputTokens!==undefined&&input+maximumCallsPerWindow*128000>config.maxInputTokens)||(config.maxOutputTokens!==undefined&&output+maximumCallsPerWindow*1800>config.maxOutputTokens)||(config.maxProviderCalls!==undefined&&calls+maximumCallsPerWindow>config.maxProviderCalls))throw Error('Token/provider request ceiling reached before window');
  const before=new Set(await readdir(logRoot).catch(()=>[]));windows++;
  try{return await base(batch,history);}finally{
   let unknownUsage=false;
@@ -55,7 +56,7 @@ await service.load();
 try{
  const lines=(await readFile(join(data,'observations.jsonl'),'utf8')).trim().split(/\r?\n/).slice(0,config.maxObservations);
  for(let i=0;i<lines.length;i++){
-  const row=JSON.parse(lines[i]!);await service.ingest({id:row.id,recordingId:row.sessionId,atMs:row.atMs,frames:['front','left','right'].map(k=>resolve(data,row.cameras[k]))});
+   const row=JSON.parse(lines[i]!);await service.ingest({id:row.id,recordingId:row.sessionId,atMs:row.atMs,...typeof row.sourceAtMs==='number'?{sourceAtMs:row.sourceAtMs}:{},frames:['front','left','right'].map(k=>resolve(data,row.cameras[k]))});
   // Replay fixed sampling, no novelty/motion gate; at most four observations/window.
   if(config.plannedScheduling ? row.flushAfter===true||i===lines.length-1 : (i+1)%4===0||i===lines.length-1)await service.tick(row.closedAtMs??row.atMs+30000,true);
  }

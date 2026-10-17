@@ -129,10 +129,10 @@ export class RequestAgent {
 		mode: null, kind: null, text: null, status: "idle", spoken: false, lastAnswer: null, turns: [], startedAtMs: null, updatedAtMs: null,
 	};
 
-	constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null) {
+ constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null, private readonly runtime?:{beforeModelCall?:()=>void;contextText?:string}) {
 		const configured = createQwenModel(512, retrieval!==null);
 		this.model = configured.model;
-		this.streamFn = configured.streamFn;
+		this.streamFn = (...args)=>{this.runtime?.beforeModelCall?.();return configured.streamFn(...args);};
 	}
 
 	private historicalTool(): AgentTool<any> {
@@ -226,6 +226,7 @@ export class RequestAgent {
 			`ALREADY_REPORTED (do not repeat these): ${JSON.stringify(recent)}${this.state.spoken ? " (a watch condition has already been reported; do not report it again)" : ""}`,
 		];
 		promptLines.push("Reply with only the JSON object.");
+		if(this.runtime?.contextText)promptLines.push(this.runtime.contextText);
 		const historicalSchema='MANDATORY historical JSON schema, include EVERY key: {"kind":"question|goal|watch","answer":string,"shouldSpeak":boolean,"done":boolean,"confidence":number,"historicalEvidenceIds":string[],"abstained":boolean}. abstained=false only with inspected supporting historical evidence; otherwise true. Do not omit abstained even when answering confidently. For first/earliest-history questions use chronological search {} and inspect earliest evidence; keyword search cannot establish what was seen first.';
 		if(this.retrieval)promptLines.push(historicalSchema);
 		const prompt = promptLines.join("\n\n");
