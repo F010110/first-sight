@@ -15,7 +15,9 @@ async function execute(name:string,file:string,args:string[],complete:string){
  if(!existsSync(complete))throw Error(`${name} exited without completion marker`);
  history.push({stage:name,status:'completed',finishedAt:new Date().toISOString()});await state();
 }
-await execute('unified-memory','dist/sim/spatial-calibration.js',[join(root,'model-replay'),join(root,'memory'),join(root,'memory-config.json'),'--confirm-paid',...existsSync(join(root,'memory'))?['--resume']:[]],join(root,'memory','summary.json'));
+const frozen=JSON.parse(await readFile(join(root,'frozen.json'),'utf8'));
+if(frozen.memoryDirectory){const summary=JSON.parse(await readFile(join(frozen.memoryDirectory,'summary.json'),'utf8'));if(summary.status?.pending!==0)throw Error('Reused memory incomplete');history.push({stage:'unified-memory',status:'reused-complete',path:frozen.memoryDirectory});await state();}
+else await execute('unified-memory','dist/sim/spatial-calibration.js',[join(root,'model-replay'),join(root,'memory'),join(root,'memory-config.json'),'--confirm-paid',...existsSync(join(root,'memory'))?['--resume']:[]],join(root,'memory','summary.json'));
 await execute('smoke-18','dist/sim/memory-evaluation.js',[root,'smoke','--confirm-paid'],join(root,'smoke','complete.json'));
 await execute('smoke-grading','dist/sim/memory-evaluation-grade.js',[root,taskBank,'smoke','--confirm-paid'],join(root,'smoke-grading','complete.json'));
 await execute('full-270','dist/sim/memory-evaluation.js',[root,'full','--confirm-paid'],join(root,'full','complete.json'));

@@ -22,6 +22,11 @@ import type { HistoricalEvidenceSession } from "./spatial-evidence-retrieve.js";
 export type RequestMode = "ask" | "watch";
 export type RequestKind = "question" | "goal" | "watch";
 
+/** Rejected model output is distinct from provider/tool infrastructure failure. */
+export class HistoricalAnswerValidationError extends Error {
+	constructor(message:string,readonly rawAnswer:string){super(message);this.name='HistoricalAnswerValidationError';}
+}
+
 export interface RequestTurn {
 	atMs: number;
 	kind: RequestKind;
@@ -252,14 +257,18 @@ export class RequestAgent {
 		const assistant = [...agent.state.messages].reverse().find((message) => message.role === "assistant");
 		if (!assistant || assistant.role !== "assistant") throw new Error("RequestAgent returned no assistant message");
 		const raw = assistant.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
-		const parsed = parseRequest(raw, this.state.mode === "watch" ? "watch" : null);
+		let parsed:ReturnType<typeof parseRequest>;
+		try{parsed=parseRequest(raw,this.state.mode === "watch" ? "watch" : null);}
+		catch(error){if(this.retrieval)throw new HistoricalAnswerValidationError(error instanceof Error?error.message:String(error),raw);throw error;}
 		let historicalEvidenceIds:string[]|undefined;
 		if(this.retrieval){
+			try{
 			const root=JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")) as {historicalEvidenceIds?:string[];abstained?:boolean};
 			historicalEvidenceIds=root.historicalEvidenceIds ?? [];
 			if(historicalEvidenceIds.length)this.retrieval.validateCitations(historicalEvidenceIds);
 			if(typeof root.abstained!=="boolean")throw new Error("Historical request needs explicit abstention flag");
 			if(root.abstained!==true)this.retrieval.validateCitations(historicalEvidenceIds);
+			}catch(error){throw new HistoricalAnswerValidationError(error instanceof Error?error.message:String(error),raw);}
 		}
 
 		// A watch condition fires once; a question is done after answering.

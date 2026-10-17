@@ -1,7 +1,7 @@
 /** Model execution reads public questions and model memory ONLY, never answers. */
 import {mkdir,readFile,writeFile,appendFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';import {DatabaseSync} from 'node:sqlite';import {createHash} from 'node:crypto';
-import {RequestAgent} from '../agent/request-agent.js';
+import {RequestAgent,HistoricalAnswerValidationError} from '../agent/request-agent.js';
 import {memorySession,type MemoryRow,type MemoryMode} from './memory-evaluation-session.js';
 
 const [prepared,phase,paid]=process.argv.slice(2);if(!prepared||!['smoke','full'].includes(phase??'')||paid!=='--confirm-paid')throw Error('Usage: prepared smoke|full --confirm-paid');
@@ -9,16 +9,17 @@ const root=resolve(prepared),output=join(root,phase!);await mkdir(output,{recurs
 const digest=(s:string)=>createHash('sha256').update(s).digest('hex');
 const codeFreeze=JSON.parse(await readFile(join(root,'code-freeze.json'),'utf8'));for(const [path,expected] of Object.entries(codeFreeze.files)){if(createHash('sha256').update(await readFile(path)).digest('hex')!==expected)throw Error('Compiled evaluation policy changed after freeze');}
 const frozen=JSON.parse(await readFile(join(root,'frozen.json'),'utf8'));
+const memoryRoot=frozen.memoryDirectory??join(root,'memory');
 const publicText=await readFile(join(root,'model-questions.json'),'utf8'),rowText=await readFile(join(root,'model-replay','observations.jsonl'),'utf8');
 if(digest(publicText)!==frozen.publicTasksSha256||digest(rowText)!==frozen.replaySha256)throw Error('Frozen input changed');
 const rows=rowText.trim().split(/\r?\n/).map(s=>JSON.parse(s) as MemoryRow);
-const summary=JSON.parse(await readFile(join(root,'memory','summary.json'),'utf8'));
+const summary=JSON.parse(await readFile(join(memoryRoot,'summary.json'),'utf8'));
 if(summary.status.pending!==0)throw Error('Memory replay incomplete');
 const smokeIds=new Set<string>(JSON.parse(await readFile(join(root,'smoke-ids.json'),'utf8')));
 let questions=JSON.parse(publicText) as Array<{id:string;question:string;queryAtMs:number;currentObservationId:string}>;
 if(phase==='smoke')questions=questions.filter(q=>smokeIds.has(q.id));
 else{const gate=JSON.parse(await readFile(join(root,'smoke','complete.json'),'utf8'));const grading=JSON.parse(await readFile(join(root,'smoke-grading','complete.json'),'utf8'));if(gate.status!=='completed'||gate.executions!==18||grading.status!=='completed'||grading.grades!==18)throw Error('Smoke execution/grading gate not passed');}
-const dbPath=join(root,'memory','topology.sqlite'),db=new DatabaseSync(dbPath,{readOnly:true});
+const dbPath=join(memoryRoot,'topology.sqlite'),db=new DatabaseSync(dbPath,{readOnly:true});
 const assignments=new Map((db.prepare('SELECT observation_id,place_id,reason FROM assignments').all() as Array<{observation_id:string;place_id:string|null;reason:string}>).map(a=>[a.observation_id,{placeId:a.place_id,reason:a.reason}]));db.close();
 if(assignments.size!==rows.length)throw Error('Incomplete unified memory assignments');
 let calls=0,input=0,outputTokens=0,missingUsage=false;const results:unknown[]=[];
@@ -47,7 +48,7 @@ try{
   try{
    const result=await agent.observe(['front','left','right'].map(view=>({id:current.id,path:current.cameras[view]!,timestampMs:current.atMs})),null,null);
    record={id:q.id,mode,result,inspectedIds:[...session.inspected]};
-  }catch(e){record={id:q.id,mode,error:String(e),inspectedIds:[...session.inspected]};}
+  }catch(e){record=e instanceof HistoricalAnswerValidationError?{id:q.id,mode,modelOutputRejected:true,rejection:String(e),result:{raw:e.rawAnswer},inspectedIds:[...session.inspected]}:{id:q.id,mode,error:String(e),inspectedIds:[...session.inspected]};}
   if(expectedCalls!==seenUsage)missingUsage=true;
   results.push(record);await writeFile(join(output,`${q.id}-${mode}-trace.json`),JSON.stringify(trace,null,2));await appendFile(join(output,'results.jsonl'),JSON.stringify(record)+'\n');await ledger();
   if('error' in record||missingUsage)throw Error('Stopped on runtime/schema/billing-usage failure; preserved result and trace');

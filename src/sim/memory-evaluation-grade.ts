@@ -18,12 +18,12 @@ try{
  for(const record of records){
   const t=tasks.find(t=>t.id===record.id);if(!t)throw Error('Unknown executed task');
   if(record.error){grades.push({id:t.id,mode:record.mode,semanticCredit:0,utility:0,harm:0,error:record.error});continue;}
-  const result=record.result;const parsed=JSON.parse(result.raw.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));
-  const citations=parsed.historicalEvidenceIds??[];const inspected=record.inspectedIds??[];
+  const result=record.result;let parsed:any;try{parsed=JSON.parse(result.raw.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}catch{parsed={answer:result.raw,abstained:false,historicalEvidenceIds:[]};}
+  const citations:string[]=Array.isArray(parsed.historicalEvidenceIds)?parsed.historicalEvidenceIds.filter((x:unknown)=>typeof x==='string'):[];const inspected=record.inspectedIds??[];
   const expectedEvidence=t.validEvidenceSets as string[][];
   const invalid=citations.some((id:string)=>!inspected.includes(id)||!source.some(r=>r.id===id&&r.atMs<t.queryAtMs));
   const referenceSatisfied=expectedEvidence.some(g=>g.every(id=>citations.includes(id)));
-  const ids=[...new Set<string>([...citations,...expectedEvidence.flat()])];if(ids.length>4)throw Error('Grading image budget exceeded');
+  const ids=[...new Set<string>([...expectedEvidence.flat(),...citations.filter(id=>source.some(r=>r.id===id))])].slice(0,4);
   const text={question:t.question,referenceAnswer:t.expectedAnswer,answerable:t.answerable,predictedAnswer:parsed.answer,abstained:parsed.abstained};
   const content:any[]=[{type:'text',text:JSON.stringify(text)}];
   for(const id of ids){const row=source.find(r=>r.id===id);if(!row)throw Error('Unknown grading evidence');content.push({type:'text',text:JSON.stringify({evidenceId:id,cited:citations.includes(id),reference:expectedEvidence.flat().includes(id)})});for(const view of ['front','left','right'])content.push({type:'image_url',image_url:{url:'data:image/png;base64,'+(await readFile(row.cameras[view])).toString('base64')}});}
@@ -35,8 +35,8 @@ try{
   const grade=JSON.parse(body.choices[0].message.content.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));
   if(![0,.5,1].includes(grade.credit)||![0,.25,1].includes(grade.harm))throw Error('Invalid judge schema');
   const harm=Math.max(grade.harm,invalid?1:0,!t.answerable&&!parsed.abstained?1:0);
-  const utility=t.answerable?(!parsed.abstained&&referenceSatisfied&&!invalid&&harm<1?grade.credit:0):(parsed.abstained&&harm===0?grade.credit:0);
-  const g={id:t.id,mode:record.mode,tier:t.memoryTier,answerSha256:hash(result.raw),semanticCredit:grade.credit,utility,harm,referenceEvidenceSatisfied:referenceSatisfied,invalidCitations:invalid,reason:grade.reason};grades.push(g);
+  const utility=record.modelOutputRejected?0:t.answerable?(!parsed.abstained&&referenceSatisfied&&!invalid&&harm<1?grade.credit:0):(parsed.abstained&&harm===0?grade.credit:0);
+  const g={id:t.id,mode:record.mode,tier:t.memoryTier,answerSha256:hash(result.raw),semanticCredit:grade.credit,utility,harm,modelOutputRejected:record.modelOutputRejected??false,referenceEvidenceSatisfied:referenceSatisfied,invalidCitations:invalid,reason:grade.reason};grades.push(g);
   await appendFile(join(out,'grades.jsonl'),JSON.stringify(g)+'\n');await writeFile(join(out,'usage.json'),JSON.stringify({calls,inputTokens:input,outputTokens:output,estimatedUSD:usd(),maxEstimatedUSD:maxCost},null,2));
  }
  const mean=(xs:number[])=>xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null;

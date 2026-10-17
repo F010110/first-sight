@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from salad_features import sha
 
-def prepare(sample, bank, output):
+def prepare(sample, bank, output, reuse_memory=None):
     observations=[json.loads(l) for l in (sample/'observations.jsonl').read_text().splitlines()]
     public=json.loads((bank/'model-questions.json').read_text(encoding='utf8'));private=json.loads((bank/'evaluation-only'/'tasks.json').read_text(encoding='utf8'))
     if len(public)!=90 or len(private)!=90:raise ValueError('Expected frozen 90-task bank')
@@ -35,7 +35,11 @@ def prepare(sample, bank, output):
     config={'maxWindows':windows,'maxObservations':len(observations),'plannedScheduling':True,'identityReview':True,'reviewReuse':True,'temporalOverlap':False,'inputPerMillion':.1356,'outputPerMillion':.4584,'currency':'USD','maxCost':4,'maxInputTokens':20000000,'maxOutputTokens':1000000,'maxProviderCalls':windows*4,'priceSource':'https://www.alibabacloud.com/help/en/pai/product-overview/billing-of-pai-token-service','priceBasis':'Published PAI Token Service qwen3.8-flash China Beijing rate; estimate, not account invoice. Cache discounts ignored.','visualRecall':{'command':'wsl','args':['-d','Ubuntu','--cd','/mnt/d/Projects/Projects2026/VLM','--','/mnt/d/Projects/Projects2026/EAM/.venv-thor/bin/python','sim/spatial_visual_features.py']}}
     (output/'memory-config.json').write_text(json.dumps(config,indent=2))
     frozen={'observations':len(observations),'episodes':episode_count,'windows':windows,'tasks':len(public),'smokeTasks':6,'smokeQuestionExecutions':18,'fullQuestionExecutions':270,'sourceObservationsSha256':sha(sample/'observations.jsonl'),'replaySha256':sha(replay/'observations.jsonl'),'publicTasksSha256':sha(output/'model-questions.json'),'privateTasksSha256':sha(bank/'evaluation-only'/'tasks.json'),'bankManifestSha256':sha(bank/'manifest.json'),'smokeSelection':'First and last answerable question per tier, before predictions; no failure filtering','model':'qwen3.8-flash','enableThinking':False,'evaluationStatus':'prepared-not-scored','annotationReview':'assistant-source-assisted; no independent human review'}
+    if reuse_memory:
+        provenance=json.loads((reuse_memory/'provenance.json').read_text(encoding='utf8'));summary=json.loads((reuse_memory/'summary.json').read_text(encoding='utf8'))
+        if provenance['observationsSha256']!=frozen['replaySha256'] or summary['status']['pending']!=0:raise ValueError('Reused memory input/completion mismatch')
+        frozen['memoryDirectory']=str(reuse_memory.resolve());frozen['memoryReuse']='Same completed unified replay, not regenerated after smoke answers'
     (output/'frozen.json').write_text(json.dumps(frozen,indent=2));print(json.dumps(frozen));return frozen
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('sample',type=Path);p.add_argument('bank',type=Path);p.add_argument('output',type=Path);a=p.parse_args();prepare(a.sample,a.bank,a.output)
+    p=argparse.ArgumentParser();p.add_argument('sample',type=Path);p.add_argument('bank',type=Path);p.add_argument('output',type=Path);p.add_argument('--reuse-memory',type=Path);a=p.parse_args();prepare(a.sample,a.bank,a.output,a.reuse_memory)

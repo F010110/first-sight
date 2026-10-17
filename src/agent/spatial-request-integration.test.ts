@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SpatialSqliteStore } from "./spatial-sqlite-store.js";
 import { SpatialRetriever } from "./spatial-retrieve.js";
-import { RequestAgent } from "./request-agent.js";
+import { RequestAgent,HistoricalAnswerValidationError } from "./request-agent.js";
 
 for(const backend of ['topology','archive'] as const)test(`RequestAgent actually searches and inspects ${backend} evidence via streamed tool loop`,{timeout:15000},async()=>{
 	const root=await mkdtemp(join(tmpdir(),"request-integration-"));
@@ -37,6 +37,8 @@ for(const backend of ['topology','archive'] as const)test(`RequestAgent actually
 		const agent=new RequestAgent(null,retrieve.session({asOfMs:1,recordingId:'r'},3));agent.set("ask","Was this seen before?");
 		const result=await agent.observe([{id:"current",path:image,timestampMs:2}],null,null);
 		assert.deepEqual(result.historicalEvidenceIds,["o0"]);assert.equal(calls,3);assert.equal(result.historicalTrace!.modelCalls,3);
+		const rejected=new RequestAgent(null,retrieve.session({asOfMs:1,recordingId:'r'},3));rejected.set('ask','Answer without evidence');
+		await assert.rejects(rejected.observe([{id:'current',path:image,timestampMs:2}],null,null),(error:unknown)=>error instanceof HistoricalAnswerValidationError&&error.rawAnswer.includes('historicalEvidenceIds'));
 	}finally{
 		retrieve?.close();db?.close();await new Promise<void>(resolve=>server.close(()=>resolve()));
 		if(previous.key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=previous.key;
