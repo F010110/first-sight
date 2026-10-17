@@ -4,7 +4,7 @@ import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { createQwenModel } from "./qwen-provider.js";
 import type { FrameRef } from "./types.js";
-import type { RetrievalSession } from "./spatial-retrieve.js";
+import type { HistoricalEvidenceSession } from "./spatial-evidence-retrieve.js";
 
 /**
  * RequestAgent (role 3 of 3): handles the user's *explicit* requirement.
@@ -129,7 +129,7 @@ export class RequestAgent {
 		mode: null, kind: null, text: null, status: "idle", spoken: false, lastAnswer: null, turns: [], startedAtMs: null, updatedAtMs: null,
 	};
 
-	constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: RetrievalSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null) {
+	constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null) {
 		const configured = createQwenModel(512, retrieval!==null);
 		this.model = configured.model;
 		this.streamFn = configured.streamFn;

@@ -4,9 +4,17 @@ import { mkdtemp,rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SpatialSqliteStore } from './spatial-sqlite-store.js';
-import { SpatialVisualRecall,type FeatureExtractor } from './spatial-visual-recall.js';
+import { SpatialVisualRecall,visualDistance,type FeatureExtractor } from './spatial-visual-recall.js';
 import { SpatialV2Service } from './spatial-v2-service.js';
 import type { SpatialObservation } from './incremental-spatial-memory.js';
+
+test('learned descriptors accept signed vectors, cosine rank and reject sidecar reuse',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'learned-recall-')),path=join(root,'topology.sqlite'),index=join(root,'visual.sqlite');
+ const db=new SpatialSqliteStore(path);const row={id:'old',atMs:0,frames:['old']};db.ingest(row);db.commit([{observationId:'old',placeId:'p',reason:'fixture'}],[{id:'p',summary:'fixture',representatives:[row],lastSeenMs:0}]);
+ const extract:FeatureExtractor=async rows=>rows.map(r=>({id:r.id,features:[[1,-1,0]]}));const spec={version:'test-learned-sha256',dimensions:3,metric:'cosine' as const};
+ let recall=new SpatialVisualRecall(index,path,extract,spec);
+ try{await recall.index([row]);assert.equal((await recall.query([{id:'q',atMs:10,frames:['q']}],10)).hits[0]!.placeId,'p');assert.ok(Math.abs(visualDistance([[1,-1,0]],[[2,-2,0]],'cosine'))<1e-10);assert.equal(visualDistance([[1,0]],[[0,1]],'cosine'),1);recall.close();recall=new SpatialVisualRecall(index,path,extract,spec);assert.throws(()=>new SpatialVisualRecall(index,path,extract),/mismatch/);}finally{recall.close();db.close();await rm(root,{recursive:true,force:true});}
+});
 
 test('visual recall reaches evicted old identity, scopes time, respects revisions and restart',async()=>{
  const root=await mkdtemp(join(tmpdir(),'visual-recall-')),path=join(root,'topology.sqlite'),index=join(root,'visual.sqlite');

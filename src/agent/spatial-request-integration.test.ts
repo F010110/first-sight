@@ -1,14 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp,writeFile,rm } from "node:fs/promises";
+import { mkdtemp,writeFile,rm,mkdir } from "node:fs/promises";
+import { DatabaseSync } from 'node:sqlite';
+import { createHash } from 'node:crypto';
+import { SpatialEvidenceRetriever } from './spatial-evidence-retrieve.js';
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SpatialSqliteStore } from "./spatial-sqlite-store.js";
 import { SpatialRetriever } from "./spatial-retrieve.js";
 import { RequestAgent } from "./request-agent.js";
 
-test("RequestAgent actually searches and inspects scoped SQLite evidence via streamed tool loop",{timeout:15000},async()=>{
+for(const backend of ['topology','archive'] as const)test(`RequestAgent actually searches and inspects ${backend} evidence via streamed tool loop`,{timeout:15000},async()=>{
 	const root=await mkdtemp(join(tmpdir(),"request-integration-"));
 	const previous={key:process.env.QWEN_API_KEY,url:process.env.QWEN_BASE_URL};let calls=0;
 	const server=createServer(async(req,res)=>{
@@ -21,12 +24,17 @@ test("RequestAgent actually searches and inspects scoped SQLite evidence via str
 		res.end("data: [DONE]\n\n");
 	});
 	await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));
-	let db:SpatialSqliteStore|null=null,retrieve:SpatialRetriever|null=null;
+	let db:SpatialSqliteStore|null=null,retrieve:SpatialRetriever|SpatialEvidenceRetriever|null=null;
 	try{
 		const address=server.address();assert.ok(address&&typeof address!=="string");process.env.QWEN_API_KEY="test-only";process.env.QWEN_BASE_URL=`http://127.0.0.1:${address.port}/v1`;
 		const image=join(root,"frame.png");await writeFile(image,"fixture");const path=join(root,"m.sqlite");db=new SpatialSqliteStore(path);
 		db.ingest({id:"o0",atMs:0,recordingId:"r",frames:[image]});db.commit([{observationId:"o0",placeId:"p",reason:"red sofa"}],[{id:"p",summary:"room",representatives:[],lastSeenMs:0}]);
-		retrieve=new SpatialRetriever(path);const agent=new RequestAgent(null,retrieve.session({asOfMs:1},2));agent.set("ask","Was this seen before?");
+		if(backend==='archive'){
+			const archive=join(root,'archive');await mkdir(join(archive,'images'),{recursive:true});await writeFile(join(archive,'images','frame.png'),'fixture');await writeFile(join(archive,'complete.json'),'{}');
+			const raw=new DatabaseSync(join(archive,'evidence.sqlite'));raw.exec('CREATE TABLE observations(seq INTEGER PRIMARY KEY,id TEXT,session TEXT,at_ms REAL,raw TEXT)');
+			const e={id:'o0',sessionId:'r',atMs:0,cameras:Object.fromEntries(['front','left','right'].map(v=>[v,'images/frame.png'])),sha256:Object.fromEntries(['front','left','right'].map(v=>[v,createHash('sha256').update('fixture').digest('hex')]))};raw.prepare('INSERT INTO observations VALUES(?,?,?,?,?)').run(1,'o0','r',0,JSON.stringify(e));raw.close();retrieve=new SpatialEvidenceRetriever(archive);
+		}else retrieve=new SpatialRetriever(path);
+		const agent=new RequestAgent(null,retrieve.session({asOfMs:1,recordingId:'r'},3));agent.set("ask","Was this seen before?");
 		const result=await agent.observe([{id:"current",path:image,timestampMs:2}],null,null);
 		assert.deepEqual(result.historicalEvidenceIds,["o0"]);assert.equal(calls,3);assert.equal(result.historicalTrace!.modelCalls,3);
 	}finally{

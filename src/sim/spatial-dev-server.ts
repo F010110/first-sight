@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { resolve,join,extname } from "node:path";
 import { SpatialSqliteService } from "../agent/spatial-sqlite-service.js";
 import { SpatialRetriever } from "../agent/spatial-retrieve.js";
+import { SpatialEvidenceRetriever } from "../agent/spatial-evidence-retrieve.js";
 import { SpatialEventStore } from "../agent/spatial-event-store.js";
 import { RequestAgent } from "../agent/request-agent.js";
 import { SceneChangeAgent } from "../agent/scene-change-agent.js";
@@ -33,6 +34,8 @@ const service=new SpatialSqliteService(join(workspace,"topology.sqlite"),topolog
 await service.load();
 const events=new SpatialEventStore(join(workspace,"changes.sqlite"));
 const retriever=new SpatialRetriever(join(workspace,"topology.sqlite"),events);
+// Trusted operator opt-in only; never accept an archive path from browser/model input.
+const archive=process.env.SPATIAL_EVIDENCE_ARCHIVE?new SpatialEvidenceRetriever(process.env.SPATIAL_EVIDENCE_ARCHIVE):null;
 const token=randomBytes(32).toString("hex");let busy=false;
 const frameRefs=(row:SpatialObservation):FrameRef[]=>row.frames.map((path,i)=>({id:`${row.id}:${i}`,path,timestampMs:row.atMs}));
 const server=createServer(async(req,res)=>{
@@ -64,11 +67,11 @@ const server=createServer(async(req,res)=>{
 				}
 				case "recognize":requirePaid();await service.tick(service.lastObservationTime()+10000,true);result=service.summary();break;
 				case "retrieve":{
-					const row=requireSelected(),session=retriever.session({asOfMs:row.atMs-0.001});
+					const row=requireSelected(),session=archive?archive.session({asOfMs:row.atMs,recordingId:row.recordingId}):retriever.session({asOfMs:row.atMs-0.001});
 					result=session.search({...(typeof input.placeId==="string"&&input.placeId?{placeId:input.placeId}:{}),...(typeof input.keyword==="string"?{query:input.keyword}:{}),...(typeof input.cursor==="number"?{cursor:input.cursor}:{}),limit:6});break;
 				}
 				case "request":{
-					requirePaid();const row=requireSelected(),session=retriever.session({asOfMs:row.atMs-0.001},8);
+					requirePaid();const row=requireSelected(),session=archive?archive.session({asOfMs:row.atMs,recordingId:row.recordingId},8):retriever.session({asOfMs:row.atMs-0.001},8);
 					const task=input.task==="revisit"?"Use historical visual evidence to determine if this place was visited earlier. Abstain if unsupported.":"Retrieve earlier observations of this place and describe only visually supported differences. Abstain if no evidence.";
 					const agent=new RequestAgent(null,session);agent.set("ask",task);result=await agent.observe(frameRefs(row),null,null);break;
 				}
@@ -91,4 +94,4 @@ const server=createServer(async(req,res)=>{
 	}catch(error){res.statusCode=400;res.setHeader("Content-Type","application/json");res.end(JSON.stringify({error:error instanceof Error?error.message:String(error)}));}
 });
 server.listen(port,"127.0.0.1",()=>console.log(`Simulator developer memory: http://127.0.0.1:${port} (no model calls until explicitly requested)`));
-const close=()=>server.close(()=>{retriever.close();events.close();service.close();process.exit(0);});process.on("SIGINT",close);process.on("SIGTERM",close);
+const close=()=>server.close(()=>{archive?.close();retriever.close();events.close();service.close();process.exit(0);});process.on("SIGINT",close);process.on("SIGTERM",close);
