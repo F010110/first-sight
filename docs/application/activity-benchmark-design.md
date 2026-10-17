@@ -59,6 +59,6 @@ python sim/build_activity_samples.py D:\Datasets\activity-benchmark-v1\rgb-sourc
 python sim/review_activity_samples.py D:\Datasets\activity-benchmark-v1\samples-v1\community-shopping D:\Datasets\activity-benchmark-v1\review-v1\community-shopping
 ```
 
-打包入口只有全部源下载完成且逐zip hash通过才运行；输出不可覆盖。复核默认每约20秒取一组并保留episode首尾；稀疏图只用于筛查，逐观察标注可用`--stride 1`，不得把默认图册当全量审核。
+全量打包入口只有全部源下载完成且逐zip hash通过才运行；也可用`--sample school-rounds`单独包装已完成的学校子集，仍须该样本全部metadata与三视图验证记录/hash通过，不将其他下载失败的样本计为完成。输出不可覆盖。复核默认每约20秒取一组并保留episode首尾；稀疏图只用于筛查，逐观察标注可用`--stride 1`，不得把默认图册当全量审核。
 
 必须用自动测试证明：UUID重命名/无害拆分不影响分数；错房间即使物体类别相同也不能满分；过时/未来证据拒绝；全部拒答不能获得高实用分；缺预测不被删除；缺类别/未审核标注不得发布成绩。评分夹具和“全部拒答”基线只能验证评分器，不能冒称实际空间记忆系统成绩。

@@ -8,8 +8,8 @@ import zipfile
 from pathlib import Path
 from salad_features import sha
 
-def build(source, output, auxiliary=None):
-    if not (source/'complete.json').exists():raise ValueError('RGB source download must be complete')
+def build(source, output, auxiliary=None, sample=None):
+    if not (source/'complete.json').exists() and sample is None:raise ValueError('RGB source download must be complete')
     plan=json.loads((source/'plan.json').read_text());rows=[{**r,'sourceRoot':str(source)} for r in plan['trajectories']]
     if auxiliary:
         if not (auxiliary/'complete.json').exists():raise ValueError('Auxiliary download incomplete')
@@ -18,6 +18,9 @@ def build(source, output, auxiliary=None):
         rows.extend({**r,'sourceRoot':str(auxiliary)} for r in aux['trajectories'])
     output.mkdir(parents=True,exist_ok=False)
     groups={'school-rounds':[r for r in rows if r['environment']=='AbandonedSchool'],'hospital-rounds':[r for r in rows if r['environment'] in ['Hospital','OldTownSummer']],'community-shopping':[r for r in rows if r['environment'] in ['ModularNeighborhoodIntExt','Supermarket']]};report=[]
+    if sample:
+        if sample not in groups:raise ValueError('Unknown sample')
+        groups={sample:groups[sample]}
     for sample_id,segments in groups.items():
         root=output/sample_id;private=root/'evaluation-only';private.mkdir(parents=True);(root/'images').mkdir()
         clock=8*3600000;observations=[];truth=[];episodes=[];seen=set();active=0
@@ -32,6 +35,8 @@ def build(source, output, auxiliary=None):
             for verified in json.loads((source_dir/'verified.json').read_text()):
                 path=source_root/verified['path']
                 if path.stat().st_size!=verified['bytes'] or sha(path)!=verified['sha256']:raise ValueError('RGB archive integrity mismatch')
+            verified_names={Path(v['path']).name for v in json.loads((source_dir/'verified.json').read_text())}
+            if not {f'image_lcam_{v}.zip' for v in ['front','left','right']}<=verified_names:raise ValueError('Missing verified native view')
             dt=segment['timeStep'];indices=list(range(0,len(poses),max(1,round(2/dt))))
             if indices[-1]!=len(poses)-1:indices.append(len(poses)-1)
             archives={v:zipfile.ZipFile(source_dir/f'image_lcam_{v}.zip') for v in ['front','left','right']}
@@ -63,4 +68,4 @@ def build(source, output, auxiliary=None):
     (output/'complete.json').write_text(json.dumps({'samples':report,'modelCalls':0},indent=2))
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('source',type=Path);p.add_argument('output',type=Path);p.add_argument('--auxiliary',type=Path);a=p.parse_args();build(a.source,a.output,a.auxiliary)
+    p=argparse.ArgumentParser();p.add_argument('source',type=Path);p.add_argument('output',type=Path);p.add_argument('--auxiliary',type=Path);p.add_argument('--sample',choices=['school-rounds','hospital-rounds','community-shopping']);a=p.parse_args();build(a.source,a.output,a.auxiliary,a.sample)

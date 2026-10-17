@@ -41,4 +41,12 @@ class ActivitySampleTests(unittest.TestCase):
             root=Path(tmp);source=root/'source';rows=self.source(source);rows[0]['durationSeconds']+=1000;(source/'plan.json').write_text(json.dumps({'revision':'fixture','trajectories':rows}))
             with self.assertRaisesRegex(ValueError,'clock/frame'):build(source,root/'bad')
 
+    def test_selected_complete_sample_does_not_require_other_downloads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);source=root/'source';self.source(source)
+            (source/'complete.json').unlink()
+            build(source,root/'selected',sample='school-rounds')
+            self.assertTrue((root/'selected'/'school-rounds'/'complete.json').exists())
+            self.assertFalse((root/'selected'/'hospital-rounds').exists())
+
 if __name__=='__main__':unittest.main()
