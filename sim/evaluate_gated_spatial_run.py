@@ -17,7 +17,8 @@ def evaluate(source,gated,run,output):
         a,b=by_frame[pair['earlierFrame']]['assignment'],by_frame[pair['laterFrame']]['assignment']
         proxy.append({**pair,'bothAssigned':a is not None and b is not None,'sameAssignedPlace':bool(a and b and a['placeId'] is not None and a['placeId']==b['placeId']) if a and b else None})
     costs=[]
-    for root in run.parent.glob('tartanground-school-gated-real-*'):
+    related=set(run.parent.glob('tartanground-school-gated-real-*'));related.add(run)
+    for root in sorted(related):
         usage=root/'usage.json'
         if usage.exists():costs.append({'run':root.name,**json.loads(usage.read_text())})
     report={'run':str(run),'sourceObservations':len(rows),'acceptedObservations':gate['acceptedObservations'],'skippedUnclassifiedObservations':gate['skippedObservations'],'classifiedObservations':len(assignments),'pending':pending,'plannedWindows':gate['plannedCalls'],'places':places,'geometricProxyChecks':proxy,'observations':observations,'allRelatedRunUsage':costs,'roomAccuracyMeasured':False,'gateEventRecallMeasured':False,'realtimeThroughputMeasured':False,'limitations':'Proxy pairs overlap and are not independent test cases. No assignment inheritance for skipped frames. Raw model summaries are not human room truth. First failed run costs included separately, not hidden.'}

@@ -7,10 +7,11 @@ import { SpatialV2Service } from '../agent/spatial-v2-service.js';
 import { SpatialVisualRecall,pythonFeatureExtractor,type DescriptorSpec } from '../agent/spatial-visual-recall.js';
 import { appendFileSync } from 'node:fs';
 import { spatialV2Vlm } from '../agent/spatial-v2-vlm.js';
+import { reviewedIdentityRecognizer } from '../agent/spatial-identity-review.js';
 
 const [datasetArg,outputArg,configArg,paid]=process.argv.slice(2);
 if(!datasetArg||!outputArg||!configArg||paid!=='--confirm-paid')throw Error('Usage: spatial-calibration dataset NEW-output config.json --confirm-paid');
-const config=JSON.parse(await readFile(configArg,'utf8')) as {inputPerMillion:number;outputPerMillion:number;maxCost:number;maxWindows:number;maxObservations:number;currency:string;tokenCalibrationOnly?:boolean;boundedSampleRun?:boolean;plannedScheduling?:boolean;visualRecall?:{command:string;args:string[];descriptor?:DescriptorSpec;maxOutputBytes?:number}};
+const config=JSON.parse(await readFile(configArg,'utf8')) as {inputPerMillion:number;outputPerMillion:number;maxCost:number;maxWindows:number;maxObservations:number;currency:string;tokenCalibrationOnly?:boolean;boundedSampleRun?:boolean;plannedScheduling?:boolean;identityReview?:boolean;visualRecall?:{command:string;args:string[];descriptor?:DescriptorSpec;maxOutputBytes?:number}};
 const tokenOnly=config.tokenCalibrationOnly===true||config.boundedSampleRun===true;
 for(const key of (tokenOnly?['maxWindows','maxObservations']:['inputPerMillion','outputPerMillion','maxCost','maxWindows','maxObservations']) as Array<'inputPerMillion'|'outputPerMillion'|'maxCost'|'maxWindows'|'maxObservations'>)if(!Number.isFinite(config[key])||config[key]<=0)throw Error(`Missing/invalid ${key}; actual endpoint prices required`);
 if(!Number.isInteger(config.maxWindows)||!Number.isInteger(config.maxObservations)||(!tokenOnly&&!config.currency))throw Error('Integer limits and currency required');
@@ -21,8 +22,11 @@ await writeFile(join(root,'config.json'),JSON.stringify(config,null,2));
 let cost=0,windows=0,input=0,output=0,calls=0;const logRoot=join(root,'requests');
 // Each window permits one repair. Reserve full advertised context + output for both.
 // Conservative monetary stop, conditional on supplied rates and endpoint token limits.
-const reservation=tokenOnly?0:2*(128000*config.inputPerMillion+1800*config.outputPerMillion)/1e6;
-const base=config.visualRecall?spatialV2Vlm(logRoot):topologyVlm(logRoot);
+if(config.identityReview&&!config.visualRecall)throw Error('Identity review requires v2 visual recall');
+const maximumCallsPerWindow=config.identityReview?4:2;
+const reservation=tokenOnly?0:maximumCallsPerWindow*(128000*config.inputPerMillion+1800*config.outputPerMillion)/1e6;
+const initial=config.visualRecall?spatialV2Vlm(logRoot):topologyVlm(logRoot);
+const base=config.identityReview?reviewedIdentityRecognizer(initial,(batch,history,proposal)=>spatialV2Vlm(logRoot,proposal)(batch,history),async value=>{appendFileSync(join(root,'identity-review.jsonl'),JSON.stringify(value)+'\n');}):initial;
 const recognize:ReturnType<typeof topologyVlm>=async(batch,history)=>{
  if(windows>=config.maxWindows||(!tokenOnly&&cost+reservation>config.maxCost))throw Error('Budget/maximum windows reached before model call');
  const before=new Set(await readdir(logRoot).catch(()=>[]));windows++;
@@ -37,7 +41,7 @@ const recognize:ReturnType<typeof topologyVlm>=async(batch,history)=>{
    }
   }
   cost=tokenOnly?0:(input*config.inputPerMillion+output*config.outputPerMillion)/1e6;
-  await writeFile(join(root,'usage.json'),JSON.stringify({windows,calls,inputTokens:input,outputTokens:output,estimatedCost:tokenOnly?null:cost,currency:tokenOnly?null:config.currency,unknownUsage,reservationPerWindow:tokenOnly?null:reservation,tokenCalibrationOnly:tokenOnly,maximumProviderCalls:config.maxWindows*2,priceSource:tokenOnly?'No monetary estimate; limited token calibration only':'user config, not verified provider invoice'},null,2));
+   await writeFile(join(root,'usage.json'),JSON.stringify({windows,calls,inputTokens:input,outputTokens:output,estimatedCost:tokenOnly?null:cost,currency:tokenOnly?null:config.currency,unknownUsage,reservationPerWindow:tokenOnly?null:reservation,tokenCalibrationOnly:tokenOnly,maximumProviderCalls:config.maxWindows*maximumCallsPerWindow,priceSource:tokenOnly?'No monetary estimate; limited token calibration only':'user config, not verified provider invoice'},null,2));
   if(unknownUsage)throw Error('Usage unavailable: halt rather than assume zero cost');
  }
 };

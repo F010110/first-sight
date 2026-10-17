@@ -7,7 +7,8 @@ from PIL import Image,ImageDraw
 def render(source,report,output):
     output.mkdir(parents=True,exist_ok=False)
     rows=[json.loads(l) for l in (source/'observations.jsonl').read_text().splitlines()]
-    result=json.loads(report.read_text(encoding='utf8'));pred={r['id']:r for r in result['observations']}
+    result=json.loads(report.read_text(encoding='utf8')) if str(report)!='-' else {'observations':[{'id':r['id'],'assignment':None,'gate':{'reason':'source-unlabeled'}} for r in rows],'places':[]}
+    pred={r['id']:r for r in result['observations']}
     ids=sorted({r['assignment']['placeId'] for r in result['observations'] if r['assignment'] and r['assignment']['placeId']})
     labels={pid:'P'+str(i+1) for i,pid in enumerate(ids)}
     for start in range(0,len(rows),10):

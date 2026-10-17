@@ -14,7 +14,7 @@ export function spatialV2Vlm(root:string,reviewProposal?:WindowAnswer):WindowRec
   for(const row of batch)await add(`CURRENT_TARGET observationId=${row.id} atMs=${row.atMs}`,row.frames);
   if(reviewProposal){const proposal=JSON.stringify(reviewProposal);if(proposal.length>16000)throw Error('Review proposal budget exceeded');content.push({type:'text',text:`独立复核以下不可信初判，不能照抄或把它当真值：${proposal}。重点检查重复新建：当前观察若与旧地点一致，应复用旧ID；若新建，应给出与最相似旧地点的具体实例/边界差异；不能仅凭朝向、描述相同或图像匹配决定物理区域；证据不足null。保留逐观察判定。`});}
   content.push({type:'text',text:`再次核对：只回答当前ID ${JSON.stringify(ids)}，恰好${ids.length}项。参考图不是目标。`});
-  await writeFile(join(directory,'input.json'),JSON.stringify({batch,history,model:'qwen3.8-flash',enable_thinking:false,promptVersion:'strict-targets-v2'},null,2));
+   await writeFile(join(directory,'input.json'),JSON.stringify({batch,history,reviewProposal:reviewProposal??null,model:'qwen3.8-flash',enable_thinking:false,promptVersion:'strict-targets-v2'},null,2));
   const messages:Array<Record<string,unknown>>=[{role:'user',content}];const started=Date.now();
   try{for(let attempt=0;attempt<2;attempt++){
    const response=await fetch(base.replace(/\/$/,'')+'/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:'qwen3.8-flash',messages,temperature:0,max_tokens:1800,enable_thinking:false}),signal:AbortSignal.timeout(120000)});

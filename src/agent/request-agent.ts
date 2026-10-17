@@ -138,8 +138,8 @@ export class RequestAgent {
 	private historicalTool(): AgentTool<any> {
 		return {
 			name:"retrieve_visual_history",label:"历史视觉证据",
-			description:"Search historical observations by keywords, then inspect returned IDs. No match means unknown, not absent. Only inspected images support historical claims.",
-			parameters:{type:"object",properties:{query:{type:"string"},ids:{type:"array",items:{type:"string"}},cursor:{type:"integer"}},required:[]},
+			description:"Two operations: SEARCH with query (or {} for chronological paging); INSPECT with ids:[exact IDs returned by SEARCH] to open original images. You already have permission to inspect: do not ask the user. Search is literal text, not semantic: use ONE short keyword in the user's language (e.g. 体育馆 or 小径), never append translations/synonyms or the entire question. If empty, simplify to one word or use {}. Cursor is opaque: use ONLY a returned nextCursor for the SAME query; reset/omit it on any query change. After candidates, inspect 1 observation (3 images) before answering; do not spend all turns searching. No match means unknown, not absent. Only inspected images support historical claims.",
+			parameters:{type:"object",properties:{query:{type:"string",description:"Single short literal keyword; omit for chronological history."},ids:{type:"array",items:{type:"string"},description:"INSPECT operation: exact retrieved observation IDs, usually one ID per call."},cursor:{type:"integer",description:"Only returned nextCursor from same query; never invent."}},required:[]},
 			execute:async(_id:string,params:unknown)=>{
 				const p=params as {query?:string;ids?:string[];cursor?:number};
 				if(p.ids){const images=await this.retrieval!.inspect(p.ids);return {content:images.flatMap(image=>[{type:"text" as const,text:JSON.stringify({historicalEvidenceId:image.id,atMs:image.atMs,placeId:image.placeId,notCurrentTruth:true})},{type:"image" as const,data:image.data,mimeType:image.mimeType}]),details:{ids:p.ids}};}
@@ -229,7 +229,7 @@ export class RequestAgent {
 		const prompt = promptLines.join("\n\n");
 
 		const tools = this.retrieval ? [this.historicalTool()] : this.getSceneMemory ? [this.sceneMemoryTool()] : [];
-		const historyInstructions=this.retrieval ? " The search_scene_memory tool is replaced by retrieve_visual_history. Its use for historical place OR object questions overrides the earlier place-only restriction. Search then inspect before making historical claims. Add historicalEvidenceIds (only inspected IDs) and abstained boolean to JSON. For insufficient history abstain; historical sightings do not establish current presence. Never infer physical navigability from observed transitions." : "";
+		const historyInstructions=this.retrieval ? " The search_scene_memory tool is replaced by retrieve_visual_history. Its use for historical place OR object questions overrides the earlier place-only restriction. Search using one short literal keyword, then call the SAME tool with ids to inspect candidate original images; you have permission, do not ask permission or stop at search hints. You have at most six tool turns: reserve one for inspection. Do not translate or combine synonyms in an AND keyword query. Add historicalEvidenceIds (only inspected IDs) and abstained boolean to JSON. For insufficient history abstain; historical sightings do not establish current presence. No match only means not retrieved, never that an object was absent from all history. For abstention say only that you cannot confirm the requested fact from retrieved/inspected evidence; do not summarize what the entire history contains or claim no signs exist anywhere. Never infer physical navigability from observed transitions." : "";
 		const agent = new Agent({ initialState: { systemPrompt: SYSTEM_PROMPT+historyInstructions, model: this.model, tools }, streamFn: this.streamFn });
 		let turns=0;
 		const unsubscribe=this.retrieval?agent.subscribe(event=>{

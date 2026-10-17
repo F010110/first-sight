@@ -14,7 +14,7 @@ def get(url):
             if attempt==2:raise
             time.sleep(2**attempt)
 
-def main(root):
+def main(root, school_trajectory=None):
     root.mkdir(parents=True,exist_ok=True)
     repo='theairlabcmu/TartanGround'
     meta=json.loads(get('https://huggingface.co/api/datasets/'+repo))
@@ -25,8 +25,9 @@ def main(root):
     selected=[]
     for line in manifest.decode().splitlines():
         name=line.split()[0]
-        if any(name.startswith(e+'/Data_omni/P0000/') for e in ['AbandonedSchool','ModularNeighborhoodIntExt']) and any(v in name for v in ['image_lcam_front.zip','image_lcam_left.zip','image_lcam_right.zip','meta']):selected.append(name)
-    assert len(selected)>=6
+        prefixes=([f'AbandonedSchool/Data_omni/{school_trajectory}/'] if school_trajectory else [e+'/Data_omni/P0000/' for e in ['AbandonedSchool','ModularNeighborhoodIntExt']])
+        if any(name.startswith(prefix) for prefix in prefixes) and any(v in name for v in ['image_lcam_front.zip','image_lcam_left.zip','image_lcam_right.zip','meta']):selected.append(name)
+    if len(selected)<(4 if school_trajectory else 6):raise ValueError('Missing required source files')
     plan={'repo':repo,'revision':revision,'files':selected,'manifestSha256':hashlib.sha256(manifest).hexdigest(),'purpose':'raw ground trajectory pilot, not eight-hour independent human recording'}
     (root/'plan.json').write_text(json.dumps(plan,indent=2))
     verified=[]
@@ -61,4 +62,4 @@ def main(root):
         (root/'verified.json').write_text(json.dumps(verified,indent=2));print('Verified '+name,flush=True)
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('output',type=Path);main(p.parse_args().output)
+    p=argparse.ArgumentParser();p.add_argument('output',type=Path);p.add_argument('--school-trajectory',choices=[f'P{i:04d}' for i in range(1,10)]);a=p.parse_args();main(a.output,a.school_trajectory)
