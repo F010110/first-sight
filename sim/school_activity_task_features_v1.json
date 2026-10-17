@@ -1,0 +1,24 @@
+{
+  "status": "assistant-reviewed-visible-surface",
+  "note": "Explicit surface annotations from the reviewed triplets, not an inference that all gyms have wooden floors or all corridors have tiles. No independent human review.",
+  "woodFloor": {
+    "P0000": [177.5],
+    "P0001": [0],
+    "P0003": [160, 180, 200, 220],
+    "P0004": [140, 160],
+    "P0005": [120, 140, 160],
+    "P0006": [20, 40],
+    "P0007": [0, 20, 40]
+  },
+  "patternedTileFloor": {
+    "P0000": [140, 160],
+    "P0001": [20, 140, 160, 166.7],
+    "P0003": [120, 140, 240, 260],
+    "P0004": [80, 120, 180, 200, 240],
+    "P0005": [80, 100, 180, 200, 240],
+    "P0006": [0, 60],
+    "P0007": [80],
+    "P0008": [20],
+    "P0009": [80, 84.8]
+  }
+}
