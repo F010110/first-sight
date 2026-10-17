@@ -84,19 +84,23 @@ def main():
     try:
         for row in rows:
             if not 1 <= len(row['frames']) <= 4: raise ValueError('Camera budget exceeded')
-            features = []
+            features = []; hashes = []
             for path in row['frames']:
+                before = sha(Path(local_path(path)))
                 with Image.open(local_path(path)) as image: tensor = transform(image.convert('RGB')).unsqueeze(0).to(args.device)
                 with torch.inference_mode(): vector = torch.nn.functional.normalize(model(tensor), dim=-1)[0].cpu()
                 if vector.numel() != 8448 or not torch.isfinite(vector).all(): raise ValueError('Invalid SALAD descriptor')
-                features.append(vector.tolist()); count += 1
-            result = {'id': row['id'], 'features': features}
+                if sha(Path(local_path(path))) != before: raise ValueError('Image changed during feature extraction')
+                hashes.append(before); features.append(vector.tolist()); count += 1
+            result = {'id': row['id'], 'features': features, 'imageSha256': hashes}
             if stream: stream.write(json.dumps(result) + '\n'); stream.flush()
             else: output.append(result)
     finally:
         if stream: stream.close()
     if args.output:
         report = {'method': 'salad-dinov2-vitb14', 'dimensions': 8448, 'metric': 'cosine', 'saladRevision': revision(args.salad), 'dinov2Revision': revision(args.dinov2), 'weightsSha256': args.weights_sha256, 'images': count, 'elapsedSeconds': time.monotonic() - started, 'torchVersion': torch.__version__, 'device': args.device, 'threads': args.threads, 'modelCalls': 0, 'note': 'Official model inference only; no physical identity assigned; dataset features contain no evaluation truth.'}
+        report['sourceManifestSha256'] = sha(args.dataset / 'observations.jsonl')
+        report['featuresSha256'] = sha(args.output / 'features.jsonl')
         (args.output / 'complete.json').write_text(json.dumps(report, indent=2), encoding='utf8')
         print(json.dumps(report), file=protocol)
     else: print(json.dumps(output), file=protocol)

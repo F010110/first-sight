@@ -20,3 +20,4 @@
 - 检查点352040378字节，SHA256 `6b3f1720954293e83da6966c5cfcfc6713200d7fefadcca76fc51aeb80b3cada`；DINOv2 revision `7764ea0f912e53c92e82eb78a2a1631e92725fc8`。锁文件`D:\Datasets\research-code\salad-lock.json`；推理直接调用官方backbone/aggregator，不加载Lightning训练依赖，严格加载全部权重。
 - 第一轮真实提取`run/tartanground-school-salad-v1`在导入torch失败：隔离环境安装尚未完成，保留失败目录，不覆盖。没有SALAD结果，更没有改善结论。安装完成后必须新目录重试。
 - RGB同90组离线对照已运行：精确历史观察端点排名14代理对，top1/top2各3/14；不是地点Recall@K，因为同地点相邻帧可能排在指定端点之前。评测脚本新增明确rankingTarget和因果/字段完整性/拒绝覆盖回归测试，WSL通过1项。
+- 新增`sim/cached_visual_features.py`，将完成的学习特征导入只读SQLite缓存；查询逐ID验证当前图像字节hash，防止同ID错图复用。离线未出现的观察明确拒绝，不伪造在线推理。缓存协议1项测试通过；可通过校准config.visualRecall.command/args及descriptor/maxOutputBytes启用，无需每次query重复加载模型。尚未用真实SALAD特征完成该链路。
