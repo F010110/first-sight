@@ -34,7 +34,7 @@ def main():
     args = parser.parse_args()
     revision = lambda path: subprocess.check_output(['git', '-C', str(path), 'rev-parse', 'HEAD'], text=True).strip()
     for path, expected in [(args.salad, args.salad_revision), (args.dinov2, args.dinov2_revision)]:
-        if revision(path) != expected or subprocess.check_output(['git', '-C', str(path), 'diff', '--name-only', 'HEAD'], text=True).strip():
+        if revision(path) != expected or subprocess.check_output(['git', '-c', 'core.autocrlf=true', '-C', str(path), 'diff', '--name-only', 'HEAD'], text=True).strip():
             raise ValueError('Upstream source revision/cleanliness mismatch')
     if sha(args.weights) != args.weights_sha256: raise ValueError('Weight hash mismatch')
     if not 1 <= args.threads <= 16: raise ValueError('Thread budget exceeded')

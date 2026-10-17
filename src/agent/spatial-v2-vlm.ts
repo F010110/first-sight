@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type { WindowAnswer,WindowRecognizer } from './spatial-topology-service.js';
 
 /** V2 strict target/reference separation; v1 recognizer remains frozen. */
-export function spatialV2Vlm(root:string):WindowRecognizer{
+export function spatialV2Vlm(root:string,reviewProposal?:WindowAnswer):WindowRecognizer{
  return async(batch,history)=>{
   const key=process.env.QWEN_API_KEY,base=process.env.QWEN_BASE_URL;if(!key||!base)throw Error('Missing Qwen configuration');
   const directory=join(root,randomUUID());await mkdir(directory,{recursive:true});
@@ -12,6 +12,7 @@ export function spatialV2Vlm(root:string):WindowRecognizer{
   const add=async(label:string,frames:string[])=>{content.push({type:'text',text:label});for(const path of frames){const mime=/\.png$/i.test(path)?'image/png':'image/jpeg';content.push({type:'image_url',image_url:{url:`data:${mime};base64,${(await readFile(path)).toString('base64')}`}});}};
   for(const node of history.nodes.slice(0,3)){const ref=node.representatives.at(-1);if(ref)await add(`HISTORICAL_PLACE_EVIDENCE placeId=${node.id}。当前目标若与这里相同，应复用这个placeId。仅参考图本身不需要assignment；这不是禁止复用该地点。`,ref.frames);}
   for(const row of batch)await add(`CURRENT_TARGET observationId=${row.id} atMs=${row.atMs}`,row.frames);
+  if(reviewProposal){const proposal=JSON.stringify(reviewProposal);if(proposal.length>16000)throw Error('Review proposal budget exceeded');content.push({type:'text',text:`独立复核以下不可信初判，不能照抄或把它当真值：${proposal}。重点检查重复新建：当前观察若与旧地点一致，应复用旧ID；若新建，应给出与最相似旧地点的具体实例/边界差异；不能仅凭朝向、描述相同或图像匹配决定物理区域；证据不足null。保留逐观察判定。`});}
   content.push({type:'text',text:`再次核对：只回答当前ID ${JSON.stringify(ids)}，恰好${ids.length}项。参考图不是目标。`});
   await writeFile(join(directory,'input.json'),JSON.stringify({batch,history,model:'qwen3.8-flash',enable_thinking:false,promptVersion:'strict-targets-v2'},null,2));
   const messages:Array<Record<string,unknown>>=[{role:'user',content}];const started=Date.now();
