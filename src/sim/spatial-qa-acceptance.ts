@@ -21,6 +21,7 @@ try{
   catch(error){results.push({id:c.id,error:String(error)});}
   await writeFile(join(output,c.id+'-trace.json'),JSON.stringify(trace,null,2));
   await writeFile(join(output,'results.json'),JSON.stringify(results,null,2));
+  if('error' in results.at(-1)!)break;
  }
- await appendFile(join(output,'complete.json'),JSON.stringify({cases:cases.length,maximumProviderCalls:cases.length*8,note:'Real RequestAgent retrieval/image/citation loop. Results require independent visual grading; no automatic accuracy claim.'},null,2));
+ await appendFile(join(output,'complete.json'),JSON.stringify({plannedCases:cases.length,processedCases:results.length,status:results.some(r=>'error' in r)?'stopped-on-error':'completed',maximumProviderCalls:cases.length*8,note:'Real RequestAgent retrieval/image/citation loop. Results require independent visual grading; no automatic accuracy claim.'},null,2));
 }finally{retriever.close();}

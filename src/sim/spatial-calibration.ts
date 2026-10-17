@@ -8,10 +8,11 @@ import { SpatialVisualRecall,pythonFeatureExtractor,type DescriptorSpec } from '
 import { appendFileSync } from 'node:fs';
 import { spatialV2Vlm } from '../agent/spatial-v2-vlm.js';
 import { reviewedIdentityRecognizer } from '../agent/spatial-identity-review.js';
+import { createHash } from 'node:crypto';
 
 const [datasetArg,outputArg,configArg,paid]=process.argv.slice(2);
 if(!datasetArg||!outputArg||!configArg||paid!=='--confirm-paid')throw Error('Usage: spatial-calibration dataset NEW-output config.json --confirm-paid');
-const config=JSON.parse(await readFile(configArg,'utf8')) as {inputPerMillion:number;outputPerMillion:number;maxCost:number;maxWindows:number;maxObservations:number;currency:string;tokenCalibrationOnly?:boolean;boundedSampleRun?:boolean;plannedScheduling?:boolean;identityReview?:boolean;visualRecall?:{command:string;args:string[];descriptor?:DescriptorSpec;maxOutputBytes?:number}};
+const config=JSON.parse(await readFile(configArg,'utf8')) as {inputPerMillion:number;outputPerMillion:number;maxCost:number;maxWindows:number;maxObservations:number;currency:string;tokenCalibrationOnly?:boolean;boundedSampleRun?:boolean;plannedScheduling?:boolean;identityReview?:boolean;reviewReuse?:boolean;temporalOverlap?:boolean;visualRecall?:{command:string;args:string[];descriptor?:DescriptorSpec;maxOutputBytes?:number}};
 const tokenOnly=config.tokenCalibrationOnly===true||config.boundedSampleRun===true;
 for(const key of (tokenOnly?['maxWindows','maxObservations']:['inputPerMillion','outputPerMillion','maxCost','maxWindows','maxObservations']) as Array<'inputPerMillion'|'outputPerMillion'|'maxCost'|'maxWindows'|'maxObservations'>)if(!Number.isFinite(config[key])||config[key]<=0)throw Error(`Missing/invalid ${key}; actual endpoint prices required`);
 if(!Number.isInteger(config.maxWindows)||!Number.isInteger(config.maxObservations)||(!tokenOnly&&!config.currency))throw Error('Integer limits and currency required');
@@ -19,14 +20,18 @@ if(config.boundedSampleRun){if(config.maxWindows>30||config.maxObservations>90)t
 else if(tokenOnly&&(config.maxWindows>2||config.maxObservations>8))throw Error('Token-only calibration is limited to two windows/eight observations; monetary long runs need real prices');
 const root=resolve(outputArg),data=resolve(datasetArg);await mkdir(root,{recursive:false});
 await writeFile(join(root,'config.json'),JSON.stringify(config,null,2));
+const digest=async(path:string|URL)=>createHash('sha256').update(await readFile(path)).digest('hex');
+await writeFile(join(root,'provenance.json'),JSON.stringify({observationsSha256:await digest(join(data,'observations.jsonl')),runnerSha256:await digest(new URL(import.meta.url)),v2RecognizerSha256:await digest(new URL('../agent/spatial-v2-vlm.js',import.meta.url)),reviewWrapperSha256:await digest(new URL('../agent/spatial-identity-review.js',import.meta.url)),model:'qwen3.8-flash',enableThinking:false,note:'Compiled artifact hashes captured before calls; no evaluation-only labels are model inputs.'},null,2));
 let cost=0,windows=0,input=0,output=0,calls=0;const logRoot=join(root,'requests');
 // Each window permits one repair. Reserve full advertised context + output for both.
 // Conservative monetary stop, conditional on supplied rates and endpoint token limits.
 if(config.identityReview&&!config.visualRecall)throw Error('Identity review requires v2 visual recall');
+if(config.reviewReuse&&!config.identityReview)throw Error('Reuse review requires identity review');
+if(config.temporalOverlap&&!config.visualRecall)throw Error('Temporal overlap requires v2 visual recall');
 const maximumCallsPerWindow=config.identityReview?4:2;
 const reservation=tokenOnly?0:maximumCallsPerWindow*(128000*config.inputPerMillion+1800*config.outputPerMillion)/1e6;
 const initial=config.visualRecall?spatialV2Vlm(logRoot):topologyVlm(logRoot);
-const base=config.identityReview?reviewedIdentityRecognizer(initial,(batch,history,proposal)=>spatialV2Vlm(logRoot,proposal)(batch,history),async value=>{appendFileSync(join(root,'identity-review.jsonl'),JSON.stringify(value)+'\n');}):initial;
+const base=config.identityReview?reviewedIdentityRecognizer(initial,(batch,history,proposal)=>spatialV2Vlm(logRoot,proposal)(batch,history),async value=>{appendFileSync(join(root,'identity-review.jsonl'),JSON.stringify(value)+'\n');},config.reviewReuse===true):initial;
 const recognize:ReturnType<typeof topologyVlm>=async(batch,history)=>{
  if(windows>=config.maxWindows||(!tokenOnly&&cost+reservation>config.maxCost))throw Error('Budget/maximum windows reached before model call');
  const before=new Set(await readdir(logRoot).catch(()=>[]));windows++;
@@ -45,7 +50,7 @@ const recognize:ReturnType<typeof topologyVlm>=async(batch,history)=>{
   if(unknownUsage)throw Error('Usage unavailable: halt rather than assume zero cost');
  }
 };
-const service=config.visualRecall ? new SpatialV2Service(join(root,'topology.sqlite'),recognize,new SpatialVisualRecall(join(root,'visual-recall.sqlite'),join(root,'topology.sqlite'),pythonFeatureExtractor(config.visualRecall.command,config.visualRecall.args,config.visualRecall.maxOutputBytes),config.visualRecall.descriptor),value=>appendFileSync(join(root,'recall-trace.jsonl'),JSON.stringify(value)+'\n')) : new SpatialSqliteService(join(root,'topology.sqlite'),recognize);
+const service=config.visualRecall ? new SpatialV2Service(join(root,'topology.sqlite'),recognize,new SpatialVisualRecall(join(root,'visual-recall.sqlite'),join(root,'topology.sqlite'),pythonFeatureExtractor(config.visualRecall.command,config.visualRecall.args,config.visualRecall.maxOutputBytes),config.visualRecall.descriptor),value=>appendFileSync(join(root,'recall-trace.jsonl'),JSON.stringify(value)+'\n'),config.temporalOverlap===true) : new SpatialSqliteService(join(root,'topology.sqlite'),recognize);
 await service.load();
 try{
  const lines=(await readFile(join(data,'observations.jsonl'),'utf8')).trim().split(/\r?\n/).slice(0,config.maxObservations);

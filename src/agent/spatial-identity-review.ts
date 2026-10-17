@@ -3,11 +3,11 @@ import type { WindowAnswer,WindowRecognizer } from './spatial-topology-service.j
 /** Independent bounded second decision for new identities. No summary-based auto merge.
  * Caller must reserve both recognizers' provider/repair budgets before enabling this.
  */
-export function reviewedIdentityRecognizer(initial:WindowRecognizer,review:(...args:[...Parameters<WindowRecognizer>,WindowAnswer])=>Promise<WindowAnswer>,audit:(value:unknown)=>Promise<void>):WindowRecognizer{
+export function reviewedIdentityRecognizer(initial:WindowRecognizer,review:(...args:[...Parameters<WindowRecognizer>,WindowAnswer])=>Promise<WindowAnswer>,audit:(value:unknown)=>Promise<void>,reviewReuse=false):WindowRecognizer{
  return async(batch,history)=>{
   const proposal=await initial(batch,history);
   const old=new Set(history.nodes.map(n=>n.id));
-  if(!proposal.assignments.some(a=>a.placeId!==null&&!old.has(a.placeId)))return proposal;
+  if(!proposal.assignments.some(a=>a.placeId!==null&&(reviewReuse||!old.has(a.placeId))))return proposal;
   // Historical evidence and input observations are unchanged; proposal is untrusted.
   const answer=await review(structuredClone(batch),structuredClone(history),structuredClone(proposal));
   const ids=new Set(batch.map(o=>o.id)),declared=new Set(answer.places.map(p=>p.id));

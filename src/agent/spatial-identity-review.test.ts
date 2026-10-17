@@ -13,4 +13,9 @@ test('new identity review can reuse old/null; no retries, invented IDs or silent
  await assert.rejects(()=>invalid(batch,history),/Invalid identity/);
  const failure=reviewedIdentityRecognizer(initial,async()=>{throw Error('provider failed');},async()=>{});await assert.rejects(()=>failure(batch,history),/provider failed/);
  const noNew=reviewedIdentityRecognizer(async()=>({places:[],assignments:[{observationId:'o',placeId:null,reason:'unknown'}]}),async()=>{throw Error('must not call');},async()=>{});assert.equal((await noNew(batch,history)).assignments[0]!.placeId,null);
+ const reused:WindowRecognizer=async()=>({places:[],assignments:[{observationId:'o',placeId:'old',reason:'similar tiles, not instance proof'}]});
+ let reuseChecks=0;
+ const conservative=reviewedIdentityRecognizer(reused,async()=>{reuseChecks++;return {places:[],assignments:[{observationId:'o',placeId:null,reason:'different landing cannot establish same instance'}]};},async()=>{},true);
+ assert.equal((await conservative(batch,history)).assignments[0]!.placeId,null);assert.equal(reuseChecks,1);
+ const legacy=reviewedIdentityRecognizer(reused,async()=>{throw Error('default must not review reuse');},async()=>{});assert.equal((await legacy(batch,history)).assignments[0]!.placeId,'old');
 });

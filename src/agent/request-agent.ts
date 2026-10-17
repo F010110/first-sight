@@ -226,11 +226,14 @@ export class RequestAgent {
 			`ALREADY_REPORTED (do not repeat these): ${JSON.stringify(recent)}${this.state.spoken ? " (a watch condition has already been reported; do not report it again)" : ""}`,
 		];
 		promptLines.push("Reply with only the JSON object.");
+		const historicalSchema='MANDATORY historical JSON schema, include EVERY key: {"kind":"question|goal|watch","answer":string,"shouldSpeak":boolean,"done":boolean,"confidence":number,"historicalEvidenceIds":string[],"abstained":boolean}. abstained=false only with inspected supporting historical evidence; otherwise true. Do not omit abstained even when answering confidently. For first/earliest-history questions use chronological search {} and inspect earliest evidence; keyword search cannot establish what was seen first.';
+		if(this.retrieval)promptLines.push(historicalSchema);
 		const prompt = promptLines.join("\n\n");
 
 		const tools = this.retrieval ? [this.historicalTool()] : this.getSceneMemory ? [this.sceneMemoryTool()] : [];
 		const historyInstructions=this.retrieval ? " The search_scene_memory tool is replaced by retrieve_visual_history. Its use for historical place OR object questions overrides the earlier place-only restriction. Search using one short literal keyword, then call the SAME tool with ids to inspect candidate original images; you have permission, do not ask permission or stop at search hints. You have at most six tool turns: reserve one for inspection. Do not translate or combine synonyms in an AND keyword query. Add historicalEvidenceIds (only inspected IDs) and abstained boolean to JSON. For insufficient history abstain; historical sightings do not establish current presence. No match only means not retrieved, never that an object was absent from all history. For abstention say only that you cannot confirm the requested fact from retrieved/inspected evidence; do not summarize what the entire history contains or claim no signs exist anywhere. Never infer physical navigability from observed transitions." : "";
-		const agent = new Agent({ initialState: { systemPrompt: SYSTEM_PROMPT+historyInstructions, model: this.model, tools }, streamFn: this.streamFn });
+		const systemPrompt=(this.retrieval?SYSTEM_PROMPT.replace(/Reply with ONLY JSON:.*?No markdown\./,historicalSchema):SYSTEM_PROMPT)+historyInstructions;
+		const agent = new Agent({ initialState: { systemPrompt, model: this.model, tools }, streamFn: this.streamFn });
 		let turns=0;
 		const unsubscribe=this.retrieval?agent.subscribe(event=>{
 			if(event.type==="message_end"&&(event.message.role==="assistant"||event.message.role==="toolResult")){

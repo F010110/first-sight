@@ -11,7 +11,11 @@ def score(database, labels, output):
     try:assignments=dict(db.execute('SELECT observation_id,place_id FROM assignments'))
     finally:db.close()
     result=[]
+    seen=set()
     for pair in pairs:
+        key=tuple(sorted((pair['a'],pair['b'])))
+        if type(pair.get('same')) is not bool or pair['a']==pair['b'] or key in seen:raise ValueError('Invalid or duplicate pair labels')
+        seen.add(key)
         a,b=assignments.get(pair['a']),assignments.get(pair['b']);known=a is not None and b is not None
         same=a==b if known else None
         result.append({**pair,'aPlace':a,'bPlace':b,'covered':known,'predictedSame':same,'passed':known and same==pair['same']})

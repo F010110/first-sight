@@ -8,6 +8,15 @@ import { SpatialVisualRecall,visualDistance,type FeatureExtractor } from './spat
 import { SpatialV2Service } from './spatial-v2-service.js';
 import type { SpatialObservation } from './incremental-spatial-memory.js';
 
+test('v2 temporal overlap is bounded, same-recording and committed before current batch',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'temporal-overlap-')),path=join(root,'memory.sqlite');const db=new SpatialSqliteStore(path);
+ const rows=[['other',0],['r',10],['r',20],['other',25],['r',30]] as const;
+ for(const [recordingId,atMs] of rows){const row={id:'o'+atMs,recordingId,atMs,frames:['0']};db.ingest(row);db.commit([{observationId:row.id,placeId:'p',reason:'fixture'}],[{id:'p',summary:'fixture',lastSeenMs:atMs,representatives:[row]}]);}db.close();
+ const recall=new SpatialVisualRecall(join(root,'recall.sqlite'),path,async rows=>rows.map(r=>({id:r.id,features:[Array(72).fill(0)]})));
+ const service=new SpatialV2Service(path,async(batch,history)=>{assert.deepEqual(history.observations.map(o=>o.id),['o20','o30']);assert.ok(history.observations.every(o=>o.atMs<batch[0]!.atMs&&o.recordingId==='r'));return {places:[],assignments:batch.map(o=>({observationId:o.id,placeId:'p',reason:'test only'}))};},recall,()=>{},true);
+ try{await service.load();await service.ingest({id:'q',recordingId:'r',atMs:40,frames:['0']});await service.tick(100,true);assert.equal(service.summary().pending,0);}finally{service.close();await rm(root,{recursive:true,force:true});}
+});
+
 test('learned descriptors accept signed vectors, cosine rank and reject sidecar reuse',async()=>{
  const root=await mkdtemp(join(tmpdir(),'learned-recall-')),path=join(root,'topology.sqlite'),index=join(root,'visual.sqlite');
  const db=new SpatialSqliteStore(path);const row={id:'old',atMs:0,frames:['old']};db.ingest(row);db.commit([{observationId:'old',placeId:'p',reason:'fixture'}],[{id:'p',summary:'fixture',representatives:[row],lastSeenMs:0}]);
