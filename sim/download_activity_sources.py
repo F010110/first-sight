@@ -18,7 +18,9 @@ def get_tree(url, cache):
             raw=get(url)
             break
         except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
-            if isinstance(error,urllib.error.HTTPError) and error.code not in (408,429,500,502,503,504):raise
+            if isinstance(error,urllib.error.HTTPError):
+                error.close()
+                if error.code not in (408,429,500,502,503,504):raise
             if attempt==4:raise
             print(f'Metadata transport failed; retry {attempt+1}/4: {error}',flush=True)
             time.sleep(2**attempt)

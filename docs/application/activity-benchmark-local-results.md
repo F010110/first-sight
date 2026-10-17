@@ -18,3 +18,9 @@ Hospital/community/shopping and auxiliary OldTownSummer downloads are incomplete
 ## Engineering verification
 
 15 activity tests passed: source duration validation, anonymous public records, truth separation, review draft generation, selected complete sample offline build, bounded metadata retries/cache and three-card question-outcome scoring. These tests are not real model performance measurements. No paid model calls in this dataset/scoring implementation round.
+
+## Source-assisted annotation follow-up
+
+Supersedes the earlier two-sheet review limit: all 15 sparse sheets are now inspected. `school-annotations-v2` contains 851 native-source-verified records and 98 assistant-reviewed semantic anchors; the remaining 753 records are explicitly semantically unreviewed. Native archive PNG hashes, source metadata/poses, source/activity clocks and generator code are cross-checked, not just contact sheets. Room-instance IDs and exact floor labels remain null pending sufficient evidence.
+
+`school-tasks-v2` contains 16 frozen factual/unknown questions and 13 identity probes, with private answers separated from model questions. Only identity probes have been executed against existing short-route databases, not the 16 QA questions or a unified full-sample replay. Detailed scoring policy and limitations: `activity-annotation-and-scoring.md`. 18 activity tests now pass. No final system score or independent human review claimed.

@@ -1,0 +1,18 @@
+{
+  "version": "school-source-assisted-v1",
+  "reviewer": "assistant",
+  "independentHumanReview": false,
+  "note": "Labels apply only to actually reviewed contact-sheet anchors. No interpolation into unviewed observations. Region semantics are not exact physical room partitions.",
+  "trajectories": {
+    "P0000": ["exterior", "exterior", "exterior", "exterior", "exterior", "exterior", "entrance", "hall", "hall", "gym"],
+    "P0001": ["gym", "hall", "exterior", "exterior", "exterior", "exterior", "exterior", "hall", "hall", "hall"],
+    "P0002": ["entrance", "exterior", "exterior", "exterior", "hall", "stair"],
+    "P0003": ["exterior", "exterior", "exterior", "exterior", "exterior", "entrance", "hall", "hall", "gym", "gym", "gym", "gym", "hall", "hall", "library"],
+    "P0004": ["exterior", "exterior", "exterior", "entrance", "hall", "exterior", "hall", "gym", "gym", "hall", "hall", "stair", "hall", "terrace"],
+    "P0005": ["exterior", "exterior", "exterior", "exterior", "hall", "hall", "gym", "gym", "gym", "hall", "hall", "stair", "hall", "library", "terrace"],
+    "P0006": ["hall", "gym", "gym", "hall", "exterior", "exterior", "exterior", "exterior"],
+    "P0007": ["gym", "gym", "gym", "classroom", "hall", "library"],
+    "P0008": ["classroom", "hall", "exterior", "exterior", "exterior", "exterior", "exterior", "exterior"],
+    "P0009": ["exterior", "exterior", "stair", "library", "hall", "hall"]
+  }
+}
