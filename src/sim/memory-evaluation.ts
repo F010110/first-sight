@@ -5,7 +5,8 @@ import {RequestAgent,HistoricalAnswerValidationError} from '../agent/request-age
 import {memorySession,type MemoryRow,type MemoryMode} from './memory-evaluation-session.js';
 
 const [prepared,phase,paid]=process.argv.slice(2);if(!prepared||!['smoke','full'].includes(phase??'')||paid!=='--confirm-paid')throw Error('Usage: prepared smoke|full --confirm-paid');
-const root=resolve(prepared),output=join(root,phase!);await mkdir(output,{recursive:false});
+const resume=process.argv[5]==='--resume';
+const root=resolve(prepared),output=join(root,phase!);await mkdir(output,{recursive:resume});
 const digest=(s:string)=>createHash('sha256').update(s).digest('hex');
 const codeFreeze=JSON.parse(await readFile(join(root,'code-freeze.json'),'utf8'));for(const [path,expected] of Object.entries(codeFreeze.files)){if(createHash('sha256').update(await readFile(path)).digest('hex')!==expected)throw Error('Compiled evaluation policy changed after freeze');}
 const frozen=JSON.parse(await readFile(join(root,'frozen.json'),'utf8'));
@@ -24,11 +25,20 @@ const assignments=new Map((db.prepare('SELECT observation_id,place_id,reason FRO
 if(assignments.size!==rows.length)throw Error('Incomplete unified memory assignments');
 let calls=0,input=0,outputTokens=0,missingUsage=false;const results:unknown[]=[];
 const maxCalls=questions.length*3*8,maxInput=phase==='smoke'?1500000:18000000,maxCost=phase==='smoke'?.5:3;
+if(resume){
+ const previous=JSON.parse(await readFile(join(output,'usage.json'),'utf8'));
+ const saved=(await readFile(join(output,'results.jsonl'),'utf8')).trim().split(/\r?\n/).map(s=>JSON.parse(s));
+ if(new Set(saved.map(r=>r.id+':'+r.mode)).size!==saved.length)throw Error('Duplicate prior results');
+ results.push(...saved);calls=previous.calls;input=previous.inputTokens;outputTokens=previous.outputTokens;
+ if(previous.missingUsage){input+=128000;outputTokens+=512;}
+ await writeFile(join(output,`resume-${Date.now()}.json`),JSON.stringify({previousUsage:previous,retainedExecutions:saved.length,policy:'Keep aborted task as failure, no retry. Missing response reserves 128000 input/512 output tokens. Counts include reservations, not actual billing.'},null,2));
+}
 const cost=()=>input*.1356/1e6+outputTokens*.4584/1e6;
 const ledger=async()=>writeFile(join(output,'usage.json'),JSON.stringify({calls,inputTokens:input,outputTokens,estimatedUSD:cost(),missingUsage,maxCalls,maxInputTokens:maxInput,maxEstimatedUSD:maxCost,priceSource:'Published PAI Token Service China Beijing rates; not invoice; caches charged at full input rate'},null,2));
 await writeFile(join(output,'provenance.json'),JSON.stringify({model:'qwen3.8-flash',enableThinking:false,publicTasksSha256:frozen.publicTasksSha256,replaySha256:frozen.replaySha256,runnerSha256:digest(await readFile(new URL(import.meta.url),'utf8')),memorySha256:createHash('sha256').update(await readFile(dbPath)).digest('hex'),questionExecutions:questions.length*3,maxCalls,maxInput,maxCost,reasonScopePolicy:'Only full-history exposes per-observation judgments after window availability watermark; bounded controls suppress inherited full-context judgments.',note:'No private questions/answers/labels read by this executor.'},null,2));
 try{
  for(const q of questions)for(const mode of ['current-only','recent-5min','full-history'] as MemoryMode[]){
+  if((results as Array<{id:string;mode:string}>).some(r=>r.id===q.id&&r.mode===mode))continue;
   const trace:unknown[]=[];const session=memorySession(rows,q.currentObservationId,q.queryAtMs,mode,assignments,e=>trace.push(e));let expectedCalls=0,seenUsage=0;
   const current=rows.find(r=>r.id===q.currentObservationId)!;
   for(const view of ['front','left','right'])if(createHash('sha256').update(await readFile(current.cameras[view]!)).digest('hex')!==current.sha256[view])throw Error('Current frame integrity mismatch before provider call');

@@ -17,7 +17,7 @@ await writeFile(join(out,'rubric.json'),JSON.stringify({rubric,model:'qwen3.8-fl
 try{
  for(const record of records){
   const t=tasks.find(t=>t.id===record.id);if(!t)throw Error('Unknown executed task');
-  if(record.error){grades.push({id:t.id,mode:record.mode,semanticCredit:0,utility:0,harm:0,error:record.error});continue;}
+  if(record.error){const g={id:t.id,mode:record.mode,tier:t.memoryTier,semanticCredit:0,utility:0,harm:0,error:record.error};grades.push(g);await appendFile(join(out,'grades.jsonl'),JSON.stringify(g)+'\n');continue;}
   const result=record.result;let parsed:any;try{parsed=JSON.parse(result.raw.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}catch{parsed={answer:result.raw,abstained:false,historicalEvidenceIds:[]};}
   const citations:string[]=Array.isArray(parsed.historicalEvidenceIds)?parsed.historicalEvidenceIds.filter((x:unknown)=>typeof x==='string'):[];const inspected=record.inspectedIds??[];
   const expectedEvidence=t.validEvidenceSets as string[][];
