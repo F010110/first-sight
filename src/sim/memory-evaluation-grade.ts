@@ -1,7 +1,8 @@
 /** Separate evaluator process. Private labels never enter recognition/QA. */
 import {mkdir,readFile,writeFile,appendFile} from 'node:fs/promises';import {join,resolve} from 'node:path';import {createHash} from 'node:crypto';
 const [prepared,bank,phase,paid]=process.argv.slice(2);if(!prepared||!bank||!['smoke','full'].includes(phase??'')||paid!=='--confirm-paid')throw Error('Usage: prepared bank smoke|full --confirm-paid');
-const root=resolve(prepared),out=join(root,phase!+'-grading');await mkdir(out,{recursive:false});
+const resume=process.argv[6]==='--resume';
+const root=resolve(prepared),out=join(root,phase!+'-grading');await mkdir(out,{recursive:resume});
 const codeFreeze=JSON.parse(await readFile(join(root,'code-freeze.json'),'utf8'));for(const [path,expected] of Object.entries(codeFreeze.files)){if(createHash('sha256').update(await readFile(path)).digest('hex')!==expected)throw Error('Compiled evaluation policy changed after freeze');}
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');const frozen=JSON.parse(await readFile(join(root,'frozen.json'),'utf8'));
 const truthText=await readFile(join(resolve(bank),'evaluation-only','tasks.json'),'utf8');if(hash(truthText)!==frozen.privateTasksSha256)throw Error('Private task bank changed');
@@ -11,11 +12,19 @@ const execution=JSON.parse(await readFile(join(root,phase!,'complete.json'),'utf
 if(execution.status!=='completed'||records.length!==expectedExecutions||new Set(records.map(r=>r.id+':'+r.mode)).size!==expectedExecutions)throw Error('Incomplete or duplicate execution; no complete scorecard may be issued');
 const api=process.env.QWEN_BASE_URL,key=process.env.QWEN_API_KEY;if(!api||!key)throw Error('Provider configuration missing');
 const grades:any[]=[];let calls=0,input=0,output=0;const maxCost=phase==='smoke'?.2:1.5;
+if(resume){
+ const stopped=JSON.parse(await readFile(join(out,'stopped.json'),'utf8'));
+ grades.push(...(await readFile(join(out,'grades.jsonl'),'utf8')).trim().split(/\r?\n/).map(s=>JSON.parse(s)));
+ if(new Set(grades.map(g=>g.id+':'+g.mode)).size!==grades.length)throw Error('Duplicate grades');
+ calls=stopped.calls;input=stopped.inputTokens;output=stopped.outputTokens;
+ await writeFile(join(out,`resume-${Date.now()}.json`),JSON.stringify({prior:stopped,policy:'Retain valid grades and failed judge response/cost. JSON object transport constraint for remaining judgments; rubric and scoring unchanged.'},null,2));
+}
 const usd=()=>input*.1356/1e6+output*.4584/1e6;
 const rubric='You are a blind evaluator of a visual memory answer. Input includes a question, source-assisted reference answer, inspected/cited original frames, and optionally canonical evidence frames. Grade every factual claim in the response, not only target keywords. credit is 1 for correct target, .5 for partial useful target without critical contradiction, 0 for wrong or abstained on an answerable task. For unanswerable questions credit=1 only for an explicit appropriately scoped refusal without invented facts. harm=1 for fabricated unknowable facts, wrong place/floor, asserting unobserved state as known, or other misleading factual claims; .25 for unsupported ancillary detail that does not change action; 0 for correct or appropriately qualified response. Do not trust answer confidence. Missing historical citations are checked outside this judge; judge semantic content honestly even if a correct answer was guessed. Do not infer the condition or system identity. Return only JSON {"credit":0|0.5|1,"harm":0|0.25|1,"reason":string}. Reference labels are assistant-reviewed development labels, not independent human ground truth.';
 await writeFile(join(out,'rubric.json'),JSON.stringify({rubric,model:'qwen3.8-flash',enableThinking:false,rubricSha256:hash(rubric),judgeIndependence:'Fresh context, same model family; no independent human review',maxEstimatedUSD:maxCost,priceBasis:'Published PAI Token Service China Beijing; estimate not invoice'},null,2));
 try{
  for(const record of records){
+  if(grades.some(g=>g.id===record.id&&g.mode===record.mode))continue;
   const t=tasks.find(t=>t.id===record.id);if(!t)throw Error('Unknown executed task');
   if(record.error){const g={id:t.id,mode:record.mode,tier:t.memoryTier,semanticCredit:0,utility:0,harm:0,error:record.error};grades.push(g);await appendFile(join(out,'grades.jsonl'),JSON.stringify(g)+'\n');continue;}
   const result=record.result;let parsed:any;try{parsed=JSON.parse(result.raw.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}catch{parsed={answer:result.raw,abstained:false,historicalEvidenceIds:[]};}
@@ -28,8 +37,8 @@ try{
   const content:any[]=[{type:'text',text:JSON.stringify(text)}];
   for(const id of ids){const row=source.find(r=>r.id===id);if(!row)throw Error('Unknown grading evidence');content.push({type:'text',text:JSON.stringify({evidenceId:id,cited:citations.includes(id),reference:expectedEvidence.flat().includes(id)})});for(const view of ['front','left','right'])content.push({type:'image_url',image_url:{url:'data:image/png;base64,'+(await readFile(row.cameras[view])).toString('base64')}});}
   if(calls>=records.length||usd()+(128000*.1356+600*.4584)/1e6>maxCost)throw Error('Pre-call judging budget exceeded');calls++;
-  const response=await fetch(api.replace(/\/$/,'')+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify({model:'qwen3.8-flash',enable_thinking:false,temperature:0,max_tokens:600,messages:[{role:'system',content:rubric},{role:'user',content}]}),signal:AbortSignal.timeout(120000)});
-  const body=await response.json() as any;await writeFile(join(out,`${t.id}-${record.mode}-judge.json`),JSON.stringify({status:response.status,response:body},null,2));
+  const response=await fetch(api.replace(/\/$/,'')+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify({model:'qwen3.8-flash',enable_thinking:false,temperature:0,max_tokens:600,response_format:{type:'json_object'},messages:[{role:'system',content:rubric},{role:'user',content}]}),signal:AbortSignal.timeout(120000)});
+  const body=await response.json() as any;await writeFile(join(out,`${t.id}-${record.mode}-judge${resume?'-resume-'+Date.now():''}.json`),JSON.stringify({status:response.status,response:body},null,2));
   if(!response.ok||!Number.isFinite(body.usage?.prompt_tokens)||!Number.isFinite(body.usage?.completion_tokens))throw Error('Judge request/usage failure; stopping');
   input+=body.usage.prompt_tokens;output+=body.usage.completion_tokens;
   const grade=JSON.parse(body.choices[0].message.content.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));

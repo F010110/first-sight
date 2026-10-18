@@ -68,6 +68,8 @@ node --use-env-proxy dist/sim/run-memory-evaluation.js run/school-memory-evaluat
 
 ### 全量中断续跑（2026-10-18）
 
+全量最终已记录270/270次，包含两次未重试的执行错误（请求中止、单题调用限额）。统一判分在181条有效分数后因judge第182次返回600token截断说明文字、没有JSON而停止。该原始响应与费用保留，不猜测其分数。判分器新增断点加载有效分数，剩余调用加`response_format:json_object`传输约束；rubric、模型、评分权重不变，仍在原累计请求/费用限内。原freeze/rubric归档、post-prediction修订记入当前freeze。只重做未形成有效分数的judge调用，不重跑270条问答，也不按分数择优重评。最终报告需披露评判格式约束在中途加入。
+
 v2的18次冒烟和判分完成，全量记录229/270次后，第229次请求被中止而停机。前228次和第229次基础设施失败全部保留，不重试该失败题；通过`memory-evaluation ... full --confirm-paid --resume`只执行剩余41次。累计请求/token预算沿用，缺用量的中止调用额外预留128k输入/512输出，不宣称实际账单。最终失败题任务分0，保留在对应时间层次分母；无错误答案送出不按误导性回答扣风险。
 
 为支持续跑，执行器和判分器有**预测后的基础设施修订**，不是原冻结完全不变。`code-freeze.pre-continuation-*.json`、原provenance/usage副本保留，当前freeze记录明确amendment；模型、问题、提示、权限范围、答案、评分权重不变。不将失败题移除以改善成绩。最终报告须披露中止失败及此次修订。
