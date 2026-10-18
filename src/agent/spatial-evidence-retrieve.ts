@@ -5,9 +5,10 @@ import { existsSync,readFileSync,statSync } from 'node:fs';
 import { resolve,join,relative,isAbsolute,extname } from 'node:path';
 import type { RetrievalSession,RetrievalScope,RetrievalQuery } from './spatial-retrieve.js';
 import {calendarFilters} from './memory-clock.js';
+import type {MemorySummary} from './memory-summary.js';
 
 /** RequestAgent's minimal evidence interface; no dependency on a topology assignment. */
-export type HistoricalEvidenceSession=Pick<RetrievalSession,'search'|'inspect'|'validateCitations'|'inspected'>;
+export type HistoricalEvidenceSession=Pick<RetrievalSession,'search'|'inspect'|'validateCitations'|'inspected'>&{memorySummary?:()=>MemorySummary};
 type Evidence={id:string;sessionId:string;atMs:number;cameras:Record<string,string>;sha256:Record<string,string>};
 export class SpatialEvidenceRetriever{
  private db:DatabaseSync;

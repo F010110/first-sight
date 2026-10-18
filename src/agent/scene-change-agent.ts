@@ -4,6 +4,7 @@ import { extname, resolve } from "node:path";
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { createQwenModel } from "./qwen-provider.js";
+import {memorySummary} from './memory-summary.js';
 import { detectChanges } from "./image-change.js";
 import type { FrameRef } from "./types.js";
 
@@ -109,7 +110,7 @@ export class SceneChangeAgent {
 	private events: SceneChangeEvent[] = [];
 
 	constructor(private readonly workDir: string | null = null, nonthinkingFlash=false) {
-		const configured = createQwenModel(512,nonthinkingFlash);
+		const configured = createQwenModel(512,nonthinkingFlash,false,undefined,undefined,()=>memorySummary([...this.baselines.entries()].filter(([,b])=>b.label).map(([id,b])=>({id,atMs:b.timestampMs,text:b.label!,sourceIds:[b.frameId],kind:'working-memory' as const})),Date.now()));
 		this.model = configured.model;
 		this.streamFn = configured.streamFn;
 	}

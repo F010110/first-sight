@@ -5,6 +5,7 @@ import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { createQwenModel } from "./qwen-provider.js";
 import type { FrameRef } from "./types.js";
 import type { HistoricalEvidenceSession } from "./spatial-evidence-retrieve.js";
+import {memorySummary,type MemorySummary} from './memory-summary.js';
 
 /**
  * RequestAgent (role 3 of 3): handles the user's *explicit* requirement.
@@ -134,8 +135,10 @@ export class RequestAgent {
 		mode: null, kind: null, text: null, status: "idle", spoken: false, lastAnswer: null, turns: [], startedAtMs: null, updatedAtMs: null,
 	};
 
- constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null, private readonly runtime?:{beforeModelCall?:()=>void;contextText?:string;providedEvidence?:ImageContent[];providedEvidenceLabels?:string[];currentEvidenceLabels?:string[];jsonOutput?:boolean;requiredEvidenceIds?:string[]}) {
-		const configured = createQwenModel(512, retrieval!==null,runtime?.jsonOutput??false,()=>runtime?.requiredEvidenceIds?.some(id=>!retrieval?.inspected.has(id))??false,()=>!!runtime?.requiredEvidenceIds?.length&&runtime.requiredEvidenceIds.every(id=>retrieval?.inspected.has(id)));
+ constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null, private readonly runtime?:{beforeModelCall?:()=>void;contextText?:string;providedEvidence?:ImageContent[];providedEvidenceLabels?:string[];currentEvidenceLabels?:string[];jsonOutput?:boolean;requiredEvidenceIds?:string[];memorySummary?:(()=>MemorySummary)|false}) {
+ 		const configured = createQwenModel(512, retrieval!==null,runtime?.jsonOutput??false,()=>runtime?.requiredEvidenceIds?.some(id=>!retrieval?.inspected.has(id))??false,()=>!!runtime?.requiredEvidenceIds?.length&&runtime.requiredEvidenceIds.every(id=>retrieval?.inspected.has(id)),runtime?.memorySummary===false?false:()=>{
+			const snapshot=this.getSceneMemory?.();const summary=typeof runtime?.memorySummary==='function'?runtime.memorySummary():retrieval?.memorySummary?.()??memorySummary(snapshot?.scenes.map(s=>({id:s.id,atMs:s.lastSeenMs,text:s.summary,sourceIds:[s.id],kind:'working-memory' as const}))??[],Date.now());this.onTrace?.({operation:'memory-summary',summary});return summary;
+		});
 		this.model = configured.model;
 		this.streamFn = (...args)=>{this.runtime?.beforeModelCall?.();return configured.streamFn(...args);};
 	}

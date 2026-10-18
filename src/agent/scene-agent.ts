@@ -4,6 +4,7 @@ import { extname, resolve } from "node:path";
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model, UserMessage } from "@earendil-works/pi-ai";
 import { createQwenModel } from "./qwen-provider.js";
+import {memorySummary} from './memory-summary.js';
 import { matchImages } from "./image-match.js";
 import { matchViews, selectCandidates } from "./place-candidates.js";
 import { PlaceMemory, type PlaceNode } from "./place-memory.js";
@@ -201,7 +202,7 @@ export class SceneAgent {
 	private hintBuffer: MotionHint[] = [];
 
 	constructor(private readonly memoryDir: string | null = null, storePath: string | null = null) {
-		const configured = createQwenModel(1024);
+		const configured = createQwenModel(1024,false,false,undefined,undefined,()=>memorySummary(this.memory.getState().scenes.map(s=>({id:s.id,atMs:s.lastVisitedAt,text:s.summary,kind:'working-memory' as const})),Date.now()));
 		this.model = configured.model;
 		this.streamFn = configured.streamFn;
 		this.memory = new PlaceMemory(storePath);

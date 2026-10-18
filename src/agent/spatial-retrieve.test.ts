@@ -28,6 +28,10 @@ test("scoped retrieval recovers old nonrepresentatives without future/recording 
 		await session.inspect(["o1"]);session.validateCitations(["o1"]);
 		await assert.rejects(session.inspect(["o1"]),/budget/);
 		assert.equal(retrieve.session({asOfMs:100,recordingId:"r2"}).search().hits.length,2);
+		const summarySession=retrieve.session({asOfMs:8,recordingId:'r1',judgmentUnavailableIds:['o1']});const summary=summarySession.memorySummary();
+		assert.ok(!JSON.stringify(summary).includes('red sofa'));assert.ok(!JSON.stringify(summary).includes('future summary'));
+		assert.ok(summary.entries.every(e=>e.atMs<8&&e.sourceIds!.every(id=>Number(id.slice(1))<8)));
+		assert.equal(summarySession.inspected.size,0);await assert.rejects(summarySession.inspect(['o2']),/retrieved/);
 		retrieve.close();db.close();
 	}finally{await rm(dir,{recursive:true,force:true});}
 });

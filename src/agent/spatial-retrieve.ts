@@ -4,6 +4,7 @@ import { extname } from "node:path";
 import type { SpatialObservation } from "./incremental-spatial-memory.js";
 import type { SpatialEventStore } from "./spatial-event-store.js";
 import {calendarFilters,wallTime,type MemoryClock} from './memory-clock.js';
+import {memorySummary,type MemoryFact} from './memory-summary.js';
 
 /** Trusted caller scope, never accepted from model tool arguments. Times use server atMs. */
 export interface RetrievalScope { asOfMs:number; recordingId?:string; judgmentUnavailableIds?:string[]; clock?:MemoryClock }
@@ -27,6 +28,18 @@ export class RetrievalSession {
 	private searches=0;
 	readonly inspected=new Set<string>();
 	constructor(private readonly db:DatabaseSync,private readonly scope:RetrievalScope,imageBudget:number,private readonly events:SpatialEventStore|null=null){this.remaining=imageBudget;}
+	/** Prompt-only view of committed causal per-observation judgments. Does not
+	 * register candidates/inspection or read mutable future place summaries. */
+	memorySummary(){
+		const conditions=['o.pending=0','o.at_ms<?','o.id NOT IN (SELECT value FROM json_each(?))'];
+		const args:Array<string|number>=[this.scope.asOfMs,JSON.stringify(this.scope.judgmentUnavailableIds??[])];
+		if(this.scope.recordingId!==undefined){conditions.push('o.recording_id=?');args.push(this.scope.recordingId);}
+		const select=`SELECT o.id,o.at_ms,a.reason FROM observations o JOIN assignments a ON a.observation_id=o.id WHERE ${conditions.join(' AND ')} AND length(trim(a.reason))>0`;
+		const recent=this.db.prepare(select+' ORDER BY o.at_ms DESC,o.seq DESC LIMIT 96').all(...args);
+		const anchors=this.db.prepare(select+' ORDER BY o.at_ms ASC,o.seq ASC LIMIT 16').all(...args);
+		const unique=new Map<string,MemoryFact>();for(const row of [...anchors,...recent] as Array<{id:string;at_ms:number;reason:string}>)unique.set(row.id,{id:row.id,atMs:row.at_ms,text:row.reason,sourceIds:[row.id],kind:'historical-judgment'});
+		return memorySummary([...unique.values()],this.scope.asOfMs);
+	}
 	identity(id:string):string|null{
 		if(this.scope.judgmentUnavailableIds?.includes(id))return null;
 		const row=this.db.prepare(`SELECT a.place_id FROM assignments a JOIN observations o ON o.id=a.observation_id WHERE o.id=? AND o.at_ms<=? ${this.scope.recordingId===undefined?"":"AND o.recording_id=?"}`).get(id,this.scope.asOfMs,...(this.scope.recordingId===undefined?[]:[this.scope.recordingId])) as {place_id:string|null}|undefined;

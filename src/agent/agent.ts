@@ -6,6 +6,7 @@ import { decideSpeech } from "./attention-policy.js";
 import { selectFrames } from "./frame-gate.js";
 import { SYSTEM_PROMPT, PROMPT_VERSION } from "./prompts.js";
 import { createQwenModel } from "./qwen-provider.js";
+import {memorySummary} from './memory-summary.js';
 import type { RealtimeMotionReport } from "../realtime-motion.js";
 import { applyObservation, createWorkingState, endTask, recordPresentedFacts, recordSpeech, startWatch, stopWatch, updateTaskPhase, updateWatch } from "./working-memory.js";
 import type {
@@ -169,7 +170,11 @@ export class VlmAgent {
 	private visualKeyframes: StoredVisualKeyframe[] = [];
 
 	constructor(goal: string | null = null, initialState?: Partial<WorkingState>) {
-		const configured = createQwenModel(DEEP_MAX_OUTPUT_TOKENS);
+		const configured = createQwenModel(DEEP_MAX_OUTPUT_TOKENS,false,false,undefined,undefined,()=>memorySummary([
+			...this.state.recentEvents.map((e,i)=>({id:'event-'+i,atMs:e.timestampMs,text:e.description,sourceIds:e.frameIds,kind:'working-memory' as const})),
+			...this.state.userKnownFacts.map((f,i)=>({id:'presented-'+i,atMs:f.presentedAtMs,text:f.content,kind:'working-memory' as const})),
+			...this.state.scene.current&&this.state.scene.updatedAtMs!==null?[{id:'scene',atMs:this.state.scene.updatedAtMs,text:this.state.scene.current,sourceIds:this.state.scene.frameIds,kind:'working-memory' as const}]:[]
+		],Date.now()));
 		this.model = configured.model;
 		this.streamFn = configured.streamFn;
 		this.state = createWorkingState(goal, initialState);

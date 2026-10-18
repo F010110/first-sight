@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { WindowAnswer, WindowRecognizer } from "./spatial-topology-service.js";
+import {memorySummary,withMemorySummary} from './memory-summary.js';
 
 export function topologyVlm(logRoot: string): WindowRecognizer {
 	return async (batch,history) => {
@@ -27,7 +28,7 @@ export function topologyVlm(logRoot: string): WindowRecognizer {
 		try {
 			const messages: Array<Record<string,unknown>>=[{role:"user",content}];
 			for(let attempt=0;attempt<2;attempt++) {
-			const response=await fetch(base.replace(/\/$/,"")+"/chat/completions",{method:"POST",headers:{Authorization:`Bearer ${key}`,"Content-Type":"application/json"},body:JSON.stringify({model:"qwen3.8-flash",messages,temperature:0,max_tokens:1800,enable_thinking:false}),signal:AbortSignal.timeout(120000)});
+			const response=await fetch(base.replace(/\/$/,"")+"/chat/completions",{method:"POST",headers:{Authorization:`Bearer ${key}`,"Content-Type":"application/json"},body:JSON.stringify(withMemorySummary({model:"qwen3.8-flash",messages,temperature:0,max_tokens:1800,enable_thinking:false},memorySummary(history.nodes.map(n=>({id:n.id,atMs:n.lastSeenMs,text:n.summary,sourceIds:n.representatives.map(r=>r.id),kind:'historical-judgment'})),Math.min(...batch.map(o=>o.atMs))))),signal:AbortSignal.timeout(120000)});
 			if(!response.ok)throw new Error(`VLM HTTP ${response.status}`);
 			const raw=await response.json() as {choices:Array<{message:{content:string}}>};
 			await writeFile(join(directory,`response-${attempt}.json`),JSON.stringify({response:raw,elapsedMs:Date.now()-started},null,2));

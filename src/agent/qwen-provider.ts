@@ -1,6 +1,7 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels, createProvider, envApiKeyAuth, type Model } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
+import {memorySummary,withMemorySummary,type MemorySummary} from './memory-summary.js';
 
 /** JSON-only response mode belongs to the final answer, not tool selection. */
 export function qwenNonthinkingPayload(payload:unknown,jsonOutput=false,requireTool=false,finalReady=false){
@@ -10,7 +11,7 @@ export function qwenNonthinkingPayload(payload:unknown,jsonOutput=false,requireT
 	return {...body,enable_thinking:false,...requireTool&&hasTools?{tool_choice:'required'}:{},...jsonOutput&&!hasTools?{response_format:{type:'json_object'}}:{}};
 }
 
-export function createQwenModel(maxTokens: number, nonthinkingFlash=false, jsonOutput=false, requireTool?:()=>boolean,finalReady?:()=>boolean): { model: Model<"openai-completions">; streamFn: Agent["streamFunction"] } {
+export function createQwenModel(maxTokens: number, nonthinkingFlash=false, jsonOutput=false, requireTool?:()=>boolean,finalReady?:()=>boolean,summarySource?:(()=>MemorySummary)|false): { model: Model<"openai-completions">; streamFn: Agent["streamFunction"] } {
 	const apiKey = process.env.QWEN_API_KEY;
 	const baseUrl = process.env.QWEN_BASE_URL;
 	if (!apiKey) throw new Error("QWEN_API_KEY is not set");
@@ -39,6 +40,10 @@ export function createQwenModel(maxTokens: number, nonthinkingFlash=false, jsonO
 	});
 	const models = createModels();
 	models.setProvider(provider);
-	const streamFn:Agent["streamFunction"] = nonthinkingFlash ? (target,context,options)=>models.streamSimple(target,context,{...options,onPayload:(payload)=>qwenNonthinkingPayload(payload,jsonOutput,requireTool?.()??false,finalReady?.()??false)}) : models.streamSimple.bind(models);
+	const streamFn:Agent["streamFunction"] = (target,context,options)=>models.streamSimple(target,context,{...options,onPayload:(payload)=>{
+		let body:unknown=nonthinkingFlash?qwenNonthinkingPayload(payload,jsonOutput,requireTool?.()??false,finalReady?.()??false):payload;
+		if(summarySource!==false)body=withMemorySummary(body,summarySource?.()??memorySummary([],Date.now()));
+		return body as Record<string,unknown>;
+	}});
 	return { model, streamFn };
 }

@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SpatialDecision, SpatialObservation, SpatialRecognizer, SpatialSnapshot } from "./incremental-spatial-memory.js";
+import {memorySummary,withMemorySummary} from './memory-summary.js';
 
 export const INCREMENTAL_SPATIAL_PROMPT = `你根据逐步到达的观察识别观察者实际所在的具体物理区域。左/前/右三视图是同一时刻一个位置，不是三个区域。不使用坐标，不按功能名称强行拆开开放连通客餐厨；不同房间共享可见家具或隔门视野不证明观察者在同一区域。旋转或新物体出现本身不构成区域变化。只使用当前及已到达证据，不推测未来。
 输出纯JSON：{"kind":"same|known|new|unknown","placeId":null,"summary":"当前可见区域的简洁描述","reason":"具体布局/墙体/开口/家具实例证据"}。
@@ -54,7 +55,7 @@ export function createIncrementalSpatialVlm(logRoot: string, maxReferencePlaces 
 			const started = Date.now();
 			let response;
 			try {
-				response = await fetch(base.replace(/\/$/, "") + "/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "qwen3.8-flash", messages, temperature: 0, max_tokens: 1200 }), signal: AbortSignal.timeout(120_000) });
+				response = await fetch(base.replace(/\/$/, "") + "/chat/completions", { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(withMemorySummary({ model: "qwen3.8-flash", messages, temperature: 0, max_tokens: 1200,enable_thinking:false },memorySummary(history.records.map(r=>({id:r.observation.id,atMs:r.observation.atMs,text:r.decision.reason,sourceIds:[r.observation.id],kind:'historical-judgment'})),observation.atMs))), signal: AbortSignal.timeout(120_000) });
 				if (!response.ok) throw new Error(`VLM HTTP ${response.status}`);
 			} catch (error) {
 				await writeFile(join(directory, `failure-${attempt}.json`), JSON.stringify({ type: (error as Error).name, elapsedMs: Date.now() - started }));
