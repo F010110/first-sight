@@ -38,7 +38,7 @@ export class RetrievalSession {
 		const recent=this.db.prepare(select+' ORDER BY o.at_ms DESC,o.seq DESC LIMIT 96').all(...args);
 		const anchors=this.db.prepare(select+' ORDER BY o.at_ms ASC,o.seq ASC LIMIT 16').all(...args);
 		const unique=new Map<string,MemoryFact>();for(const row of [...anchors,...recent] as Array<{id:string;at_ms:number;reason:string}>)unique.set(row.id,{id:row.id,atMs:row.at_ms,text:row.reason,sourceIds:[row.id],kind:'historical-judgment'});
-		return memorySummary([...unique.values()],this.scope.asOfMs);
+		return memorySummary([...unique.values()],this.scope.asOfMs,2400,this.scope.clock);
 	}
 	identity(id:string):string|null{
 		if(this.scope.judgmentUnavailableIds?.includes(id))return null;

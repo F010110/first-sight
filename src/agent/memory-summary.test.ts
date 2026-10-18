@@ -9,6 +9,10 @@ test('exclude current, future and delayed judgments; retain user-context provena
  const facts:MemoryFact[]=[{id:'user',atMs:1,text:'之前在学校',kind:'user-context'},{id:'future',atMs:12,text:'未来答案',kind:'historical-judgment'},{id:'delayed',atMs:2,availableAtMs:12,text:'未返回识别',kind:'historical-judgment'},{id:'now',atMs:10,text:'当前未判断',kind:'historical-judgment'}];
  assert.deepEqual(memorySummary(facts,10).entries.map(e=>e.id),['user']);assert.equal(memorySummary([],0).entries.length,0);
 });
+test('configured calendar stays explicit and inside the compression budget',()=>{
+ const summary=memorySummary([{id:'old',atMs:1,text:'past observation',kind:'historical-judgment'}],100,900,{kind:'assumed',sourceOriginMs:0,wallOrigin:'2026-10-18T09:00:00+08:00',offsetMinutes:480});
+ assert.equal(summary.calendar?.kind,'assumed');assert.equal(summary.calendar?.asOf,'2026-10-18T09:00:00.100+08:00');assert.ok(JSON.stringify(summary).length<=900);
+});
 test('every provider payload gets one envelope without mutating or growing history',()=>{
  const body={messages:[{role:'user',content:[{type:'image_url',image_url:{url:'fixture'}}]},{role:'assistant',content:'tool result pending'}]};const before=JSON.stringify(body),summary=memorySummary([],1);
  for(let i=0;i<3;i++){const request=withMemorySummary(body,summary);assert.equal(JSON.stringify(request).match(/MEMORY_SUMMARY_JSON/g)?.length,1);assert.ok(JSON.stringify(request).includes('fixture'));}assert.equal(JSON.stringify(body),before);

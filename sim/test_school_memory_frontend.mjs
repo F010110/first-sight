@@ -39,3 +39,9 @@ test('video bookmark switches episode, seeks source time and remains paused',()=
  vm.runInContext('seekSample({episode:2,sourceAtMs:80000})',ctx);
  assert.equal(vm.runInContext("$('video').currentTime",ctx),70);
 });
+test('assumed calendar display preserves video-source mapping and labels assumptions',()=>{
+ const ctx=context();
+ vm.runInContext(`calendarData={offsetMinutes:480,episodeSourceZeroWallMs:{'1':Date.parse('2026-10-18T09:00:00+08:00')}}`,ctx);
+ assert.equal(vm.runInContext('calendarLabel(1,26)',ctx),'2026-10-18 09:00:26.000 +08:00（假设）');
+ assert.ok(vm.runInContext("displayQuestion('第1段26秒是什么场所？')",ctx).startsWith('2026-10-18 09:00:26.000'));
+});
