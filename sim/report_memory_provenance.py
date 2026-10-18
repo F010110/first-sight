@@ -22,6 +22,7 @@ def report(base,bank,output,version='v3'):
         if id in algorithm['finalProtocolFailures']:reason='remaining-protocol-or-execution-failure'
         elif t['testedFeature']=='differentPhysicalLevel':reason='review-insufficient-vertical-transition-evidence'
         elif t['testedFeature']=='regionKind' and (a['semanticCredit']==.5 or o['semanticCredit']==.5):reason='review-region-label-and-acceptable-paraphrases'
+        elif not t['answerable']:reason='refusal-answer-or-scoring-review-not-spatial-retrieval'
         elif o['utility']==1 and a['utility']<1 and not available:reason='candidate-spatial-retrieval-failure-needs-evidence-review'
         elif available and a['utility']<1:reason='answer-reasoning-or-grading-review-not-proven-spatial-memory-error'
         else:reason='review-oracle-and-evidence-sufficiency'
