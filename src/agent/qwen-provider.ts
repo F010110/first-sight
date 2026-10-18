@@ -2,7 +2,7 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels, createProvider, envApiKeyAuth, type Model } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 
-export function createQwenModel(maxTokens: number, nonthinkingFlash=false): { model: Model<"openai-completions">; streamFn: Agent["streamFunction"] } {
+export function createQwenModel(maxTokens: number, nonthinkingFlash=false, jsonOutput=false): { model: Model<"openai-completions">; streamFn: Agent["streamFunction"] } {
 	const apiKey = process.env.QWEN_API_KEY;
 	const baseUrl = process.env.QWEN_BASE_URL;
 	if (!apiKey) throw new Error("QWEN_API_KEY is not set");
@@ -31,6 +31,6 @@ export function createQwenModel(maxTokens: number, nonthinkingFlash=false): { mo
 	});
 	const models = createModels();
 	models.setProvider(provider);
-	const streamFn:Agent["streamFunction"] = nonthinkingFlash ? (target,context,options)=>models.streamSimple(target,context,{...options,onPayload:(payload)=>({...payload as Record<string,unknown>,enable_thinking:false})}) : models.streamSimple.bind(models);
+	const streamFn:Agent["streamFunction"] = nonthinkingFlash ? (target,context,options)=>models.streamSimple(target,context,{...options,onPayload:(payload)=>({...payload as Record<string,unknown>,enable_thinking:false,...jsonOutput?{response_format:{type:'json_object'}}:{}})}) : models.streamSimple.bind(models);
 	return { model, streamFn };
 }
