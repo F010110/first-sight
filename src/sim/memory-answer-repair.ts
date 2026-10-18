@@ -21,7 +21,7 @@ export function answerFailures(raw:string,question:RepairQuestion,rows:MemoryRow
  const answer=typeof p.answer==='string'?p.answer:'';
  const uncertain=/无法|不能确认|不能确定|不能证明|无法证明|不确定|不知道|证据不足|无法判断|无法从|不能[。！，]/.test(answer);
  if(p.abstained===true&&!uncertain)failures.push('abstained=true conflicts with a substantive answer without uncertainty. Align the flag with the answer; do not invent certainty.');
- if(p.abstained===false&&/^(无法|不能确认|不能确定|不能证明|不确定|不知道|不能[。！，])/.test(answer))failures.push('The answer explicitly refuses verification, but abstained=false. Set abstained=true when evidence cannot establish the requested fact.');
+  if(p.abstained===false&&/无法确认|无法确定|无法判断|无法证明|不能确认|不能确定|不能证明|证据不足|^(无法|不确定|不知道|不能[。！，])/.test(answer))failures.push('The answer explicitly refuses verification, but abstained=false. Set abstained=true when evidence cannot establish the requested fact.');
  if(p.abstained===false){
   const required=publicRequiredEvidenceIds(question,rows);
   if(!ids.length)failures.push('Non-abstained answers require original evidence citations.');

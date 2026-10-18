@@ -11,3 +11,9 @@ test('repair detects JSON, missing public-record citations and flags without ans
  assert.ok(answerFailures(JSON.stringify({answer:'不能。旧录像不能证明今天开放',abstained:false,historicalEvidenceIds:['past']}),q,rows,new Set(['past'])).some(s=>s.includes('refuses')));
  assert.match(repairFeedback(raw,['missing current']),/missing current/);
 });
+test('refusal flag check also covers explicit uncertainty after a subject prefix',()=>{
+ for(const answer of ['当前画面没有门牌，无法确认精确地址。','当前画面无法确定学校是否营业。','这些旧录像无法证明今天仍然开放。']){
+  assert.ok(answerFailures(JSON.stringify({answer,abstained:false,historicalEvidenceIds:['past','now']}),q,rows,new Set(['past','now'])).some(s=>s.includes('refuses')));
+  assert.deepEqual(answerFailures(JSON.stringify({answer,abstained:true,historicalEvidenceIds:[]}),q,rows,new Set()),[]);
+ }
+});

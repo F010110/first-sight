@@ -134,7 +134,7 @@ export class RequestAgent {
 		mode: null, kind: null, text: null, status: "idle", spoken: false, lastAnswer: null, turns: [], startedAtMs: null, updatedAtMs: null,
 	};
 
- constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null, private readonly runtime?:{beforeModelCall?:()=>void;contextText?:string;providedEvidence?:ImageContent[];jsonOutput?:boolean;requiredEvidenceIds?:string[]}) {
+ constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null, private readonly runtime?:{beforeModelCall?:()=>void;contextText?:string;providedEvidence?:ImageContent[];providedEvidenceLabels?:string[];currentEvidenceLabels?:string[];jsonOutput?:boolean;requiredEvidenceIds?:string[]}) {
 		const configured = createQwenModel(512, retrieval!==null,runtime?.jsonOutput??false,()=>runtime?.requiredEvidenceIds?.some(id=>!retrieval?.inspected.has(id))??false,()=>!!runtime?.requiredEvidenceIds?.length&&runtime.requiredEvidenceIds.every(id=>retrieval?.inspected.has(id)));
 		this.model = configured.model;
 		this.streamFn = (...args)=>{this.runtime?.beforeModelCall?.();return configured.streamFn(...args);};
@@ -223,7 +223,7 @@ export class RequestAgent {
 
 		const recent = this.state.turns.slice(-3).map((turn) => ({ kind: turn.kind, answer: turn.answer, spoke: turn.shouldSpeak }));
 		const promptLines = [
-			"Answer the user's requirement using the current frames. Image blocks are in chronological order.",
+			this.runtime?.currentEvidenceLabels?"Answer the user's requirement using its specified source evidence. Each NEXT IMAGE label identifies ONLY the immediately following image. CURRENT images do not establish HISTORICAL facts. Match the requested sourceReference, not the first image or a similar scene.":"Answer the user's requirement using the current frames. Image blocks are in chronological order.",
 			`MODE: ${this.state.mode ?? "ask"}`,
 			`REQUIREMENT: ${this.state.text}`,
 			`SCENE: ${sceneLabel ?? "unknown"}`,
@@ -255,7 +255,14 @@ export class RequestAgent {
 		}):()=>{};
 		const timeout=this.retrieval?setTimeout(()=>agent.abort(),120000):null;
 		if((this.runtime?.providedEvidence?.length??0)>6)throw Error('Provided evidence image budget exceeded');
-		try{await agent.prompt(prompt, [...imageContents,...this.runtime?.providedEvidence??[]]);}finally{if(timeout)clearTimeout(timeout);unsubscribe();}
+		try{
+			if(this.runtime?.providedEvidenceLabels||this.runtime?.currentEvidenceLabels){
+				const supplied=this.runtime.providedEvidence??[];
+				if(this.runtime.currentEvidenceLabels?.length!==imageContents.length||this.runtime.providedEvidenceLabels?.length!==supplied.length)throw Error('Evidence label/image count mismatch');
+				const content=[...imageContents,...supplied].flatMap((image,index)=>[{type:'text' as const,text:index<imageContents.length?this.runtime!.currentEvidenceLabels![index]!:this.runtime!.providedEvidenceLabels![index-imageContents.length]!},image]);
+				await agent.prompt({role:'user',content:[{type:'text',text:prompt},...content],timestamp:Date.now()});
+			}else await agent.prompt(prompt, [...imageContents,...this.runtime?.providedEvidence??[]]);
+		}finally{if(timeout)clearTimeout(timeout);unsubscribe();}
 		if (agent.state.errorMessage) throw new Error(`RequestAgent request failed: ${agent.state.errorMessage}`);
 		const assistant = [...agent.state.messages].reverse().find((message) => message.role === "assistant");
 		if (!assistant || assistant.role !== "assistant") throw new Error("RequestAgent returned no assistant message");
