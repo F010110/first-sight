@@ -14,7 +14,7 @@ export function spatialAlgorithmSession(retriever:SpatialRetriever,rows:MemoryRo
   const result=session.search(query);trace({operation:'SpatialRetriever.search',input,translatedQuery:query,returnedIds:result.hits.map(h=>h.id)});return result;
  },async inspect(ids){
   for(const id of ids){const row=rows.find(r=>r.id===id);if(!row||row.atMs>=cutoff)throw Error('Out-of-scope evidence');for(const view of ['front','left','right'])if(createHash('sha256').update(await readFile(row.cameras[view]!)).digest('hex')!==row.sha256[view])throw Error('Evidence integrity mismatch');}
-  const result=await session.inspect(ids);trace({operation:'SpatialRetriever.inspect',ids});return result;
+  const result=await session.inspect(ids);trace({operation:'SpatialRetriever.inspect',ids});return result.map(image=>{const row=rows.find(r=>r.id===image.id)!;return {...image,sourceAtMs:row.sourceAtMs,episodeNumber:row.episodeNumber,sourceReference:`第${row.episodeNumber}段${row.sourceAtMs/1000}秒`};});
  },validateCitations:(ids,abstained)=>session.validateCitations(ids,abstained)};
 }
 

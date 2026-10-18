@@ -2,7 +2,15 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import { createModels, createProvider, envApiKeyAuth, type Model } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 
-export function createQwenModel(maxTokens: number, nonthinkingFlash=false, jsonOutput=false): { model: Model<"openai-completions">; streamFn: Agent["streamFunction"] } {
+/** JSON-only response mode belongs to the final answer, not tool selection. */
+export function qwenNonthinkingPayload(payload:unknown,jsonOutput=false,requireTool=false,finalReady=false){
+	let body=payload as Record<string,unknown>;
+	if(finalReady){const {tools:ignoredTools,tool_choice:ignoredChoice,...rest}=body;body=rest;}
+	const hasTools=Array.isArray(body.tools)&&body.tools.length>0;
+	return {...body,enable_thinking:false,...requireTool&&hasTools?{tool_choice:'required'}:{},...jsonOutput&&!hasTools?{response_format:{type:'json_object'}}:{}};
+}
+
+export function createQwenModel(maxTokens: number, nonthinkingFlash=false, jsonOutput=false, requireTool?:()=>boolean,finalReady?:()=>boolean): { model: Model<"openai-completions">; streamFn: Agent["streamFunction"] } {
 	const apiKey = process.env.QWEN_API_KEY;
 	const baseUrl = process.env.QWEN_BASE_URL;
 	if (!apiKey) throw new Error("QWEN_API_KEY is not set");
@@ -31,6 +39,6 @@ export function createQwenModel(maxTokens: number, nonthinkingFlash=false, jsonO
 	});
 	const models = createModels();
 	models.setProvider(provider);
-	const streamFn:Agent["streamFunction"] = nonthinkingFlash ? (target,context,options)=>models.streamSimple(target,context,{...options,onPayload:(payload)=>({...payload as Record<string,unknown>,enable_thinking:false,...jsonOutput?{response_format:{type:'json_object'}}:{}})}) : models.streamSimple.bind(models);
+	const streamFn:Agent["streamFunction"] = nonthinkingFlash ? (target,context,options)=>models.streamSimple(target,context,{...options,onPayload:(payload)=>qwenNonthinkingPayload(payload,jsonOutput,requireTool?.()??false,finalReady?.()??false)}) : models.streamSimple.bind(models);
 	return { model, streamFn };
 }

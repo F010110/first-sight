@@ -11,12 +11,14 @@ import { SpatialSqliteStore } from "./spatial-sqlite-store.js";
 import { SpatialRetriever } from "./spatial-retrieve.js";
 import { RequestAgent,HistoricalAnswerValidationError } from "./request-agent.js";
 
-for(const backend of ['topology','archive'] as const)test(`RequestAgent actually searches and inspects ${backend} evidence via streamed tool loop`,{timeout:15000},async()=>{
+for(const backend of ['topology','archive'] as const)for(const constrainedFinal of [false,true])test(`RequestAgent searches and inspects ${backend}, constrained final=${constrainedFinal}`,{timeout:15000},async()=>{
 	const root=await mkdtemp(join(tmpdir(),"request-integration-"));
 	const previous={key:process.env.QWEN_API_KEY,url:process.env.QWEN_BASE_URL};let calls=0;
+	const requests:Array<Record<string,any>>=[];
 	const server=createServer(async(req,res)=>{
 		let text="";for await(const chunk of req)text+=String(chunk);
 		const body=JSON.parse(text);assert.equal(body.enable_thinking,false);assert.equal(body.model,"qwen3.8-flash");calls++;
+		requests.push(body);
 		res.setHeader("Content-Type","text/event-stream");
 		const emit=(delta:unknown,finish_reason:string|null=null)=>res.write(`data: ${JSON.stringify({id:`r${calls}`,object:"chat.completion.chunk",created:1,model:body.model,choices:[{index:0,delta,finish_reason}],...(finish_reason?{usage:{prompt_tokens:10,completion_tokens:5,total_tokens:15}}:{})})}\n\n`);
 		if(calls<=2){emit({role:"assistant",tool_calls:[{index:0,id:`tool${calls}`,type:"function",function:{name:"retrieve_visual_history",arguments:JSON.stringify(calls===1?{}:{ids:["o0"]})}}]});emit({},"tool_calls");}
@@ -34,13 +36,14 @@ for(const backend of ['topology','archive'] as const)test(`RequestAgent actually
 			const raw=new DatabaseSync(join(archive,'evidence.sqlite'));raw.exec('CREATE TABLE observations(seq INTEGER PRIMARY KEY,id TEXT,session TEXT,at_ms REAL,raw TEXT)');
 			const e={id:'o0',sessionId:'r',atMs:0,cameras:Object.fromEntries(['front','left','right'].map(v=>[v,'images/frame.png'])),sha256:Object.fromEntries(['front','left','right'].map(v=>[v,createHash('sha256').update('fixture').digest('hex')]))};raw.prepare('INSERT INTO observations VALUES(?,?,?,?,?)').run(1,'o0','r',0,JSON.stringify(e));raw.close();retrieve=new SpatialEvidenceRetriever(archive);
 		}else retrieve=new SpatialRetriever(path);
-		const agent=new RequestAgent(null,retrieve.session({asOfMs:1,recordingId:'r'},3));agent.set("ask","Was this seen before?");
+		const agent=new RequestAgent(null,retrieve.session({asOfMs:1,recordingId:'r'},3),null,constrainedFinal?{jsonOutput:true,requiredEvidenceIds:['o0']}:undefined);agent.set("ask","Was this seen before?");
 		const result=await agent.observe([{id:"current",path:image,timestampMs:2}],null,null);
 		assert.deepEqual(result.historicalEvidenceIds,["o0"]);assert.equal(calls,3);assert.equal(result.historicalTrace!.modelCalls,3);
+		if(constrainedFinal){assert.equal(requests[0]!.response_format,undefined);assert.equal(requests[1]!.response_format,undefined);assert.equal(requests[0]!.tool_choice,'required');assert.equal(requests[1]!.tool_choice,'required');assert.deepEqual(requests[2]!.response_format,{type:'json_object'});assert.ok(!requests[2]!.tools?.length);}
 		const rejected=new RequestAgent(null,retrieve.session({asOfMs:1,recordingId:'r'},3));rejected.set('ask','Answer without evidence');
 		await assert.rejects(rejected.observe([{id:'current',path:image,timestampMs:2}],null,null),(error:unknown)=>error instanceof HistoricalAnswerValidationError&&error.rawAnswer.includes('historicalEvidenceIds'));
 	}finally{
-		retrieve?.close();db?.close();await new Promise<void>(resolve=>server.close(()=>resolve()));
+		retrieve?.close();db?.close();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));
 		if(previous.key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=previous.key;
 		if(previous.url===undefined)delete process.env.QWEN_BASE_URL;else process.env.QWEN_BASE_URL=previous.url;
 		await rm(root,{recursive:true,force:true});

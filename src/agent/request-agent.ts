@@ -134,8 +134,8 @@ export class RequestAgent {
 		mode: null, kind: null, text: null, status: "idle", spoken: false, lastAnswer: null, turns: [], startedAtMs: null, updatedAtMs: null,
 	};
 
- constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null, private readonly runtime?:{beforeModelCall?:()=>void;contextText?:string;providedEvidence?:ImageContent[];jsonOutput?:boolean}) {
-		const configured = createQwenModel(512, retrieval!==null,runtime?.jsonOutput??false);
+ constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null, private readonly runtime?:{beforeModelCall?:()=>void;contextText?:string;providedEvidence?:ImageContent[];jsonOutput?:boolean;requiredEvidenceIds?:string[]}) {
+		const configured = createQwenModel(512, retrieval!==null,runtime?.jsonOutput??false,()=>runtime?.requiredEvidenceIds?.some(id=>!retrieval?.inspected.has(id))??false,()=>!!runtime?.requiredEvidenceIds?.length&&runtime.requiredEvidenceIds.every(id=>retrieval?.inspected.has(id)));
 		this.model = configured.model;
 		this.streamFn = (...args)=>{this.runtime?.beforeModelCall?.();return configured.streamFn(...args);};
 	}
@@ -147,7 +147,7 @@ export class RequestAgent {
 			parameters:{type:"object",properties:{query:{type:"string",description:"Single short literal keyword; omit for chronological history."},placeId:{type:'string',description:'Filter by an exact placeId returned by a prior search, to retrieve observations associated with the same remembered place.'},beforeMs:{type:'number',description:'Optional activity-clock upper bound.'},afterMs:{type:'number',description:'Optional activity-clock lower bound.'},ids:{type:"array",items:{type:"string"},description:"INSPECT operation: exact retrieved observation IDs, usually one ID per call."},cursor:{type:"integer",description:"Only returned nextCursor from same query; never invent."}},required:[]},
 			execute:async(_id:string,params:unknown)=>{
 				const p=params as {query?:string;ids?:string[];cursor?:number;placeId?:string;beforeMs?:number;afterMs?:number};
-				if(p.ids){const images=await this.retrieval!.inspect(p.ids);return {content:images.flatMap(image=>[{type:"text" as const,text:JSON.stringify({historicalEvidenceId:image.id,atMs:image.atMs,placeId:image.placeId,notCurrentTruth:true})},{type:"image" as const,data:image.data,mimeType:image.mimeType}]),details:{ids:p.ids}};}
+				if(p.ids){const images=await this.retrieval!.inspect(p.ids);return {content:images.flatMap(image=>{const source=image as typeof image&{sourceReference?:string;sourceAtMs?:number;episodeNumber?:number};return [{type:"text" as const,text:JSON.stringify({historicalEvidenceId:image.id,atMs:image.atMs,placeId:image.placeId,sourceReference:source.sourceReference,sourceAtMs:source.sourceAtMs,episodeNumber:source.episodeNumber,notCurrentTruth:true})},{type:"image" as const,data:image.data,mimeType:image.mimeType}];}),details:{ids:p.ids}};}
 				const result=this.retrieval!.search({...p.query!==undefined?{query:p.query}:{},...p.cursor!==undefined?{cursor:p.cursor}:{},...p.placeId!==undefined?{placeId:p.placeId}:{},...p.beforeMs!==undefined?{beforeMs:p.beforeMs}:{},...p.afterMs!==undefined?{afterMs:p.afterMs}:{},limit:4});return {content:[{type:"text" as const,text:JSON.stringify(result)}],details:{status:result.status}};
 			},
 		};
@@ -236,7 +236,8 @@ export class RequestAgent {
 		if(this.retrieval)promptLines.push(historicalSchema);
 		const prompt = promptLines.join("\n\n");
 
-		const tools = this.retrieval ? [this.historicalTool()] : this.getSceneMemory ? [this.sceneMemoryTool()] : [];
+		const evidenceReady=()=>!!this.runtime?.requiredEvidenceIds?.length&&this.runtime.requiredEvidenceIds.every(id=>this.retrieval?.inspected.has(id));
+		const tools = this.retrieval&&!evidenceReady() ? [this.historicalTool()] : this.retrieval?[]:this.getSceneMemory ? [this.sceneMemoryTool()] : [];
 		const historyInstructions=this.retrieval ? " The search_scene_memory tool is replaced by retrieve_visual_history. Its use for historical place OR object questions overrides the earlier place-only restriction. Search using one short literal keyword, then call the SAME tool with ids to inspect candidate original images; you have permission, do not ask permission or stop at search hints. You have at most six tool turns: reserve one for inspection. Do not translate or combine synonyms in an AND keyword query. Add historicalEvidenceIds (only inspected IDs) and abstained boolean to JSON. For insufficient history abstain; historical sightings do not establish current presence. No match only means not retrieved, never that an object was absent from all history. For abstention say only that you cannot confirm the requested fact from retrieved/inspected evidence; do not summarize what the entire history contains or claim no signs exist anywhere. Never infer physical navigability from observed transitions." : "";
 		const systemPrompt=(this.retrieval?SYSTEM_PROMPT.replace(/Reply with ONLY JSON:.*?No markdown\./,historicalSchema):SYSTEM_PROMPT)+historyInstructions;
 		const agent = new Agent({ initialState: { systemPrompt, model: this.model, tools }, streamFn: this.streamFn });
@@ -247,6 +248,7 @@ export class RequestAgent {
 			}
 			if(event.type==="turn_end"){
 				turns++;
+				if(event.toolResults.length&&evidenceReady()){agent.state.tools=[];agent.steer({role:'user',content:'All explicitly requested original evidence has now been viewed. Return the final JSON using those actual source IDs. Do not perform further searches or invent records.',timestamp:Date.now()});}
 				if(turns===6&&event.toolResults.length){agent.state.tools=[];agent.steer({role:"user",content:"Tool budget exhausted. Return final JSON now. If inspected evidence does not support a historical match, set abstained=true. Never guess additional IDs.",timestamp:Date.now()});}
 				if(turns>=8)agent.abort();
 			}

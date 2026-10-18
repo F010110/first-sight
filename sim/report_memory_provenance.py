@@ -8,7 +8,7 @@ def lines(p):return [json.loads(l) for l in p.read_text(encoding='utf8').splitli
 def report(base,bank,output,version='v3'):
     tasks={t['id']:t for t in load(bank/'evaluation-only/tasks.json')};groups={}
     for mode in ('spatial-memory','memory-oracle'):
-        root=base/(mode+'-provenance-'+version)
+        root=base/(mode+'-runtime-fixed-v4' if version=='runtime-fixed-v4' else mode+'-provenance-'+version)
         if load(root/'full/complete.json')['executions']!=90 or load(root/'full-grading/complete.json')['grades']!=90:raise ValueError('Incomplete evaluation')
         predictions={r['id']:r for r in lines(root/'full/results.jsonl')};grades={g['id']:g for g in lines(root/'full-grading/grades.jsonl')}
         if set(predictions)!=set(tasks) or set(grades)!=set(tasks):raise ValueError('Task mismatch')
@@ -34,4 +34,4 @@ def report(base,bank,output,version='v3'):
     print(json.dumps(result,ensure_ascii=True,indent=2))
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('base',type=Path);p.add_argument('bank',type=Path);p.add_argument('output',type=Path);p.add_argument('--version',choices=['v2','v3'],default='v3');a=p.parse_args();report(a.base,a.bank,a.output,a.version)
+    p=argparse.ArgumentParser();p.add_argument('base',type=Path);p.add_argument('bank',type=Path);p.add_argument('output',type=Path);p.add_argument('--version',choices=['v2','v3','runtime-fixed-v4'],default='runtime-fixed-v4');a=p.parse_args();report(a.base,a.bank,a.output,a.version)
