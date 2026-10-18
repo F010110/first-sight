@@ -28,3 +28,14 @@ test('notes remain plain text and valid review metadata is retained',()=>{
  ctx.doc={protocol:'school-human-review-v1',datasetId:'school',fingerprint:'v1',records:{q:{status:'disputed',cause:'label',notes:'<script>not executable</script>',updatedAt:new Date().toISOString()}}};
  assert.equal(vm.runInContext('validateImport(doc).q.notes',ctx),ctx.doc.records.q.notes);
 });
+test('video bookmark switches episode, seeks source time and remains paused',()=>{
+ const ctx=context();
+ vm.runInContext(`videoData={videos:[{episode:2,src:'videos/episode-2.mp4',startSourceSeconds:10}]};const player=$('video');player.dataset={};player.pause=()=>{player.paused=true};player.load=()=>{player.loaded=true};player.readyState=0;player.duration=100;$('speed').value='2';seekSample({episode:2,sourceAtMs:26000});`,ctx);
+ assert.equal(vm.runInContext("$('video').src",ctx),'videos/episode-2.mp4');
+ assert.equal(vm.runInContext("$('video').paused",ctx),true);
+ vm.runInContext("$('video').readyState=1;applySeek()",ctx);
+ assert.equal(vm.runInContext("$('video').currentTime",ctx),16);
+ assert.equal(vm.runInContext("$('video').playbackRate",ctx),2);
+ vm.runInContext('seekSample({episode:2,sourceAtMs:80000})',ctx);
+ assert.equal(vm.runInContext("$('video').currentTime",ctx),70);
+});
