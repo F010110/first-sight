@@ -3,10 +3,11 @@ import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import type { SpatialObservation } from "./incremental-spatial-memory.js";
 import type { SpatialEventStore } from "./spatial-event-store.js";
+import {calendarFilters,wallTime,type MemoryClock} from './memory-clock.js';
 
 /** Trusted caller scope, never accepted from model tool arguments. Times use server atMs. */
-export interface RetrievalScope { asOfMs:number; recordingId?:string; judgmentUnavailableIds?:string[] }
-export interface RetrievalQuery { query?:string; placeId?:string; beforeMs?:number; afterMs?:number; cursor?:number; limit?:number }
+export interface RetrievalScope { asOfMs:number; recordingId?:string; judgmentUnavailableIds?:string[]; clock?:MemoryClock }
+export interface RetrievalQuery { query?:string; placeId?:string; beforeMs?:number; afterMs?:number; cursor?:number; limit?:number; atTime?:string;afterTime?:string;beforeTime?:string }
 export interface RetrievedObservation { observation:SpatialObservation; placeId:string|null; reason:string; cursor:number }
 
 /** v2 read-only adapter: frozen v1 databases and inference protocol are unchanged. */
@@ -32,6 +33,7 @@ export class RetrievalSession {
 		return row?.place_id ?? null;
 	}
 	search(input:RetrievalQuery={}){
+		input=calendarFilters(input,this.scope.clock);
 		if(++this.searches>12)throw new Error("Retrieval search budget exceeded");
 		const limit=input.limit ?? 6,cursor=input.cursor ?? 0;
 		if(!Number.isInteger(limit)||limit<1||limit>24||!Number.isSafeInteger(cursor)||cursor<0)throw new Error("Invalid retrieval page");
@@ -49,7 +51,7 @@ export class RetrievalSession {
 		const rows=this.db.prepare(`SELECT o.seq,o.raw,a.place_id,a.reason FROM observations o JOIN assignments a ON a.observation_id=o.id WHERE ${conditions.join(" AND ")} ORDER BY o.seq LIMIT ?`).all(...args,limit+1) as Array<{seq:number;raw:string;place_id:string|null;reason:string}>;
 		const hits=rows.slice(0,limit).map(row=>{const observation=JSON.parse(row.raw) as SpatialObservation;const hidden=this.scope.judgmentUnavailableIds?.includes(observation.id);return {observation,placeId:hidden?null:row.place_id,reason:hidden?'':row.reason,cursor:row.seq};});
 		for(const hit of hits)this.allowed.set(hit.observation.id,hit);
-		return {status:hits.length?"candidates":"unknown",hits:hits.map(hit=>({id:hit.observation.id,atMs:hit.observation.atMs,sourceAtMs:hit.observation.sourceAtMs,recordingId:hit.observation.recordingId,placeId:hit.placeId,reason:hit.reason,imageCount:hit.observation.frames.length})),changes:this.events?.search(this.scope,input) ?? [],nextCursor:rows.length>limit?hits.at(-1)!.cursor:null,remainingImages:this.remaining,note:"Historical judgments/change reports are search hints, not visual proof or current state. Lexical AND retrieval; no visual embedding or relevance guarantee."};
+		return {status:hits.length?"candidates":"unknown",hits:hits.map(hit=>({id:hit.observation.id,atMs:hit.observation.atMs,...this.scope.clock?{recordedTime:wallTime(hit.observation.atMs,this.scope.clock),timeBasis:this.scope.clock.kind}:{},sourceAtMs:hit.observation.sourceAtMs,recordingId:hit.observation.recordingId,placeId:hit.placeId,reason:hit.reason,imageCount:hit.observation.frames.length})),changes:this.events?.search(this.scope,input) ?? [],nextCursor:rows.length>limit?hits.at(-1)!.cursor:null,remainingImages:this.remaining,note:"Historical judgments/change reports are search hints, not visual proof or current state. Lexical AND retrieval; no visual embedding or relevance guarantee."};
 	}
 	/** Bounded reverse-time baseline lookup, excluding current observation and unknown identities. */
 	baseline(placeId:string,beforeMs:number){

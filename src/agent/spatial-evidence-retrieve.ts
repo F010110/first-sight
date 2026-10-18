@@ -4,6 +4,7 @@ import { readFile,realpath,stat } from 'node:fs/promises';
 import { existsSync,readFileSync,statSync } from 'node:fs';
 import { resolve,join,relative,isAbsolute,extname } from 'node:path';
 import type { RetrievalSession,RetrievalScope,RetrievalQuery } from './spatial-retrieve.js';
+import {calendarFilters} from './memory-clock.js';
 
 /** RequestAgent's minimal evidence interface; no dependency on a topology assignment. */
 export type HistoricalEvidenceSession=Pick<RetrievalSession,'search'|'inspect'|'validateCitations'|'inspected'>;
@@ -30,7 +31,8 @@ export class SpatialEvidenceRetriever{
    const allowed=new Map<string,Evidence>(),inspected=new Set<string>();const db=this.db,root=this.root,textDb=this.textDb;
   return {
    inspected,
-   search(input:RetrievalQuery={}){
+    search(input:RetrievalQuery={}){
+     input=calendarFilters(input,trusted.clock);
     if(++searches>12)throw Error('Retrieval search budget exceeded');
     const limit=input.limit??6,cursor=input.cursor??0;
     if(!Number.isInteger(limit)||limit<1||limit>24||!Number.isSafeInteger(cursor)||cursor<0)throw Error('Invalid retrieval page');

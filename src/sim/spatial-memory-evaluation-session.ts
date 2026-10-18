@@ -3,10 +3,11 @@ import type {HistoricalEvidenceSession} from '../agent/spatial-evidence-retrieve
 import type {MemoryRow} from './memory-evaluation-session.js';
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
+import type {MemoryClock} from '../agent/memory-clock.js';
 
 /** Clock bridge only: source times come from public observations, never labels. */
-export function spatialAlgorithmSession(retriever:SpatialRetriever,rows:MemoryRow[],cutoff:number,trace:(v:unknown)=>void):HistoricalEvidenceSession{
- const session=retriever.session({asOfMs:cutoff-1,judgmentUnavailableIds:rows.filter(r=>r.judgmentAvailableAtMs>=cutoff).map(r=>r.id)},12);
+export function spatialAlgorithmSession(retriever:SpatialRetriever,rows:MemoryRow[],cutoff:number,trace:(v:unknown)=>void,clock?:MemoryClock):HistoricalEvidenceSession{
+ const session=retriever.session({asOfMs:cutoff-1,judgmentUnavailableIds:rows.filter(r=>r.judgmentAvailableAtMs>=cutoff).map(r=>r.id),...clock?{clock}:{}},12);
  return {inspected:session.inspected,search(input:RetrievalQuery={}){
   const reference=input.query?.match(/第\s*(\d+)\s*段\s*([\d.]+)\s*秒/);
   let query=input;
