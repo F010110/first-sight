@@ -131,12 +131,13 @@ function parseRequest(text: string, fallbackKind: RequestKind | null): Omit<Requ
 export class RequestAgent {
 	private readonly model: Model<"openai-completions">;
 	private readonly streamFn: Agent["streamFunction"];
+	private modelToolsClosed=false;
 	private state: RequestState = {
 		mode: null, kind: null, text: null, status: "idle", spoken: false, lastAnswer: null, turns: [], startedAtMs: null, updatedAtMs: null,
 	};
 
- constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null, private readonly runtime?:{beforeModelCall?:()=>void;contextText?:string;providedEvidence?:ImageContent[];providedEvidenceLabels?:string[];currentEvidenceLabels?:string[];jsonOutput?:boolean;requiredEvidenceIds?:string[];memorySummary?:(()=>MemorySummary)|false}) {
- 		const configured = createQwenModel(512, retrieval!==null,runtime?.jsonOutput??false,()=>runtime?.requiredEvidenceIds?.some(id=>!retrieval?.inspected.has(id))??false,()=>!!runtime?.requiredEvidenceIds?.length&&runtime.requiredEvidenceIds.every(id=>retrieval?.inspected.has(id)),runtime?.memorySummary===false?false:()=>{
+ constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null, private readonly runtime?:{beforeModelCall?:()=>void;contextText?:string;providedEvidence?:ImageContent[];providedEvidenceLabels?:string[];currentEvidenceLabels?:string[];jsonOutput?:boolean;requiredEvidenceIds?:string[];memorySummary?:(()=>MemorySummary)|false;allowContextRetrieval?:boolean}) {
+ 		const configured = createQwenModel(512, retrieval!==null,runtime?.jsonOutput??false,()=>!this.modelToolsClosed&&(runtime?.requiredEvidenceIds?.some(id=>!retrieval?.inspected.has(id))??false),()=>this.modelToolsClosed,runtime?.memorySummary===false?false:()=>{
 			const snapshot=this.getSceneMemory?.();const summary=typeof runtime?.memorySummary==='function'?runtime.memorySummary():retrieval?.memorySummary?.()??memorySummary(snapshot?.scenes.map(s=>({id:s.id,atMs:s.lastSeenMs,text:s.summary,sourceIds:[s.id],kind:'working-memory' as const}))??[],Date.now());this.onTrace?.({operation:'memory-summary',summary});return summary;
 		});
 		this.model = configured.model;
@@ -240,7 +241,9 @@ export class RequestAgent {
 		const prompt = promptLines.join("\n\n");
 
 		const evidenceReady=()=>!!this.runtime?.requiredEvidenceIds?.length&&this.runtime.requiredEvidenceIds.every(id=>this.retrieval?.inspected.has(id));
-		const tools = this.retrieval&&!evidenceReady() ? [this.historicalTool()] : this.retrieval?[]:this.getSceneMemory ? [this.sceneMemoryTool()] : [];
+		this.modelToolsClosed=evidenceReady()&&(this.runtime?.allowContextRetrieval===false||!!this.runtime?.providedEvidence?.length);
+		const initiallyInspected=this.retrieval?.inspected.size??0;
+		const tools = this.retrieval&&!this.modelToolsClosed ? [this.historicalTool()] : this.retrieval?[]:this.getSceneMemory ? [this.sceneMemoryTool()] : [];
 		const historyInstructions=this.retrieval ? " The search_scene_memory tool is replaced by retrieve_visual_history. Its use for historical place OR object questions overrides the earlier place-only restriction. Search using one short literal keyword, then call the SAME tool with ids to inspect candidate original images; you have permission, do not ask permission or stop at search hints. You have at most six tool turns: reserve one for inspection. Do not translate or combine synonyms in an AND keyword query. Add historicalEvidenceIds (only inspected IDs) and abstained boolean to JSON. For insufficient history abstain; historical sightings do not establish current presence. No match only means not retrieved, never that an object was absent from all history. For abstention say only that you cannot confirm the requested fact from retrieved/inspected evidence; do not summarize what the entire history contains or claim no signs exist anywhere. Never infer physical navigability from observed transitions." : "";
 		const systemPrompt=(this.retrieval?SYSTEM_PROMPT.replace(/Reply with ONLY JSON:.*?No markdown\./,historicalSchema):SYSTEM_PROMPT)+historyInstructions;
 		const agent = new Agent({ initialState: { systemPrompt, model: this.model, tools }, streamFn: this.streamFn });
@@ -251,8 +254,8 @@ export class RequestAgent {
 			}
 			if(event.type==="turn_end"){
 				turns++;
-				if(event.toolResults.length&&evidenceReady()){agent.state.tools=[];agent.steer({role:'user',content:'All explicitly requested original evidence has now been viewed. Return the final JSON using those actual source IDs. Do not perform further searches or invent records.',timestamp:Date.now()});}
-				if(turns===6&&event.toolResults.length){agent.state.tools=[];agent.steer({role:"user",content:"Tool budget exhausted. Return final JSON now. If inspected evidence does not support a historical match, set abstained=true. Never guess additional IDs.",timestamp:Date.now()});}
+				if(event.toolResults.length&&evidenceReady()&&this.retrieval!.inspected.size>initiallyInspected){this.modelToolsClosed=true;agent.state.tools=[];agent.steer({role:'user',content:'All explicitly requested original evidence has now been viewed. Return the final JSON using those actual source IDs. Do not perform further searches or invent records.',timestamp:Date.now()});}
+				if(turns===6&&event.toolResults.length){this.modelToolsClosed=true;agent.state.tools=[];agent.steer({role:"user",content:"Tool budget exhausted. Return final JSON now. If inspected evidence does not support a historical match, set abstained=true. Never guess additional IDs.",timestamp:Date.now()});}
 				if(turns>=8)agent.abort();
 			}
 		}):()=>{};

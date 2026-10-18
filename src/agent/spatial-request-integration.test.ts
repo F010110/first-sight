@@ -10,8 +10,9 @@ import { tmpdir } from "node:os";
 import { SpatialSqliteStore } from "./spatial-sqlite-store.js";
 import { SpatialRetriever } from "./spatial-retrieve.js";
 import { RequestAgent,HistoricalAnswerValidationError } from "./request-agent.js";
+import {withCurrentEvidence} from '../sim/current-evidence-session.js';
 
-for(const backend of ['topology','archive'] as const)for(const constrainedFinal of [false,true])test(`RequestAgent searches and inspects ${backend}, constrained final=${constrainedFinal}`,{timeout:15000},async()=>{
+for(const backend of ['topology','archive'] as const)for(const constrainedFinal of [false,true])for(const currentRegistered of constrainedFinal?[false,true]:[false])test(`RequestAgent searches and inspects ${backend}, constrained final=${constrainedFinal}, current=${currentRegistered}`,{timeout:15000},async()=>{
 	const root=await mkdtemp(join(tmpdir(),"request-integration-"));
 	const previous={key:process.env.QWEN_API_KEY,url:process.env.QWEN_BASE_URL};let calls=0;
 	const requests:Array<Record<string,any>>=[];
@@ -36,12 +37,13 @@ for(const backend of ['topology','archive'] as const)for(const constrainedFinal 
 			const raw=new DatabaseSync(join(archive,'evidence.sqlite'));raw.exec('CREATE TABLE observations(seq INTEGER PRIMARY KEY,id TEXT,session TEXT,at_ms REAL,raw TEXT)');
 			const e={id:'o0',sessionId:'r',atMs:0,cameras:Object.fromEntries(['front','left','right'].map(v=>[v,'images/frame.png'])),sha256:Object.fromEntries(['front','left','right'].map(v=>[v,createHash('sha256').update('fixture').digest('hex')]))};raw.prepare('INSERT INTO observations VALUES(?,?,?,?,?)').run(1,'o0','r',0,JSON.stringify(e));raw.close();retrieve=new SpatialEvidenceRetriever(archive);
 		}else retrieve=new SpatialRetriever(path);
-		const agent=new RequestAgent(null,retrieve.session({asOfMs:1,recordingId:'r'},3),null,constrainedFinal?{jsonOutput:true,requiredEvidenceIds:['o0'],currentEvidenceLabels:['NEXT IMAGE CURRENT current'],providedEvidenceLabels:['NEXT IMAGE HISTORICAL fixture-history'],providedEvidence:[{type:'image',data:Buffer.from('historical-fixture').toString('base64'),mimeType:'image/png'}]}:undefined);agent.set("ask","Was this seen before?");
+		const base=retrieve.session({asOfMs:1,recordingId:'r'},3),session=currentRegistered?withCurrentEvidence(base,'current'):base;
+		const agent=new RequestAgent(null,session,null,constrainedFinal?{jsonOutput:true,requiredEvidenceIds:currentRegistered?['current']:['o0'],currentEvidenceLabels:['NEXT IMAGE CURRENT current'],providedEvidenceLabels:currentRegistered?[]:['NEXT IMAGE HISTORICAL fixture-history'],providedEvidence:currentRegistered?[]:[{type:'image',data:Buffer.from('historical-fixture').toString('base64'),mimeType:'image/png'}]}:undefined);agent.set("ask","Was this seen before?");
 		const result=await agent.observe([{id:"current",path:image,timestampMs:2}],null,null);
 		assert.deepEqual(result.historicalEvidenceIds,["o0"]);assert.equal(calls,3);assert.equal(result.historicalTrace!.modelCalls,3);
 		for(const request of requests)assert.equal(JSON.stringify(request.messages).match(/MEMORY_SUMMARY_JSON/g)?.length,1,'each actual HTTP tool/answer turn must carry one bounded summary');
-		if(constrainedFinal){assert.equal(requests[0]!.response_format,undefined);assert.equal(requests[1]!.response_format,undefined);assert.equal(requests[0]!.tool_choice,'required');assert.equal(requests[1]!.tool_choice,'required');assert.deepEqual(requests[2]!.response_format,{type:'json_object'});assert.ok(!requests[2]!.tools?.length);}
-		if(constrainedFinal){const blocks=requests[0]!.messages.find((m:any)=>m.role==='user').content;const currentIndex=blocks.findIndex((b:any)=>b.text==='NEXT IMAGE CURRENT current');const historyIndex=blocks.findIndex((b:any)=>b.text==='NEXT IMAGE HISTORICAL fixture-history');assert.ok(currentIndex>=0&&historyIndex>currentIndex);assert.equal(blocks[currentIndex+1].image_url.url,'data:image/png;base64,'+Buffer.from('fixture').toString('base64'));assert.equal(blocks[historyIndex+1].image_url.url,'data:image/png;base64,'+Buffer.from('historical-fixture').toString('base64'));}
+		if(constrainedFinal){assert.equal(requests[0]!.response_format,undefined);assert.equal(requests[1]!.response_format,undefined);assert.equal(requests[0]!.tool_choice,currentRegistered?undefined:'required');assert.equal(requests[1]!.tool_choice,currentRegistered?undefined:'required');assert.deepEqual(requests[2]!.response_format,{type:'json_object'});assert.ok(!requests[2]!.tools?.length);assert.ok(requests[0]!.tools.length,'current-only question must still have optional memory tools');}
+		if(constrainedFinal&&!currentRegistered){const blocks=requests[0]!.messages.find((m:any)=>m.role==='user').content;const currentIndex=blocks.findIndex((b:any)=>b.text==='NEXT IMAGE CURRENT current');const historyIndex=blocks.findIndex((b:any)=>b.text==='NEXT IMAGE HISTORICAL fixture-history');assert.ok(currentIndex>=0&&historyIndex>currentIndex);assert.equal(blocks[currentIndex+1].image_url.url,'data:image/png;base64,'+Buffer.from('fixture').toString('base64'));assert.equal(blocks[historyIndex+1].image_url.url,'data:image/png;base64,'+Buffer.from('historical-fixture').toString('base64'));}
 		const rejected=new RequestAgent(null,retrieve.session({asOfMs:1,recordingId:'r'},3));rejected.set('ask','Answer without evidence');
 		await assert.rejects(rejected.observe([{id:'current',path:image,timestampMs:2}],null,null),(error:unknown)=>error instanceof HistoricalAnswerValidationError&&error.rawAnswer.includes('historicalEvidenceIds'));
 	}finally{
