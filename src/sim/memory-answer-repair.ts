@@ -19,7 +19,10 @@ export function answerFailures(raw:string,question:RepairQuestion,rows:MemoryRow
  const ids=p.historicalEvidenceIds as string[];
  if(ids.some(id=>!inspected.has(id)))failures.push('Some citations were not actually inspected. Search and inspect them before citing, or remove unsupported claims.');
  const answer=typeof p.answer==='string'?p.answer:'';
- const uncertain=/无法|不能确认|不能确定|不能证明|无法证明|不确定|不知道|证据不足|无法判断|无法从|不能[。！，]/.test(answer);
+  // A visibility-limited refusal is not a confident claim about hidden contents.
+  // Do not treat unrestricted "history never contained X" as such a refusal.
+  const limitedVisibility=/^(?:当前(?:视野|画面|视角)(?:中|内)?)(?:未检测到|未看到|看不到|未显示)/.test(answer);
+  const uncertain=limitedVisibility||/无法|不能确认|不能确定|不能证明|无法证明|不确定|不知道|证据不足|无法判断|无法从|不能[。！，]/.test(answer);
  if(p.abstained===true&&!uncertain)failures.push('abstained=true conflicts with a substantive answer without uncertainty. Align the flag with the answer; do not invent certainty.');
   if(p.abstained===false&&/无法确认|无法确定|无法判断|无法证明|不能确认|不能确定|不能证明|证据不足|^(无法|不确定|不知道|不能[。！，])/.test(answer))failures.push('The answer explicitly refuses verification, but abstained=false. Set abstained=true when evidence cannot establish the requested fact.');
  if(p.abstained===false){

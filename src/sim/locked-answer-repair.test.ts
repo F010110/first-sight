@@ -16,3 +16,8 @@ test('non-leading explicit refusal can fix flag without changing wording',()=>{
  const result=applyLockedProtocolPatch(JSON.stringify({...original,answer}),JSON.stringify({historicalEvidenceIds:[],abstained:true}),q,rows,new Set());
  assert.equal(result.value.answer,answer);assert.equal(result.value.abstained,true);
 });
+test('visibility-limited refusal is not mistaken for a confident hidden-content answer',()=>{
+ const answer='当前视野中未检测到抽屉。';
+ assert.equal(applyLockedProtocolPatch(JSON.stringify({...original,answer}),JSON.stringify({historicalEvidenceIds:['now'],abstained:true}),q,rows,new Set(['now'])).value.answer,answer);
+ assert.throws(()=>applyLockedProtocolPatch(JSON.stringify({...original,answer:'历史里没有抽屉，所以里面从没放过任何东西。'}),JSON.stringify({historicalEvidenceIds:[],abstained:true}),q,rows,new Set()));
+});
