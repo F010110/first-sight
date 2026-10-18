@@ -1,5 +1,7 @@
 # 首次完整记忆开发评测结果
 
+> 更正：以下是三种**历史记录访问基线**的结果，并非空间记忆算法的正式成绩。旧`full-history`是全历史记录检索基线，既不等于既有SpatialRetriever算法组，也不是直接提供正确证据的memory oracle。原270条结果保留。新增两组见`spatial-algorithm-and-oracle-evaluation.md`。
+
 2026-10-18完成。统一库851组三摄观察、217窗；90题×3条件共270条唯一问答及270条对应判分，已核对ID/条件集合一致。18次冒烟及判分亦完成。原始记录：`run/school-memory-evaluation-v2/full/`、`full-grading/`；记忆库复用`run/school-memory-evaluation-v1/memory/`。执行协议及修订见`first-memory-evaluation.md`。
 
 ## 三卡（full-history，满分100）

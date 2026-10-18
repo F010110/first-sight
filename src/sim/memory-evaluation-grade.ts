@@ -5,10 +5,11 @@ const resume=process.argv[6]==='--resume';
 const root=resolve(prepared),out=join(root,phase!+'-grading');await mkdir(out,{recursive:resume});
 const codeFreeze=JSON.parse(await readFile(join(root,'code-freeze.json'),'utf8'));for(const [path,expected] of Object.entries(codeFreeze.files)){if(createHash('sha256').update(await readFile(path)).digest('hex')!==expected)throw Error('Compiled evaluation policy changed after freeze');}
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');const frozen=JSON.parse(await readFile(join(root,'frozen.json'),'utf8'));
+const modes:string[]=frozen.evaluationModes??['current-only','recent-5min','full-history'];
 const truthText=await readFile(join(resolve(bank),'evaluation-only','tasks.json'),'utf8');if(hash(truthText)!==frozen.privateTasksSha256)throw Error('Private task bank changed');
 const tasks=JSON.parse(truthText) as any[];const source=(await readFile(join(root,'model-replay','observations.jsonl'),'utf8')).trim().split(/\r?\n/).map(s=>JSON.parse(s));
 const records=(await readFile(join(root,phase!,'results.jsonl'),'utf8')).trim().split(/\r?\n/).map(s=>JSON.parse(s));
-const execution=JSON.parse(await readFile(join(root,phase!,'complete.json'),'utf8'));const expectedExecutions=phase==='smoke'?18:270;
+const execution=JSON.parse(await readFile(join(root,phase!,'complete.json'),'utf8'));const expectedExecutions=(phase==='smoke'?6:90)*modes.length;
 if(execution.status!=='completed'||records.length!==expectedExecutions||new Set(records.map(r=>r.id+':'+r.mode)).size!==expectedExecutions)throw Error('Incomplete or duplicate execution; no complete scorecard may be issued');
 const api=process.env.QWEN_BASE_URL,key=process.env.QWEN_API_KEY;if(!api||!key)throw Error('Provider configuration missing');
 const grades:any[]=[];let calls=0,input=0,output=0;const maxCost=phase==='smoke'?.2:1.5;
@@ -49,8 +50,8 @@ try{
   await appendFile(join(out,'grades.jsonl'),JSON.stringify(g)+'\n');await writeFile(join(out,'usage.json'),JSON.stringify({calls,inputTokens:input,outputTokens:output,estimatedUSD:usd(),maxEstimatedUSD:maxCost},null,2));
  }
  const mean=(xs:number[])=>xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:null;
- const report=['current-only','recent-5min','full-history'].map(mode=>({mode,byTier:['current','short','long'].map(tier=>{const rows=grades.filter(g=>g.mode===mode&&g.tier===tier);return {tier,questions:rows.length,taskSolutionScore:mean(rows.map(g=>g.utility*100)),answerTrustScore:mean(rows.map(g=>(1-g.harm)*100)),semanticCorrectnessDiagnostic:mean(rows.map(g=>g.semanticCredit*100))};})}));
- const full=grades.filter(g=>g.mode==='full-history');const difficult=full.filter(g=>g.tier==='long'||tasks.find(t=>t.id===g.id)?.family==='compare');
+ const report=modes.map(mode=>({mode,byTier:['current','short','long'].map(tier=>{const rows=grades.filter(g=>g.mode===mode&&g.tier===tier);return {tier,questions:rows.length,taskSolutionScore:mean(rows.map(g=>g.utility*100)),answerTrustScore:mean(rows.map(g=>(1-g.harm)*100)),semanticCorrectnessDiagnostic:mean(rows.map(g=>g.semanticCredit*100))};})}));
+ const full=grades.filter(g=>g.mode===(frozen.evaluationModes?.[0]??'full-history'));const difficult=full.filter(g=>g.tier==='long'||tasks.find(t=>t.id===g.id)?.family==='compare');
  const cards={'实际问题解决':mean(full.map(g=>g.utility*100)),'长程与干扰':mean(difficult.map(g=>g.utility*100)),'回答可信':mean(full.map(g=>(1-g.harm)*100))};
  await writeFile(join(out,'scorecard.json'),JSON.stringify({status:'completed-development-model-judged',profile:'memory-horizons-v1',questions:records.length,cards,conditions:report,annotationReview:'assistant-source-assisted; not external human ground truth',judgeReview:'same model family fresh-context automated grading; no human review',unmeasured:['object-state-change','natural-object-search','independent-environment-generalization'],note:'Three cards describe this static-memory profile only; long/interference includes long tier and comparison tasks, not state change. No combined total. Semantic correctness is diagnostic only; compare it across modes to detect guessing. All reference evidence must be inspected and cited.'},null,2));
  await writeFile(join(out,'complete.json'),JSON.stringify({status:'completed',grades:grades.length}));

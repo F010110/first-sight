@@ -5,7 +5,7 @@ import type { SpatialObservation } from "./incremental-spatial-memory.js";
 import type { SpatialEventStore } from "./spatial-event-store.js";
 
 /** Trusted caller scope, never accepted from model tool arguments. Times use server atMs. */
-export interface RetrievalScope { asOfMs:number; recordingId?:string }
+export interface RetrievalScope { asOfMs:number; recordingId?:string; judgmentUnavailableIds?:string[] }
 export interface RetrievalQuery { query?:string; placeId?:string; beforeMs?:number; afterMs?:number; cursor?:number; limit?:number }
 export interface RetrievedObservation { observation:SpatialObservation; placeId:string|null; reason:string; cursor:number }
 
@@ -27,6 +27,7 @@ export class RetrievalSession {
 	readonly inspected=new Set<string>();
 	constructor(private readonly db:DatabaseSync,private readonly scope:RetrievalScope,imageBudget:number,private readonly events:SpatialEventStore|null=null){this.remaining=imageBudget;}
 	identity(id:string):string|null{
+		if(this.scope.judgmentUnavailableIds?.includes(id))return null;
 		const row=this.db.prepare(`SELECT a.place_id FROM assignments a JOIN observations o ON o.id=a.observation_id WHERE o.id=? AND o.at_ms<=? ${this.scope.recordingId===undefined?"":"AND o.recording_id=?"}`).get(id,this.scope.asOfMs,...(this.scope.recordingId===undefined?[]:[this.scope.recordingId])) as {place_id:string|null}|undefined;
 		return row?.place_id ?? null;
 	}
@@ -44,8 +45,9 @@ export class RetrievalSession {
 		if(input.afterMs!==undefined){conditions.push("o.at_ms>=?");args.push(input.afterMs);}
 		// Only per-observation judgments: current mutable place summaries could leak future facts.
 		for(const term of terms){conditions.push("instr(lower(a.reason),?)>0");args.push(term);}
+		if((terms.length||input.placeId!==undefined)&&this.scope.judgmentUnavailableIds?.length){conditions.push('o.id NOT IN (SELECT value FROM json_each(?))');args.push(JSON.stringify(this.scope.judgmentUnavailableIds));}
 		const rows=this.db.prepare(`SELECT o.seq,o.raw,a.place_id,a.reason FROM observations o JOIN assignments a ON a.observation_id=o.id WHERE ${conditions.join(" AND ")} ORDER BY o.seq LIMIT ?`).all(...args,limit+1) as Array<{seq:number;raw:string;place_id:string|null;reason:string}>;
-		const hits=rows.slice(0,limit).map(row=>({observation:JSON.parse(row.raw) as SpatialObservation,placeId:row.place_id,reason:row.reason,cursor:row.seq}));
+		const hits=rows.slice(0,limit).map(row=>{const observation=JSON.parse(row.raw) as SpatialObservation;const hidden=this.scope.judgmentUnavailableIds?.includes(observation.id);return {observation,placeId:hidden?null:row.place_id,reason:hidden?'':row.reason,cursor:row.seq};});
 		for(const hit of hits)this.allowed.set(hit.observation.id,hit);
 		return {status:hits.length?"candidates":"unknown",hits:hits.map(hit=>({id:hit.observation.id,atMs:hit.observation.atMs,sourceAtMs:hit.observation.sourceAtMs,recordingId:hit.observation.recordingId,placeId:hit.placeId,reason:hit.reason,imageCount:hit.observation.frames.length})),changes:this.events?.search(this.scope,input) ?? [],nextCursor:rows.length>limit?hits.at(-1)!.cursor:null,remainingImages:this.remaining,note:"Historical judgments/change reports are search hints, not visual proof or current state. Lexical AND retrieval; no visual embedding or relevance guarantee."};
 	}
@@ -53,7 +55,7 @@ export class RetrievalSession {
 	baseline(placeId:string,beforeMs:number){
 		if(!placeId||!Number.isFinite(beforeMs))throw new Error("Invalid baseline scope");
 		const recording=this.scope.recordingId;
-		const row=this.db.prepare(`SELECT o.seq,o.raw,a.reason FROM observations o JOIN assignments a ON a.observation_id=o.id WHERE a.place_id=? AND o.pending=0 AND o.at_ms<=? AND o.at_ms<? ${recording===undefined?"":"AND o.recording_id=?"} ORDER BY o.seq DESC LIMIT 1`).get(placeId,this.scope.asOfMs,beforeMs,...(recording===undefined?[]:[recording])) as {seq:number;raw:string;reason:string}|undefined;
+		const row=this.db.prepare(`SELECT o.seq,o.raw,a.reason FROM observations o JOIN assignments a ON a.observation_id=o.id WHERE a.place_id=? AND o.pending=0 AND o.at_ms<=? AND o.at_ms<? ${recording===undefined?"":"AND o.recording_id=?"} AND o.id NOT IN (SELECT value FROM json_each(?)) ORDER BY o.seq DESC LIMIT 1`).get(placeId,this.scope.asOfMs,beforeMs,...(recording===undefined?[]:[recording]),JSON.stringify(this.scope.judgmentUnavailableIds??[])) as {seq:number;raw:string;reason:string}|undefined;
 		if(!row)return null;
 		const hit={observation:JSON.parse(row.raw) as SpatialObservation,placeId,reason:row.reason,cursor:row.seq};this.allowed.set(hit.observation.id,hit);return hit;
 	}
@@ -72,6 +74,7 @@ export class RetrievalSession {
 		if(!this.scope.recordingId)return {status:"unknown",reason:"Historical path requires one recording scope",observations:[]};
 		const rows=this.db.prepare("SELECT o.id,o.seq,a.place_id FROM observations o JOIN assignments a ON a.observation_id=o.id WHERE o.recording_id=? AND o.at_ms<=? AND o.pending=0 ORDER BY o.seq LIMIT 1001").all(this.scope.recordingId,this.scope.asOfMs) as Array<{id:string;seq:number;place_id:string|null}>;
 		if(rows.length>1000)return {status:"unknown",reason:"Path scan budget exceeded; narrow recording",observations:[]};
+		for(const row of rows)if(this.scope.judgmentUnavailableIds?.includes(row.id))row.place_id=null;
 		let start=-1;
 		for(let i=0;i<rows.length;i++){
 			const row=rows[i]!;

@@ -6,7 +6,7 @@ from salad_features import sha
 
 def freeze(root):
     if (root/'smoke').exists() or (root/'full').exists():raise ValueError('Cannot freeze after QA started')
-    files=['dist/sim/memory-evaluation.js','dist/sim/memory-evaluation-session.js','dist/sim/memory-evaluation-grade.js','dist/agent/request-agent.js','dist/agent/qwen-provider.js']
+    files=['dist/sim/memory-evaluation.js','dist/sim/memory-evaluation-session.js','dist/sim/memory-evaluation-grade.js','dist/agent/request-agent.js','dist/agent/qwen-provider.js','dist/agent/spatial-retrieve.js','dist/sim/spatial-memory-evaluation-session.js']
     record={'files':{str(Path(p).resolve()):sha(Path(p)) for p in files},'purpose':'Execution, horizon scope, grading rubric and score aggregation frozen before QA predictions','rates':{'inputUSDPerMillion':.1356,'outputUSDPerMillion':.4584,'source':'https://www.alibabacloud.com/help/en/pai/product-overview/billing-of-pai-token-service','basis':'Published PAI China Beijing list price, not an account invoice'},'nominalEstimatedCostCeilingsUSD':{'memory':4,'smoke':.5,'smokeGrading':.2,'full':3,'fullGrading':1.5}}
     current=root/'code-freeze.json'
     if current.exists():

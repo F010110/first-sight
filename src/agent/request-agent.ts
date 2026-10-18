@@ -134,7 +134,7 @@ export class RequestAgent {
 		mode: null, kind: null, text: null, status: "idle", spoken: false, lastAnswer: null, turns: [], startedAtMs: null, updatedAtMs: null,
 	};
 
- constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null, private readonly runtime?:{beforeModelCall?:()=>void;contextText?:string}) {
+ constructor(private readonly getSceneMemory: SceneMemoryProvider | null = null, private readonly retrieval: HistoricalEvidenceSession | null = null, private readonly onTrace: ((value:Record<string,unknown>)=>void) | null = null, private readonly runtime?:{beforeModelCall?:()=>void;contextText?:string;providedEvidence?:ImageContent[]}) {
 		const configured = createQwenModel(512, retrieval!==null);
 		this.model = configured.model;
 		this.streamFn = (...args)=>{this.runtime?.beforeModelCall?.();return configured.streamFn(...args);};
@@ -144,11 +144,11 @@ export class RequestAgent {
 		return {
 			name:"retrieve_visual_history",label:"历史视觉证据",
 			description:"Two operations: SEARCH with query (or {} for chronological paging); INSPECT with ids:[exact IDs returned by SEARCH] to open original images. You already have permission to inspect: do not ask the user. Search is literal text, not semantic: use ONE short keyword in the user's language (e.g. 体育馆 or 小径), never append translations/synonyms or the entire question. If empty, simplify to one word or use {}. Cursor is opaque: use ONLY a returned nextCursor for the SAME query; reset/omit it on any query change. After candidates, inspect 1 observation (3 images) before answering; do not spend all turns searching. No match means unknown, not absent. Only inspected images support historical claims.",
-			parameters:{type:"object",properties:{query:{type:"string",description:"Single short literal keyword; omit for chronological history."},ids:{type:"array",items:{type:"string"},description:"INSPECT operation: exact retrieved observation IDs, usually one ID per call."},cursor:{type:"integer",description:"Only returned nextCursor from same query; never invent."}},required:[]},
+			parameters:{type:"object",properties:{query:{type:"string",description:"Single short literal keyword; omit for chronological history."},placeId:{type:'string',description:'Filter by an exact placeId returned by a prior search, to retrieve observations associated with the same remembered place.'},beforeMs:{type:'number',description:'Optional activity-clock upper bound.'},afterMs:{type:'number',description:'Optional activity-clock lower bound.'},ids:{type:"array",items:{type:"string"},description:"INSPECT operation: exact retrieved observation IDs, usually one ID per call."},cursor:{type:"integer",description:"Only returned nextCursor from same query; never invent."}},required:[]},
 			execute:async(_id:string,params:unknown)=>{
-				const p=params as {query?:string;ids?:string[];cursor?:number};
+				const p=params as {query?:string;ids?:string[];cursor?:number;placeId?:string;beforeMs?:number;afterMs?:number};
 				if(p.ids){const images=await this.retrieval!.inspect(p.ids);return {content:images.flatMap(image=>[{type:"text" as const,text:JSON.stringify({historicalEvidenceId:image.id,atMs:image.atMs,placeId:image.placeId,notCurrentTruth:true})},{type:"image" as const,data:image.data,mimeType:image.mimeType}]),details:{ids:p.ids}};}
-				const result=this.retrieval!.search({...p.query!==undefined?{query:p.query}:{},...p.cursor!==undefined?{cursor:p.cursor}:{},limit:4});return {content:[{type:"text" as const,text:JSON.stringify(result)}],details:{status:result.status}};
+				const result=this.retrieval!.search({...p.query!==undefined?{query:p.query}:{},...p.cursor!==undefined?{cursor:p.cursor}:{},...p.placeId!==undefined?{placeId:p.placeId}:{},...p.beforeMs!==undefined?{beforeMs:p.beforeMs}:{},...p.afterMs!==undefined?{afterMs:p.afterMs}:{},limit:4});return {content:[{type:"text" as const,text:JSON.stringify(result)}],details:{status:result.status}};
 			},
 		};
 	}
@@ -252,7 +252,8 @@ export class RequestAgent {
 			}
 		}):()=>{};
 		const timeout=this.retrieval?setTimeout(()=>agent.abort(),120000):null;
-		try{await agent.prompt(prompt, imageContents);}finally{if(timeout)clearTimeout(timeout);unsubscribe();}
+		if((this.runtime?.providedEvidence?.length??0)>6)throw Error('Provided evidence image budget exceeded');
+		try{await agent.prompt(prompt, [...imageContents,...this.runtime?.providedEvidence??[]]);}finally{if(timeout)clearTimeout(timeout);unsubscribe();}
 		if (agent.state.errorMessage) throw new Error(`RequestAgent request failed: ${agent.state.errorMessage}`);
 		const assistant = [...agent.state.messages].reverse().find((message) => message.role === "assistant");
 		if (!assistant || assistant.role !== "assistant") throw new Error("RequestAgent returned no assistant message");
