@@ -41,6 +41,8 @@ node dist/sim/foo.js ...     -> node dist/current/sim/{evaluation|replay|develop
 
 ## 后续维护
 
+本次完整验证记录见[v1.2.0整理验证](v1.2.0-layout-validation.md)。本地产物索引可用`python scripts/index-local-artifacts.py`重新生成，只写INDEX，不搬迁或删除证据。
+
 1. README只写当前状态与入口；实验过程放报告，完成历史不要继续堆进TODO。
 2. 实验版本和失败保持独立目录；不为“整理”重写原回执中的绝对路径与hash。
 3. 搬迁必须核验导入、模板路径、subprocess命令、构建与文档链接。

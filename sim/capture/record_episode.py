@@ -27,7 +27,6 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sim.capture.navigation import fixed_route, align_return_heading  # noqa: E402
 from sim.capture.benchmark_capture import add_rotation_probes, split_recorded_turns  # noqa: E402
 

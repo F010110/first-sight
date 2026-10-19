@@ -52,7 +52,7 @@ python -m sim serve_review_site --help
 | `src/sim/development/` | 本地开发服务与诊断 |
 | `src/sim/replay/` | 历史回放／对照实验，不是默认生产入口 |
 | `sim/` | 按学校、HSSD、采集、审核、分组等分类的Python工具 |
-| `tests/python/` | Python及审核页回归测试 |
+| `tests/python/`、`tests/web/` | Python与审核页回归测试 |
 | `scripts/` | 应用图像桥接、测试与运行监督 |
 | `web/` | 保留的手机试用前端；尚未全面迁移到新Context循环 |
 | `docs/` | 当前手册、发布说明、研究与历史归档 |
