@@ -8,5 +8,6 @@ test('real SQLite double-write, reassessment, actual retriever, reopen and origi
   const hits=await memory.search('yellow',2);assert.deepEqual(hits.map(h=>h.id),['a']);const evidence=await memory.inspect(['a'],2);assert.equal(evidence[0]?.images[0]?.data,Buffer.from('original').toString('base64'));
   await memory.writeAssessment({observationId:'b',atMs:2,placeId:null,reason:'identity uncertain',sourceIds:['b']});memory.close();memory=new SpatialContextMemory(path);await memory.writeObservation(b);
   const store=new SpatialSqliteStore(path);assert.equal(store.assignment('b')?.placeId,null);assert.equal(store.assignment('b')?.reason,'identity uncertain');assert.deepEqual(store.observation('a'),a);assert.equal(store.counts().observations,2);store.close();
+  const restored=await memory.restore(2);assert.equal(restored.length,1);assert.equal(restored[0]?.assessment.placeId,first.placeId);const direct=await memory.inspect(['a'],2);assert.equal(direct[0]?.images.length,1);
  }finally{memory.close();await rm(root,{recursive:true,force:true});}
 });

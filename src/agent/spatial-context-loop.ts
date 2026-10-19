@@ -4,6 +4,7 @@ import {SpatialWorkingContext,type ContextJudgment,type ContextEvidence,type Spa
 /** Explicit ports keep persistence, inference and retrieval independently testable.
  * Implementations must journal raw calls/failures and make writes idempotent. */
 export interface SpatialLoopMemory {
+ restore?(cutoffMs:number):Promise<Array<{observation:SpatialObservation;assessment:ContextJudgment}>>;
  writeObservation(observation:SpatialObservation):Promise<void>;
  writeAssessment(assessment:ContextJudgment):Promise<ContextJudgment|void>;
  search(query:string,cutoffMs:number):Promise<ContextEvidence[]>;
@@ -22,18 +23,23 @@ export type SpatialLoopModel=(input:{context:SpatialContextView;question:string|
 export class SpatialContextLoop {
  readonly context=new SpatialWorkingContext();
  private busy=false;
+ private initialized=false;
  constructor(private readonly memory:SpatialLoopMemory,private readonly model:SpatialLoopModel,private readonly maxCalls=6){
   if(!Number.isInteger(maxCalls)||maxCalls<1||maxCalls>8)throw Error('Invalid inference budget');
  }
  async run(observation:SpatialObservation,question:string|null=null){
   if(this.busy)throw Error('Spatial context loop is already running');this.busy=true;
   try{
+   if(!this.initialized){for(const entry of await this.memory.restore?.(observation.atMs)??[]){this.context.observe(entry.observation);this.context.commit(entry.assessment);}this.initialized=true;}
    // Persistent observation first: failed inference cannot erase the experience.
    await this.memory.writeObservation(observation);this.context.observe(observation);
    let candidates:ContextEvidence[]=[];const allowed=new Set<string>(),inspected=new Set<string>([observation.id]);const evidenceImages:Array<{id:string;mimeType:string;data:string}>=[];
+   for(const entry of [...this.context.view().recent,...this.context.view().anchors])if(entry.atMs<observation.atMs)for(const id of entry.sourceIds)allowed.add(id);
    for(let call=0;call<this.maxCalls;call++){
     const decision=await this.model({context:this.context.view(),question,candidates:structuredClone(candidates),inspectedIds:[...inspected],evidenceImages:structuredClone(evidenceImages),remainingCalls:this.maxCalls-call});
     const assessment=decision.assessment;
+    const view=this.context.view();const visiblePlaces=new Set([...view.recent,...view.anchors,...view.retrieved].map(e=>e.placeId));
+    if(assessment.placeId!==null&&assessment.placeId!=='new'&&!visiblePlaces.has(assessment.placeId))throw Error('Spatial identity not present in working context or inspected evidence');
     if(assessment.observationId!==observation.id||assessment.atMs!==observation.atMs||!assessment.reason.trim()||!assessment.sourceIds.includes(observation.id)||assessment.sourceIds.some(id=>!inspected.has(id)))throw Error('Spatial assessment requires current and actually delivered evidence');
     // Commit durable assessment before publishing it in working context.
     const persisted=await this.memory.writeAssessment(assessment);this.context.commit(persisted??assessment);
