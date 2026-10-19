@@ -1,5 +1,6 @@
 import type {SpatialObservation} from './incremental-spatial-memory.js';
 import {SpatialWorkingContext,type ContextJudgment,type ContextEvidence,type SpatialContextView} from './spatial-working-context.js';
+import {spatialProtocolError} from './spatial-context-protocol.js';
 
 /** Explicit ports keep persistence, inference and retrieval independently testable.
  * Implementations must journal raw calls/failures and make writes idempotent. */
@@ -45,6 +46,8 @@ export class SpatialContextLoop {
     const decision=await this.model({context:this.context.view(),observations:structuredClone(observations),question,candidates:structuredClone(candidates),inspectedIds:[...inspected],evidenceImages:structuredClone(evidenceImages),remainingCalls:this.maxCalls-call,historicalEvidenceRequired:requirements.historicalEvidenceRequired??false,feedback});
     // Preserve even rejected structured outputs as model statements, not facts.
     const output={question,decision,status:'unverified-model-output'};await this.memory.writeOutput?.(observation.atMs,output);this.context.recordOutput(observation.atMs,output);
+    const protocolError=spatialProtocolError(decision,observations,question,inspected,allowed);
+    if(protocolError){feedback=protocolError;const rejected={status:'rejected-model-protocol',question,error:protocolError};await this.memory.writeOutput?.(observation.atMs,rejected);this.context.recordOutput(observation.atMs,rejected);continue;}
     const assessments=decision.assessments??[decision.assessment];
     if(assessments.length!==observations.length||new Set(assessments.map(a=>a.observationId)).size!==observations.length)throw Error('Every window observation needs exactly one spatial judgment');
     // Observation-only calls have no user action to complete. A missing next

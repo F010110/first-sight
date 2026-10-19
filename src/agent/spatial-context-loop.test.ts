@@ -12,7 +12,7 @@ test('every inference writes a spatial assessment; search/inspect feed the next 
 test('write failure cannot publish a judgment, uninspected answers cannot pass',async()=>{
  const memory:SpatialLoopMemory={async writeObservation(){},async writeAssessment(){throw Error('disk failure')},async search(){return []},async inspect(){return []}};
  const loop=new SpatialContextLoop(memory,async()=>({assessment,next:{kind:'finish'}}));await assert.rejects(loop.run(current),/disk failure/);assert.equal(loop.context.view().location,null);
- memory.writeAssessment=async()=>{};const invalid=new SpatialContextLoop(memory,async()=>({assessment,next:{kind:'answer',answer:'guess',sourceIds:['not-inspected'],abstained:false}}));await assert.rejects(invalid.run(current,'where?'),/uninspected/);
+ memory.writeAssessment=async()=>{};const invalid=new SpatialContextLoop(memory,async()=>({assessment,next:{kind:'answer',answer:'guess',sourceIds:['not-inspected'],abstained:false}}),2);assert.equal((await invalid.run(current,'where?')).status,'budget-exhausted');
 });
 test('retrieval loop is bounded and re-assesses space on each continuation',async()=>{
  let writes=0;const memory:SpatialLoopMemory={async writeObservation(){},async writeAssessment(){writes++},async search(){return []},async inspect(){return []}};
@@ -48,4 +48,10 @@ test('unsolicited answer is retained but not delivered as a user response',async
  const loop=new SpatialContextLoop(memory,async()=>({assessment,next:{kind:'answer',answer:'当前位置是体育馆内部。',sourceIds:['current'],abstained:false}}));
  const result=await loop.run(current);assert.equal(result.status,'observed');assert.ok(!('answer' in result));assert.ok(outputs.some(o=>o.status==='unsolicited-answer-retained-not-delivered'));
  assert.ok(loop.context.view().outputs.some(o=>(o.value as any).status==='unsolicited-answer-retained-not-delivered'));
+});
+test('unknown control action gets bounded correction, no invented location or extra calls',async()=>{
+ let calls=0,writes=0;const outputs:any[]=[];const memory:SpatialLoopMemory={async writeObservation(){},async writeOutput(_t,v){outputs.push(v)},async writeAssessment(){writes++},async search(){throw Error('Invalid action must not search')},async inspect(){throw Error('Invalid action must not inspect')}};
+ const loop=new SpatialContextLoop(memory,async input=>{calls++;if(calls===1)return {assessment,next:{kind:'new-place',alias:'new-1'}} as any;assert.ok(input.feedback?.includes('Only finish/search/inspect/answer'));return {assessment,next:{kind:'finish'}}},2);
+ assert.equal((await loop.run(current)).status,'observed');assert.equal(calls,2);assert.equal(writes,1);assert.ok(outputs.some(o=>o.status==='rejected-model-protocol'));assert.ok(outputs.some(o=>o.decision?.next?.kind==='new-place'));
+ const bad=new SpatialContextLoop(memory,async()=>({assessment,next:{kind:'new-place'}} as any),2);assert.equal((await bad.run(current)).status,'budget-exhausted');assert.equal(writes,1);
 });
