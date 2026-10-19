@@ -37,7 +37,10 @@ try{for(const [index,event] of events.entries()){
   if(result.status==='answered'){const raw=JSON.stringify({kind:'question',answer:result.answer,historicalEvidenceIds:result.sourceIds,abstained:result.abstained});const reasons=answerFailures(raw,old!,rows,new Set(result.inspectedIds));record={id:q.id,mode:'spatial-context-interleaved',result:{raw},inspectedIds:result.inspectedIds,modelOutputRejected:reasons.length>0,rejection:reasons.join(' ')};}
   await appendFile(join(root,phase!,'results.jsonl'),JSON.stringify(record)+'\n');executed++;
  }
- if(memory.counts().pending||(!q&&result.status==='budget-exhausted'))throw Error('Spatial construction incomplete; preserve run and stop');
+ // Exhausting optional search/inspect rounds is not missing spatial inference:
+ // valid assessments were already durably committed. Preserve that status,
+ // but stop only when observations actually remain unassessed.
+ if(memory.counts().pending)throw Error('Spatial construction incomplete; preserve run and stop');
  await writeFile(join(root,'progress.json'),JSON.stringify({events:index+1,totalEvents:events.length,questions:executed,counts:memory.counts()}));
 }if(executed!==questions.length)throw Error('Question count mismatch');await writeFile(join(root,phase!,'complete.json'),JSON.stringify({status:'completed',executions:executed,observations:observations.length,events:events.length,protocol:'interleaved-context-v1'}));}
 catch(error){await writeFile(join(root,'stopped.json'),JSON.stringify({error:String(error),questions:executed}));throw error;}finally{memory.close();}
