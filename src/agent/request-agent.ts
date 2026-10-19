@@ -6,6 +6,7 @@ import { createQwenModel } from "./qwen-provider.js";
 import type { FrameRef } from "./types.js";
 import type { HistoricalEvidenceSession } from "./spatial-evidence-retrieve.js";
 import {memorySummary,type MemorySummary} from './memory-summary.js';
+import {lockedProtocolPatch} from './locked-protocol.js';
 
 /**
  * RequestAgent (role 3 of 3): handles the user's *explicit* requirement.
@@ -92,7 +93,7 @@ const SYSTEM_PROMPT = [
 	"You are the user-request agent of a first-person visual assistant.",
 	"The user has given ONE explicit requirement. Read the current camera frames and respond helpfully, in the user's own language.",
 	"Classify the requirement as one of: QUESTION (something to answer), GOAL (something to achieve or find), WATCH (a condition to report when it actually happens).",
-	"SPATIAL FRAME: the image is a narrow view from the phone's rear camera, roughly what the user is facing — it is NOT the user's whole surroundings and there is no depth map. The image centre is roughly straight ahead of the user; the left of the image is the user's front-left; the right of the image is their front-right; up/down are slightly above/below.",
+	"SPATIAL FRAME: the image is a narrow view from the phone's rear camera, roughly what the user is facing �?it is NOT the user's whole surroundings and there is no depth map. The image centre is roughly straight ahead of the user; the left of the image is the user's front-left; the right of the image is their front-right; up/down are slightly above/below.",
 	"When asked where something is, give its position relative to the USER or to another object the user can name (e.g. 'directly in front of you, left side of the desk, next to the laptop'). NEVER answer in terms of image or pixel coordinates such as 'the right side of the picture'.",
 	"If the thing is not visible in the current view, say so plainly and suggest where to look or that it may be outside the current view (behind / beside / below); do not invent a position.",
 	"A 'MOTION' line (how the phone moved, natural language) and a 'SCENE' line (current place) are approximate context; use them to help interpret the frames.",
@@ -147,7 +148,7 @@ export class RequestAgent {
 	private historicalTool(): AgentTool<any> {
 		return {
 			name:"retrieve_visual_history",label:"历史视觉证据",
-			description:"Two operations: SEARCH with query (or {} for chronological paging); INSPECT with ids:[exact IDs returned by SEARCH] to open original images. You already have permission to inspect: do not ask the user. Search is literal text, not semantic: use ONE short keyword in the user's language (e.g. 体育馆 or 小径), never append translations/synonyms or the entire question. If empty, simplify to one word or use {}. Cursor is opaque: use ONLY a returned nextCursor for the SAME query; reset/omit it on any query change. After candidates, inspect 1 observation (3 images) before answering; do not spend all turns searching. No match means unknown, not absent. Only inspected images support historical claims.",
+			description:"Two operations: SEARCH with query (or {} for chronological paging); INSPECT with ids:[exact IDs returned by SEARCH] to open original images. You already have permission to inspect: do not ask the user. Search is literal text, not semantic: use ONE short keyword in the user's language (e.g. 体育�?or 小径), never append translations/synonyms or the entire question. If empty, simplify to one word or use {}. Cursor is opaque: use ONLY a returned nextCursor for the SAME query; reset/omit it on any query change. After candidates, inspect 1 observation (3 images) before answering; do not spend all turns searching. No match means unknown, not absent. Only inspected images support historical claims.",
 			parameters:{type:"object",properties:{query:{type:"string",description:"Single short literal keyword; omit for chronological history."},atTime:{type:'string',description:'Exact calendar timestamp, including date and time; ISO8601 with timezone preferred.'},afterTime:{type:'string',description:'Inclusive lower calendar timestamp.'},beforeTime:{type:'string',description:'Inclusive upper calendar timestamp.'},placeId:{type:'string',description:'Filter by an exact placeId returned by a prior search, to retrieve observations associated with the same remembered place.'},beforeMs:{type:'number',description:'Optional activity-clock upper bound.'},afterMs:{type:'number',description:'Optional activity-clock lower bound.'},ids:{type:"array",items:{type:"string"},description:"INSPECT operation: exact retrieved observation IDs, usually one ID per call."},cursor:{type:"integer",description:"Only returned nextCursor from same query; never invent."}},required:[]},
 			execute:async(_id:string,params:unknown)=>{
 				const p=params as {query?:string;ids?:string[];cursor?:number;placeId?:string;beforeMs?:number;afterMs?:number;atTime?:string;afterTime?:string;beforeTime?:string};
@@ -272,7 +273,26 @@ export class RequestAgent {
 		if (agent.state.errorMessage) throw new Error(`RequestAgent request failed: ${agent.state.errorMessage}`);
 		const assistant = [...agent.state.messages].reverse().find((message) => message.role === "assistant");
 		if (!assistant || assistant.role !== "assistant") throw new Error("RequestAgent returned no assistant message");
-		const raw = assistant.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+		let raw = assistant.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+		if(this.retrieval){
+			const validate=(text:string)=>{parseRequest(text,this.state.mode==='watch'?'watch':null);const r=JSON.parse(text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));if(typeof r.abstained!=='boolean')throw Error('Missing abstention flag');if(!r.abstained||r.historicalEvidenceIds?.length)this.retrieval!.validateCitations(r.historicalEvidenceIds??[],r.abstained);if(!r.abstained&&this.runtime?.requiredEvidenceIds?.some(id=>!r.historicalEvidenceIds?.includes(id)))throw Error('Missing explicitly required source citation');};
+			try{validate(raw);}catch(failure){
+				const original=raw;this.onTrace?.({operation:'locked-protocol-original',raw:original,error:String(failure)});
+				const repairTimeout=setTimeout(()=>agent.abort(),120000);
+				try{
+					// One bounded continuation; same already delivered images, no new retrieval.
+					JSON.parse(original.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));
+					this.modelToolsClosed=true;agent.state.tools=[];
+					await agent.prompt(`METADATA-ONLY PROTOCOL REPAIR. Original answer and every nonmetadata field are immutable. Return ONLY JSON {"historicalEvidenceIds":[...],"abstained":boolean}. Cite only actually viewed source IDs: ${JSON.stringify([...this.retrieval.inspected])}. Required sources for a nonabstaining answer: ${JSON.stringify(this.runtime?.requiredEvidenceIds??[])}. Set abstained consistently with the LOCKED original answer, not to escape missing evidence. No invented citations, no new facts, no answer field. Original JSON: ${original}`);
+					if(agent.state.errorMessage)throw Error(agent.state.errorMessage);
+					const last=[...agent.state.messages].reverse().find(m=>m.role==='assistant');
+					if(!last||last.role!=='assistant')throw Error('Missing metadata patch');
+					this.onTrace?.({atMs:Date.now(),role:'assistant',content:last.content,usage:last.usage,stopReason:last.stopReason,phase:'locked-protocol'});
+					const patch=last.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');const repaired=lockedProtocolPatch(original,patch);validate(repaired);raw=repaired;
+					this.onTrace?.({operation:'locked-protocol-accepted',originalRaw:original,patchRaw:patch,raw});
+				}catch(error){this.onTrace?.({operation:'locked-protocol-failed',originalRaw:original,error:String(error)});throw new HistoricalAnswerValidationError(String(error),original);}finally{clearTimeout(repairTimeout);}
+			}
+		}
 		let parsed:ReturnType<typeof parseRequest>;
 		try{parsed=parseRequest(raw,this.state.mode === "watch" ? "watch" : null);}
 		catch(error){if(this.retrieval)throw new HistoricalAnswerValidationError(error instanceof Error?error.message:String(error),raw);throw error;}
