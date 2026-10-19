@@ -70,6 +70,8 @@ export class SpatialSqliteStore {
 			this.insertObservation(observation);
 		});
 	}
+ observation(id:string):SpatialObservation|null{const row=this.db.prepare('SELECT raw FROM observations WHERE id=?').get(id) as {raw:string}|undefined;return row?JSON.parse(row.raw) as SpatialObservation:null;}
+ assignment(id:string):TopologyAssignment|null{const row=this.db.prepare('SELECT raw FROM assignments WHERE observation_id=?').get(id) as {raw:string}|undefined;return row?JSON.parse(row.raw) as TopologyAssignment:null;}
 	pending(limit=4):SpatialObservation[]{
 		this.limit(limit);return (this.db.prepare("SELECT raw FROM observations WHERE pending=1 ORDER BY seq LIMIT ?").all(limit) as Array<{raw:string}>).map(r=>JSON.parse(r.raw) as SpatialObservation);
 	}
@@ -97,6 +99,20 @@ export class SpatialSqliteStore {
 		this.db.prepare("UPDATE observations SET pending=0 WHERE id=?").run(assignment.observationId);
 	}
 	/** Nodes already carry stable IDs. Commit exactly the oldest pending batch, all or nothing. */
+ reassess(assignment:TopologyAssignment,node?:TopologyNode):void{
+  this.atomic(()=>{
+   const old=this.db.prepare('SELECT raw FROM assignments WHERE observation_id=?').get(assignment.observationId) as {raw:string}|undefined;
+   if(!old||!assignment.reason.trim())throw Error('Reassessment needs processed observation');
+   const previous=JSON.parse(old.raw) as TopologyAssignment;
+   const nodes=[...new Set([previous.placeId,assignment.placeId].filter((id):id is string=>id!==null))];
+   const affected=[assignment.observationId],before=this.capture(nodes,affected);
+   if(node)this.upsertPlace(node);
+   if(assignment.placeId&&!this.db.prepare('SELECT 1 FROM places WHERE id=?').get(assignment.placeId))throw Error('Unknown reassessment place');
+   this.db.prepare('UPDATE assignments SET place_id=?,reason=?,raw=? WHERE observation_id=?').run(assignment.placeId,assignment.reason,JSON.stringify({...assignment,originalPlaceId:previous.originalPlaceId??previous.placeId}),assignment.observationId);
+   this.rebuildRecordings(affected);for(const id of nodes)this.refreshPlace(id);
+   this.logRevision({id:randomUUID(),kind:'reassess',reason:assignment.reason,evidenceIds:affected,before:JSON.stringify(before),after:JSON.stringify(this.capture(nodes,affected)),format:'sqlite-local-v1'});
+  });
+ }
 	commit(assignments:TopologyAssignment[],nodes:TopologyNode[]):void {
 		if(!assignments.length)throw new Error("Empty commit");
 		this.atomic(()=>{
