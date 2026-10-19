@@ -8,6 +8,7 @@ export function spatialContextVlm(root:string,maxCalls=12,maxEstimatedUSD=.25):S
   if(calls>=maxCalls)throw Error('Unified VLM total request budget exhausted');
   const reservation=(128000*.1356+1200*.4584)/1e6;if(cost+reservation>maxEstimatedUSD)throw Error('Unified VLM cost budget exhausted');
   const current=input.context.current;if(!current)throw Error('No current view');
+  if(!current.frames.length||current.frames.length>3||input.evidenceImages.length>12)throw Error('Unified model image budget exceeded');
   const key=process.env.QWEN_API_KEY,base=process.env.QWEN_BASE_URL;if(!key||!base)throw Error('Missing Qwen configuration');
   const directory=join(root,String(calls++).padStart(4,'0'));await mkdir(directory,{recursive:true});
   const {evidenceImages,...metadata}=input;

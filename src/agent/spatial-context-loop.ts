@@ -46,7 +46,7 @@ export class SpatialContextLoop {
     const action=decision.next;
     if(action.kind==='finish'){if(question!==null)throw Error('Question requires an explicit answer or abstention');return {status:'observed' as const,calls:call+1};}
     if(action.kind==='answer'){
-     if(question===null||!action.answer.trim()||!Array.isArray(action.sourceIds)||action.sourceIds.some(id=>!inspected.has(id))||!action.abstained&&!action.sourceIds.length)throw Error('Invalid answer or uninspected evidence');
+     if(question===null||typeof action.answer!=='string'||!action.answer.trim()||typeof action.abstained!=='boolean'||!Array.isArray(action.sourceIds)||action.sourceIds.some(id=>!inspected.has(id))||!action.abstained&&!action.sourceIds.length)throw Error('Invalid answer or uninspected evidence');
      return {status:'answered' as const,calls:call+1,answer:action.answer,sourceIds:action.sourceIds,abstained:action.abstained};
     }
     if(action.kind==='search'){
@@ -58,7 +58,7 @@ export class SpatialContextLoop {
      if(!action.ids.length||action.ids.length>4||action.ids.some(id=>!allowed.has(id))||new Set([...inspected,...action.ids]).size>5)throw Error('Inspection requires retrieved IDs within image budget');
      const evidence=await this.memory.inspect(action.ids,observation.atMs);
      if(evidence.length!==new Set(action.ids).size||new Set(evidence.map(e=>e.id)).size!==evidence.length||evidence.some(e=>!action.ids.includes(e.id)||e.atMs>=observation.atMs))throw Error('Inspection returned invalid sources');
-     for(const item of evidence){inspected.add(item.id);this.context.retrieve({id:item.id,atMs:item.atMs,reason:item.reason,placeId:item.placeId},inspected);for(const image of item.images??[])evidenceImages.push({id:item.id,...image});}
+     for(const item of evidence){inspected.add(item.id);this.context.retrieve({id:item.id,atMs:item.atMs,reason:item.reason,placeId:item.placeId},inspected);for(let i=evidenceImages.length-1;i>=0;i--)if(evidenceImages[i]!.id===item.id)evidenceImages.splice(i,1);for(const image of item.images??[])evidenceImages.push({id:item.id,...image});}
     }else throw Error('Unknown control action');
    }
    return {status:'budget-exhausted' as const,calls:this.maxCalls};
