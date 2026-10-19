@@ -1,0 +1,5 @@
+# Local hardware evidence and firmware backups; may contain private images/data.
+local/
+.pio/
+.venv/
+__pycache__/
