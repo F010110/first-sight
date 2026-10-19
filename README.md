@@ -55,6 +55,7 @@ python -m sim serve_review_site --help
 | `tests/python/`、`tests/web/` | Python与审核页回归测试 |
 | `scripts/` | 应用图像桥接、测试与运行监督 |
 | `web/` | 保留的手机试用前端；尚未全面迁移到新Context循环 |
+| `cam/`、`src/hardware/` | 单摄串口接入，沿用当前Context／长期记忆；[实测与限制](cam/docs/serial-integration.md) |
 | `docs/` | 当前手册、发布说明、研究与历史归档 |
 | `run/`、`dist/` | 本地产物，不进git；冻结结果保持原路径，不修改证据 |
 
