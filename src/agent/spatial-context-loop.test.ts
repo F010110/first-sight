@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {SpatialContextLoop,type SpatialLoopMemory,type SpatialLoopDecision} from './spatial-context-loop.js';
+import {SpatialContextLoop,type SpatialLoopMemory,type SpatialLoopDecision,type SpatialLoopModel} from './spatial-context-loop.js';
 const current={id:'current',atMs:10,frames:[]};
 const assessment={observationId:'current',atMs:10,placeId:'new',reason:'visible current layout',sourceIds:['current']};
 test('every inference writes a spatial assessment; search/inspect feed the next context',async()=>{
@@ -59,6 +59,13 @@ test('public named-source requirement cannot be satisfied by a different current
  let calls=0;const memory:SpatialLoopMemory={async writeObservation(){},async writeAssessment(){},async search(){return [{id:'past',atMs:1,placeId:null,reason:'past'}]},async inspect(){return [{id:'past',atMs:1,placeId:null,reason:'past'}]}};
  const loop=new SpatialContextLoop(memory,async input=>{calls++;assert.deepEqual(input.requiredEvidenceIds,['current','past']);const a={...assessment,placeId:null};if(calls===1)return {assessment:a,next:{kind:'answer',answer:'current only',sourceIds:['current'],abstained:false}};assert.ok(input.feedback?.includes('PUBLIC question'));if(calls===2)return {assessment:a,next:{kind:'search',query:'past'}};if(calls===3)return {assessment:a,next:{kind:'inspect',ids:['past']}};return {assessment:a,next:{kind:'answer',answer:'current and past',sourceIds:['current','past'],abstained:false}};},4);
  const result=await loop.runWindow([current],'Compare named records',{requiredEvidenceIds:['current','past']});assert.equal(result.status,'answered');assert.equal(calls,4);if(result.status==='answered')assert.deepEqual(result.inspectedIds,['current','past']);
+});
+test('16-round research budget is accepted and remains bounded',async()=>{
+ const memory:SpatialLoopMemory={async writeObservation(){},async writeAssessment(){},async search(){return []},async inspect(){return []}};
+ let calls=0;const model:SpatialLoopModel=async()=>{calls++;return {assessment,next:{kind:'search',query:'unresolved'}};};
+ const loop=new SpatialContextLoop(memory,model,16);const result=await loop.run(current);
+ assert.equal(result.status,'budget-exhausted');assert.equal(calls,16);
+ assert.throws(()=>new SpatialContextLoop(memory,model,33),/Invalid inference budget/);
 });
 test('explicit refusal cannot pass with a false abstention flag',async()=>{
  let calls=0;const memory:SpatialLoopMemory={async writeObservation(){},async writeAssessment(){},async search(){return []},async inspect(){return []}};

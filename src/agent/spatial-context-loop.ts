@@ -26,7 +26,7 @@ export class SpatialContextLoop {
  readonly context=new SpatialWorkingContext();
  private busy=false;
  constructor(private readonly memory:SpatialLoopMemory,private readonly model:SpatialLoopModel,private readonly maxCalls=6){
-  if(!Number.isInteger(maxCalls)||maxCalls<1||maxCalls>8)throw Error('Invalid inference budget');
+  if(!Number.isInteger(maxCalls)||maxCalls<1||maxCalls>32)throw Error('Invalid inference budget');
  }
  async run(observation:SpatialObservation,question:string|null=null){
   return this.runWindow([observation],question);

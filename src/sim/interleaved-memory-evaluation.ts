@@ -16,6 +16,7 @@ questions.sort((a,b)=>a.queryAtMs-b.queryAtMs||a.id.localeCompare(b.id));if(phas
 const end=phase==='smoke'?questions[questions.length-1]!.queryAtMs:Infinity;
 const observations=rows.filter(r=>r.atMs<end).map(r=>({id:r.id,atMs:r.atMs,sourceAtMs:r.sourceAtMs,recordingId:String(r.episodeNumber),frames:['front','left','right'].map(camera=>r.cameras[camera]!)}));
 const events=interleavedSchedule(observations,questions);
+const maxRounds=16,maxEstimatedUSD=20;
 await mkdir(root,{recursive:false});await mkdir(join(root,'model-replay'));await mkdir(join(root,phase!));
 await copyFile(join(source,'model-replay/observations.jsonl'),join(root,'model-replay/observations.jsonl'));await writeFile(join(root,'model-questions.json'),publicBytes);
 await copyFile(join(calendar,'clock.json'),join(root,'clock.json'));await copyFile(join(calendar,'calendar-questions.json'),join(root,'calendar-questions.json'));
@@ -23,11 +24,11 @@ const files:Record<string,string>={};for(const name of ['interleaved-memory-eval
 for(const name of ['spatial-context-loop','spatial-context-protocol','spatial-context-memory','spatial-context-vlm','spatial-working-context','spatial-sqlite-store','spatial-retrieve','memory-clock','bounded-network-retry']){const url=new URL(`../agent/${name}.js`,import.meta.url);files[url.pathname.replace(/^\/(\w:)/,'$1')]=hash(await readFile(url));}
 for(const name of ['clock.json','calendar-questions.json','model-questions.json'])files[join(root,name)]=hash(await readFile(join(root,name)));
 await writeFile(join(root,'code-freeze.json'),JSON.stringify({files},null,2));await writeFile(join(root,'frozen.json'),JSON.stringify({...frozen,evaluationModes:['spatial-context-interleaved'],evaluationStatus:'fresh-interleaved-not-scored'},null,2));
-await writeFile(join(root,'plan.json'),JSON.stringify({protocol:'interleaved-context-v1',phase,questions:questions.map(q=>q.id),events:events.length,observations:observations.length,clock,ordering:'queryAtMs then ID, including simultaneous questions',maxEstimatedUSD:3,policy:'New memory; no old database, no Context restore; every Q/A retained in subsequent short and long memory. Changed sequential-interaction condition, not directly equivalent to independent old questions.'},null,2));
+ await writeFile(join(root,'plan.json'),JSON.stringify({protocol:'interleaved-context-v1',phase,questions:questions.map(q=>q.id),events:events.length,observations:observations.length,clock,ordering:'queryAtMs then ID, including simultaneous questions',maxRounds,maxEstimatedUSD,experiment:'Budget-only change: 4 to 16 rounds; same model, prompt, evidence, Context and grading. Independent fresh replay; no answer splicing.',policy:'New memory; no old database, no Context restore; every Q/A retained in subsequent short and long memory. Changed sequential-interaction condition, not directly equivalent to independent old questions.'},null,2));
 if(process.argv.includes('--prepare-only')){console.log(JSON.stringify({status:'prepared-no-paid-calls',questions:questions.length,observations:observations.length,events:events.length}));process.exit(0);}
 const memory=new SpatialContextMemory(join(root,'memory.sqlite'),clock);let loop:SpatialContextLoop;
-const model=spatialContextVlm(join(root,'requests'),events.length*4,3,async(atMs,value)=>{await memory.writeOutput(atMs,value);try{const body=JSON.parse((value as {rawResponse:string}).rawResponse);JSON.parse(body.choices[0].message.content);}catch{loop.context.recordOutput(atMs,value);}},clock);
-loop=new SpatialContextLoop(memory,model,4);let executed=0;
+const model=spatialContextVlm(join(root,'requests'),events.length*maxRounds*3,maxEstimatedUSD,async(atMs,value)=>{await memory.writeOutput(atMs,value);try{const body=JSON.parse((value as {rawResponse:string}).rawResponse);JSON.parse(body.choices[0].message.content);}catch{loop.context.recordOutput(atMs,value);}},clock);
+loop=new SpatialContextLoop(memory,model,maxRounds);let executed=0;
 try{for(const [index,event] of events.entries()){
  for(const observation of event.observations){const row=rows.find(r=>r.id===observation.id)!;for(const camera of ['front','left','right'])if(hash(await readFile(row.cameras[camera]!))!==row.sha256[camera])throw Error('Image hash mismatch');}
  const q=event.question,old=q?originals.find(o=>o.id===q.id)!:null;
