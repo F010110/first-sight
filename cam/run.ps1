@@ -4,6 +4,7 @@ param(
     [string]$Port = 'COM3',
     [int]$Count = 30,
     [double]$Interval = 2,
+    [ValidateSet(115200,230400,460800)][int]$Baud = 460800,
     [switch]$ConfirmPaid
 )
 $ErrorActionPreference = 'Stop'
@@ -15,7 +16,7 @@ $python = (Resolve-Path 'cam/.venv/Scripts/python.exe').Path
 $capture = [IO.Path]::GetFullPath($CaptureDirectory)
 $memory = [IO.Path]::GetFullPath($MemoryDirectory)
 New-Item -ItemType Directory -Force -Path (Split-Path $capture) | Out-Null
-$arguments = @('cam/stream.py', ('"' + $capture + '"'), '--port', $Port, '--count', $Count, '--interval', $Interval.ToString([Globalization.CultureInfo]::InvariantCulture))
+$arguments = @('cam/stream.py', ('"' + $capture + '"'), '--port', $Port, '--count', $Count, '--interval', $Interval.ToString([Globalization.CultureInfo]::InvariantCulture), '--baud', $Baud)
 $process = Start-Process -FilePath $python -ArgumentList $arguments -PassThru -NoNewWindow -RedirectStandardOutput "$capture.stdout.log" -RedirectStandardError "$capture.stderr.log"
 try {
     $process.Handle | Out-Null

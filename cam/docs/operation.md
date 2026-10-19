@@ -1,5 +1,7 @@
 # 独立测试操作
 
+> 当前固件新增了显式波特率协商，原115200 `c`命令不变；主机接入默认使用460800。详见[提速验证](serial-baud-validation.md)，旧抓拍脚本使用前确保设备已恢复115200或断电重启。
+
 以下命令从项目根目录运行，仅用于硬件测试，不启动手机端或模拟器。
 
 ## 隔离环境
@@ -38,7 +40,7 @@ FRAME <JPEG字节数> <宽> <高>\n
 cam/.venv/Scripts/python.exe -m platformio run --project-dir cam
 ```
 
-`platformio.ini` 已将启动 Flash 模式记录为 DIO / 40 MHz，PSRAM 使用 `qio_opi` 内存类型及 `BOARD_HAS_PSRAM`。这两类设置不可混为一谈。**归档后的 DIO/40 MHz 配置尚未重新完整编译烧录回归**；实际成功的二进制是首次构建后由 esptool 修改 bootloader 头参数的版本，保存在 `local/tested-build/`。
+`platformio.ini` 将启动 Flash 模式记录为 DIO / 40 MHz，PSRAM 使用 `qio_opi` 内存类型及 `BOARD_HAS_PSRAM`。这两类设置不可混为一谈。新增`build_bootloader.py`已解决工具链缺少dio_40m ELF的构建问题。**本次只烧录新应用，保留旧bootloader；新生成bootloader尚未烧录启动验证**。最初成功的二进制仍在`local/tested-build/`，不可冒称它是当前提速固件。
 
 如需复现已实测版本，使用归档的四个二进制，而不是重新生成后假定完全一致：
 

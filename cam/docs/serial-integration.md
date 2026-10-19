@@ -1,5 +1,7 @@
 # 单摄串口接入：操作与实测
 
+> 提速更新：本页下方保留首次115200接入实测；随后固件升级后230400／460800均达到2秒目标。当前`run.ps1`默认460800，详见[提速验证](serial-baud-validation.md)。首次失败记录未改写。
+
 ## 结论
 
 - 已使用现有COM3固件接通：摄像头→串口→原图存档／收据→现有窗口调度→Qwen→Context／SQLite长期拓扑。
@@ -36,7 +38,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File cam/run.ps1 -CaptureDirector
 powershell -NoProfile -ExecutionPolicy Bypass -File cam/run.ps1 -CaptureDirectory cam/local/live-001 -MemoryDirectory cam/local/memory-001 -Count 30 -Interval 2 -ConfirmPaid
 ```
 
-输出目录必须全新。默认COM3，可加`-Port COMx`。默认不调用模型；`-ConfirmPaid`模式每次最多512次HTTP请求、估算USD1（不是保证一定用完或达到上限），每事件16轮，与当前评测相同。短测实际远低于上限。
+输出目录必须全新。默认COM3，可加`-Port COMx`。`run.ps1`当前默认协商460800，需要已升级固件；原固件请加`-Baud 115200`。默认不调用模型；`-ConfirmPaid`模式每次最多512次HTTP请求、估算USD1（不是保证一定用完或达到上限），每事件16轮，与当前评测相同。短测实际远低于上限。
 
 已采集数据可独立重放、提问，不重拍：
 

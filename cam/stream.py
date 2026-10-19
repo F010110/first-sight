@@ -10,6 +10,27 @@ import time
 import uuid
 
 
+def switch_baud(port, target):
+    """ACK at old rate, then confirmation at new rate; never guess readiness."""
+    if port.baudrate == target:
+        return
+    port.write(f'b{target}\n'.encode('ascii'))
+    port.flush()
+    deadline = time.monotonic() + 3
+    expected = f'BAUD_SWITCH {target}'.encode('ascii')
+    while time.monotonic() < deadline:
+        if port.readline().strip() == expected:
+            break
+    else:
+        raise TimeoutError('No baud switch ACK (requires new firmware); power-cycle to restore 115200')
+    port.baudrate = target
+    expected = f'BAUD_READY {target}'.encode('ascii')
+    while time.monotonic() < deadline:
+        if port.readline().strip() == expected:
+            return
+    raise TimeoutError('No new-rate confirmation; power-cycle to restore 115200')
+
+
 def read_frame(port, timeout=20):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -56,6 +77,7 @@ def main():
     p.add_argument('--camera-id', default='esp32-s3-front-1')
     p.add_argument('--interval', type=float, default=2)
     p.add_argument('--count', type=int, default=30)
+    p.add_argument('--baud', type=int, choices=[115200, 230400, 460800], default=115200)
     a = p.parse_args()
     if not math.isfinite(a.interval) or a.interval < .1 or not 1 <= a.count <= 1800:
         p.error('Require interval >= .1s and count 1..1800')
@@ -65,7 +87,7 @@ def main():
     (a.output / 'frames').mkdir()
     recording = str(uuid.uuid4())
     plan = dict(schemaVersion=1, recordingId=recording, cameraId=a.camera_id,
-                port=a.port, baud=115200, requestedIntervalSeconds=a.interval,
+                port=a.port, baud=a.baud, requestedIntervalSeconds=a.interval,
                 requestedFrames=a.count, timestampSource='host-request',
                 exposureTimeKnown=False, sideCamerasAvailable=False,
                 limits='No device timestamp, sequence or wire checksum in existing firmware. Host SHA256 is not a wire checksum. No automatic reconnect across unknown device resets.')
@@ -80,6 +102,7 @@ def main():
         time.sleep(3)
         startup = port.read_all()
         (a.output / 'startup.log').write_bytes(startup)
+        switch_baud(port, a.baud)
         epoch, start = time.time_ns() // 1_000_000, time.monotonic()
         due = start
         for seq in range(a.count):
@@ -121,6 +144,12 @@ def main():
         (a.output/'stopped.json').write_text(json.dumps(dict(error=str(error),frames=len(rows))), encoding='utf8')
         raise
     finally:
+        if port.is_open and port.baudrate != 115200:
+            try:
+                switch_baud(port, 115200)
+                (a.output/'baud-restored.json').write_text(json.dumps({'baud':115200}), encoding='utf8')
+            except Exception as error:
+                (a.output/'baud-restore-failed.json').write_text(json.dumps({'error':str(error),'recovery':'Power-cycle board to return to 115200'}), encoding='utf8')
         port.close()
 
 

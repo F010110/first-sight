@@ -2,6 +2,7 @@
 #include "esp_camera.h"
 
 bool ready = false;
+uint32_t serialBaud = 115200;
 void setup() {
   Serial.begin(115200);
   delay(1500);
@@ -29,7 +30,24 @@ void setup() {
   Serial.println("READY: send c to capture");
 }
 void loop() {
-  if(Serial.available() && Serial.read()=='c') {
+  if(!Serial.available()) { delay(10); return; }
+  int command = Serial.read();
+  // Boot/reboot always uses 115200; switching is explicit and acknowledged
+  // at BOTH rates. Existing single-frame command and JPEG settings are intact.
+  if(command=='b') {
+    String value=Serial.readStringUntil('\n'); value.trim();
+    uint32_t target=value.toInt();
+    if(value!=String(target) || (target!=115200 && target!=230400 && target!=460800)) {
+      Serial.println("BAUD_REJECTED"); return;
+    }
+    Serial.printf("BAUD_SWITCH %u\n",target); Serial.flush();
+    delay(100);
+    Serial.updateBaudRate(target); serialBaud=target;
+    delay(200);
+    Serial.printf("BAUD_READY %u\n",serialBaud); Serial.flush();
+    return;
+  }
+  if(command=='c') {
     if(!ready) { Serial.println("CAMERA_NOT_READY"); return; }
     for(int i=0;i<3;i++) { camera_fb_t *f=esp_camera_fb_get(); if(f) esp_camera_fb_return(f); delay(100); }
     camera_fb_t *f=esp_camera_fb_get();
