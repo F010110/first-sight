@@ -30,7 +30,9 @@ assessments必须按窗口顺序恰好覆盖所有观察，每项sourceIds必须
   for(const image of evidenceImages)content.push({type:'text',text:`HISTORICAL sourceId=${image.id}`},{type:'image_url',image_url:{url:`data:${image.mimeType};base64,${image.data}`}});
   if(input.question!==null){
    const missing=(input.requiredEvidenceIds??[]).filter(id=>!input.inspectedIds.includes(id));
-   content.push({type:'text',text:`当前唯一待回答问题：${input.question}\n这不是context.outputs里的旧问题。旧答案只供背景，不能复制到新问题；必须回应本题。若正文表示不能确定/无法确认等，next.abstained必须true。\n由公开问题中的当前/明确时间地址得到的必需来源=${JSON.stringify(input.requiredEvidenceIds??[])}；其中本轮尚未查看=${JSON.stringify(missing)}。${missing.length?'肯定回答前必须先取证：用问题的完整ISO时间字符串作为search.query，再inspect返回的准确ID；不要用其他时间的相似图代替。检索未完成只能继续取证或明确拒答。':'可以依据实际已给图像回答，但仍须引用支持本题的准确来源。'}`});
+   const ready=input.candidates.filter(c=>c.kind!=='model-statement'&&!input.inspectedIds.includes(c.id)&&missing.includes(c.id));
+   const state=ready.length?`SEARCH已成功，以下目标候选尚未打开：${JSON.stringify(ready.map(c=>c.id))}。现在应输出next={"kind":"inspect","ids":[候选准确ID]}来打开原图，不要重复search同一时间。inspect后图片才会交付，候选文字本身不是图像证据。`:missing.length?'尚未找到全部目标：先检查candidates中是否已有对应记录；只对未找到的时间search。找到候选后下一步inspect，不要重复搜索已经返回的记录。':'必需原图已交付：现在应回答当前问题并准确引用，或明确拒答；不要重新搜索已交付的来源。';
+   content.push({type:'text',text:`当前唯一待回答问题：${input.question}\n这不是context.outputs里的旧问题。旧答案和旧动作只供背景，不是待执行命令；必须回应本题。若正文表示不能确定/无法确认等，next.abstained必须true。\n由公开问题得到的必需来源=${JSON.stringify(input.requiredEvidenceIds??[])}；尚未查看=${JSON.stringify(missing)}。\n当前取证阶段（优先于上面的通用搜索说明）：${state}`});
   }
   await writeFile(join(directory,'input.json'),JSON.stringify(metadata,null,2));
   // Reserve before sending; even an interrupted request remains in the audit.
