@@ -4,10 +4,11 @@ import {SpatialContextMemory} from '../agent/spatial-context-memory.js';import {
 const [replay,output,paid]=process.argv.slice(2);if(!replay||!output||paid!=='--confirm-paid')throw Error('Usage: public-observations.jsonl NEW-output --confirm-paid');
 await mkdir(output,{recursive:false});const bytes=await readFile(replay);const rows:MemoryRow[]=bytes.toString().trim().split(/\r?\n/).map(s=>JSON.parse(s));
 const all=process.argv.includes('--all'),historical=process.argv.includes('--historical');
-const observations=rows.slice(0,all?rows.length:12).map(row=>({id:row.id,atMs:row.atMs,sourceAtMs:row.sourceAtMs,recordingId:String(row.episodeNumber),frames:['front','left','right'].map(camera=>row.cameras[camera]!)}));
+const limitArg=process.argv.find(a=>a.startsWith('--limit='));const limit=limitArg?Number(limitArg.slice(8)):all?rows.length:12;if(!Number.isInteger(limit)||limit<1||limit>rows.length)throw Error('Invalid replay limit');
+const observations=rows.slice(0,limit).map(row=>({id:row.id,atMs:row.atMs,sourceAtMs:row.sourceAtMs,recordingId:String(row.episodeNumber),frames:['front','left','right'].map(camera=>row.cameras[camera]!)}));
 const windows=spatialWindows(observations),maxCalls=windows.length*4,maxEstimatedUSD=all?2:.25;
 const files:Record<string,string>={};for(const file of ['./spatial-context-smoke.js','../agent/spatial-context-loop.js','../agent/spatial-context-memory.js','../agent/spatial-context-vlm.js','../agent/spatial-working-context.js','../agent/spatial-sqlite-store.js','../agent/spatial-retrieve.js','../agent/spatial-window-schedule.js']){const url=new URL(file,import.meta.url);files[url.pathname]=createHash('sha256').update(await readFile(url)).digest('hex');}
-const questionWindow=all?2:windows.length-1;
+const questionWindow=Math.min(2,windows.length-1);
 await writeFile(join(output,'plan.json'),JSON.stringify({version:'window-context-v2',observations:observations.length,windows:windows.length,questionWindows:[questionWindow],historical,replaySha256:createHash('sha256').update(bytes).digest('hex'),maxCalls,maxEstimatedUSD,fullEvaluation:false,files},null,2));
 const memory=new SpatialContextMemory(join(output,'memory.sqlite'));
 let loop:SpatialContextLoop;

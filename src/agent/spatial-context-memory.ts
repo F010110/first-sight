@@ -44,7 +44,7 @@ export class SpatialContextMemory implements SpatialLoopMemory {
  }
  async search(query:string,cutoffMs:number){
   if(!this.session||cutoffMs!==this.observation?.atMs)throw Error('Invalid active query');
-  const result=this.session.search({query,limit:4});
+  const result=this.session.search(/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(query)?{placeId:query,limit:4}:{query,limit:4});
   const candidates=result.hits.map(h=>({id:h.id,atMs:h.atMs,placeId:h.placeId,reason:h.reason,kind:'observation' as 'observation'|'model-statement'}));
   const records=this.outputs.prepare('SELECT seq,at_ms,raw FROM model_outputs WHERE at_ms<? AND instr(raw,?)>0 ORDER BY seq DESC LIMIT 2').all(cutoffMs,query) as Array<{seq:number;at_ms:number;raw:string}>;
   candidates.push(...records.map(r=>({id:`model-output:${r.seq}`,atMs:r.at_ms,placeId:null,reason:'UNVERIFIED MODEL STATEMENT, NOT VISUAL EVIDENCE: '+r.raw.slice(0,1200),kind:'model-statement' as const})));

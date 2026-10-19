@@ -25,6 +25,16 @@
 
 修正后的全量产物另存`run/window-context-full-replay-v2`，不覆盖v1。全部851组规划为217窗口；其中1个窗口带历史问题，其余调用仍作空间判断。后续90题正式评测仍单独进行，不把这一次历史问题说成90题覆盖。
 
+### v2在短期地点淘汰后的失败与修复
+
+full-replay-v2在36组已完成后停止。第37—40组推理引用的地点ID只出现在context.outputs旧输出记录中，已不在recent/anchors或本轮读取证据中。原有权限拒绝是正确的；错误是直接抛异常而不是进入长期记忆取证。
+
+新规则：该输出仍双写，但不提交为有效地点归属；记录rejected-spatial-identity，并在剩余4轮预算中反馈模型先用null表达未确认，再按准确placeId搜索真实SpatialRetriever、inspect原图，取证后才能使用旧ID。既不扩大短期Context，也不把所有旧输出的ID加入可信目录。UUID查询只增加结构化placeId过滤入口，仍受原截止和图像权限限制。超过预算仍停止，不默默放行。
+
+新测试覆盖“无效旧ID→搜索→inspect→有效归属”，确认拒收轮未写入有效assignment。另一个实际端点探针暴露纯观察输出有assessments但遗漏next；无用户问题时该输出视为无额外动作，保留原文、不添加回答；有问题时仍要求明确行动/答案并有界反馈。
+
+`run/window-context-identity-probe-v1`遗漏next的失败保留；`run/window-context-identity-probe-v2`首次40组/10窗口复跑完成：2地点、40归属、8条unknown、pending=0，11次模型调用、估算USD0.01661。该次真实运行没有触发旧ID拒绝，不能说它实测证明了恢复分支；恢复分支由确定性回归测试验证。下一全量回放使用新目录`run/window-context-full-replay-v3`，旧v2的失败不覆盖，不报告为最终分数。
+
 下文保留早期实现与失败分析以便追溯；其中“自动恢复Context”“每观察一次调用”的描述已经失效。
 
 ## 版本范围

@@ -26,3 +26,20 @@ test('one window call judges every observation; answers and actions are dual wri
  await loop.runWindow(observations,'当前如何？');assert.equal(calls,1);assert.deepEqual(judged,['o0','o1','o2','o3']);assert.equal(persisted.length,1);assert.deepEqual(loop.context.view().outputs[0]?.value,persisted[0]);
  const fresh=new SpatialContextLoop(memory,async()=>{throw Error('not called')});assert.equal(fresh.context.view().recent.length,0);assert.equal(fresh.context.view().outputs.length,0);
 });
+test('expired identity must be retrieved and inspected, never silently accepted',async()=>{
+ const writes:string[]=[],outputs:any[]=[];let call=0;
+ const memory:SpatialLoopMemory={async writeObservation(){},async writeOutput(_at,value){outputs.push(value)},async writeAssessment(a){writes.push(a.placeId??'unknown')},async search(query){assert.equal(query,'remembered-place');return [{id:'past',atMs:1,placeId:'remembered-place',reason:'past physical layout'}]},async inspect(){return [{id:'past',atMs:1,placeId:'remembered-place',reason:'past physical layout',images:[{mimeType:'image/png',data:'fixture'}]}]}};
+ const loop=new SpatialContextLoop(memory,async input=>{call++;
+  if(call===1)return {assessment:{...assessment,placeId:'remembered-place'},next:{kind:'finish'}};
+  assert.ok(input.feedback?.includes('Spatial identity rejected'));
+  if(call===2)return {assessment:{...assessment,placeId:null},next:{kind:'search',query:'remembered-place'}};
+  if(call===3)return {assessment:{...assessment,placeId:null},next:{kind:'inspect',ids:['past']}};
+  return {assessment:{...assessment,placeId:'remembered-place',sourceIds:['current','past']},next:{kind:'finish'}};
+ },4);
+ const result=await loop.run(current);assert.equal(result.status,'observed');assert.equal(call,4);assert.deepEqual(writes,['unknown','unknown','remembered-place']);assert.ok(outputs.some(o=>o.status==='rejected-spatial-identity'));
+});
+test('observation-only output may omit control action without inventing a user answer',async()=>{
+ const outputs:unknown[]=[];const memory:SpatialLoopMemory={async writeObservation(){},async writeOutput(_t,v){outputs.push(v)},async writeAssessment(){},async search(){return []},async inspect(){return []}};
+ const loop=new SpatialContextLoop(memory,async()=>({assessment} as any));const result=await loop.run(current);assert.equal(result.status,'observed');assert.equal(outputs.length,1);assert.equal((outputs[0] as any).decision.next,undefined);
+ const questionLoop=new SpatialContextLoop(memory,async()=>({assessment} as any),1);assert.equal((await questionLoop.run(current,'question')).status,'budget-exhausted');
+});

@@ -47,13 +47,20 @@ export class SpatialContextLoop {
     const output={question,decision,status:'unverified-model-output'};await this.memory.writeOutput?.(observation.atMs,output);this.context.recordOutput(observation.atMs,output);
     const assessments=decision.assessments??[decision.assessment];
     if(assessments.length!==observations.length||new Set(assessments.map(a=>a.observationId)).size!==observations.length)throw Error('Every window observation needs exactly one spatial judgment');
+    // Observation-only calls have no user action to complete. A missing next
+    // means no additional operation, never an invented answer or citation.
+    const action=decision.next??(question===null?{kind:'finish' as const}:null);
+    if(!action){feedback='Missing next action for an active user question. Return next.kind=search/inspect to obtain evidence, or next.kind=answer with answer, sourceIds and abstained. Spatial judgments alone do not answer the question.';continue;}
     const view=this.context.view();const visiblePlaces=new Set([...view.recent,...view.anchors,...view.retrieved].map(e=>e.placeId));
+    const unknownPlaces=[...new Set(assessments.map(a=>a.placeId).filter((id):id is string=>id!==null&&!/^new(?:-[1-9][0-9]*)?$/.test(id)&&!visiblePlaces.has(id)))];
+    if(unknownPlaces.length){
+     feedback=`Spatial identity rejected: ${JSON.stringify(unknownPlaces)} appears only in old/unverified outputs or is not currently available. Do NOT assign it from those statements. Reassess with placeId=null until verified, then search(query=the exact placeId) and inspect a returned original image to recover its identity. Never replace a missing remembered identity with a new place merely to bypass validation.`;
+     const rejected={status:'rejected-spatial-identity',placeIds:unknownPlaces,question};await this.memory.writeOutput?.(observation.atMs,rejected);this.context.recordOutput(observation.atMs,rejected);continue;
+    }
     for(const assessment of assessments){const target=observations.find(o=>o.id===assessment.observationId);
-    if(assessment.placeId!==null&&!/^new(?:-[1-9][0-9]*)?$/.test(assessment.placeId)&&!visiblePlaces.has(assessment.placeId))throw Error('Spatial identity not present in working context or inspected evidence');
     if(!target||assessment.atMs!==target.atMs||!assessment.reason.trim()||!assessment.sourceIds.includes(target.id)||assessment.sourceIds.some(id=>!inspected.has(id)||id.startsWith('model-output:')))throw Error('Spatial assessment requires current and actually delivered evidence');}
     // Commit durable assessment before publishing it in working context.
     for(const target of observations){const assessment=assessments.find(a=>a.observationId===target.id)!;const persisted=await this.memory.writeAssessment(assessment);this.context.commitHistorical(persisted??assessment);}
-    const action=decision.next;
     if(action.kind==='finish'){if(question!==null)throw Error('Question requires an explicit answer or abstention');return {status:'observed' as const,calls:call+1};}
     if(action.kind==='answer'){
      if(question===null||typeof action.answer!=='string'||!action.answer.trim()||typeof action.abstained!=='boolean'||!Array.isArray(action.sourceIds)||action.sourceIds.some(id=>!inspected.has(id))||!action.abstained&&!action.sourceIds.length)throw Error('Invalid answer or uninspected evidence');
