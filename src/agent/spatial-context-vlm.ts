@@ -21,6 +21,7 @@ assessments必须按窗口顺序恰好覆盖所有观察，每项sourceIds必须
    const viewed=[...new Set(input.evidenceImages.map(i=>i.id))].filter(id=>!windowIds.has(id));
    content.push({type:'text',text:`历史证据门禁：本窗口全部ID=${JSON.stringify([...windowIds])}，它们绝不是前一窗口。此前窗口已知、可直接inspect但本轮未必已看图的来源=${JSON.stringify(older)}。本轮已实际取回的历史原图=${JSON.stringify(viewed)}。${viewed.length?'回答必须引用这些历史原图之一。':'尚无任何历史原图！不得直接肯定回答或声称已经看过前一窗口。下一步必须inspect一个此前窗口ID，或search找来源；找不到时只能明确拒答。'}不要复制context中此前被拒绝的回答。${input.feedback??''}`});
   }
+  content.push({type:'text',text:'地点建立规则：不知道建筑用途/房间名称，或context没有旧地点，不等于无法判断具体空间。首次观察若可见连贯的墙体、路径、开口、围栏等正面布局证据，可以建立new-1候选；同一窗口里连续的同一具体区域共用该候选。已有context地点有对应具体布局时可沿用。只有当前图不足以辨认区域或证据冲突时才用null；不要仅因历史为空而全部null。反过来，不能仅因旧地点匹配失败就新建不同地点，仍需正面空间证据。'});
   for(const observation of input.observations)for(const path of observation.frames){const mimeType=extname(path).toLowerCase()==='.png'?'image/png':'image/jpeg';content.push({type:'text',text:`WINDOW_TARGET sourceId=${observation.id}; atMs=${observation.atMs}`},{type:'image_url',image_url:{url:`data:${mimeType};base64,${(await readFile(path)).toString('base64')}`}});}
   for(const image of evidenceImages)content.push({type:'text',text:`HISTORICAL sourceId=${image.id}`},{type:'image_url',image_url:{url:`data:${image.mimeType};base64,${image.data}`}});
   await writeFile(join(directory,'input.json'),JSON.stringify(metadata,null,2));

@@ -23,5 +23,5 @@ try{for(let index=0;index<windows.length;index++){
  if(result.status==='budget-exhausted')throw Error('Replay failed: inference budget exhausted');
  if(question&&historical&&(result.status!=='answered'||!result.sourceIds?.some(id=>!window.some(o=>o.id===id))))throw Error('Historical smoke failed: no inspected historical citation');
  completed+=window.length;
-}await writeFile(join(output,'complete.json'),JSON.stringify({status:'window-replay-completed-not-question-bank-score',observations:completed,windows:windows.length}));}
+}const counts=memory.counts();if(!counts.places)throw Error('Spatial smoke/replay failed: no location candidate created');await writeFile(join(output,'complete.json'),JSON.stringify({status:'window-replay-completed-not-question-bank-score',observations:completed,windows:windows.length,counts}));}
 catch(error){await writeFile(join(output,'stopped.json'),JSON.stringify({error:String(error),completedObservations:completed}));throw error;}finally{memory.close();}

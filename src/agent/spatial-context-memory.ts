@@ -18,6 +18,7 @@ export class SpatialContextMemory implements SpatialLoopMemory {
  private candidates=new Map<string,{id:string;atMs:number;placeId:string|null;reason:string}>();
  constructor(path:string){this.store=new SpatialSqliteStore(path);this.retriever=new SpatialRetriever(path);this.outputs=new DatabaseSync(path);this.outputs.exec('CREATE TABLE IF NOT EXISTS model_outputs(seq INTEGER PRIMARY KEY,at_ms REAL NOT NULL,kind TEXT NOT NULL,raw TEXT NOT NULL);CREATE INDEX IF NOT EXISTS model_output_time ON model_outputs(at_ms);');}
  close(){this.outputs.close();this.retriever.close();this.store.close();}
+ counts(){return this.store.counts();}
  async writeOutput(atMs:number,value:unknown){this.outputs.prepare('INSERT INTO model_outputs(at_ms,kind,raw) VALUES(?,?,?)').run(atMs,'unverified-model-output',JSON.stringify(value));}
  async writeObservation(observation:SpatialObservation){
   if(!this.store.observation(observation.id)&&observation.atMs<this.store.lastObservationTime())throw Error('Cannot replay older observations into live memory');
