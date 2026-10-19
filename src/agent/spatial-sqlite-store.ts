@@ -72,14 +72,6 @@ export class SpatialSqliteStore {
 	}
  observation(id:string):SpatialObservation|null{const row=this.db.prepare('SELECT raw FROM observations WHERE id=?').get(id) as {raw:string}|undefined;return row?JSON.parse(row.raw) as SpatialObservation:null;}
  assignment(id:string):TopologyAssignment|null{const row=this.db.prepare('SELECT raw FROM assignments WHERE observation_id=?').get(id) as {raw:string}|undefined;return row?JSON.parse(row.raw) as TopologyAssignment:null;}
- workingHistory(cutoffMs:number){
-  const select='SELECT o.raw AS observation,a.raw AS assignment FROM observations o JOIN assignments a ON a.observation_id=o.id WHERE o.at_ms<? AND o.pending=0';
-  const recent=this.db.prepare(select+' ORDER BY o.at_ms DESC,o.seq DESC LIMIT 6').all(cutoffMs);
-  const early=this.db.prepare(select+' ORDER BY o.at_ms ASC,o.seq ASC LIMIT 4').all(cutoffMs);
-  const rows=new Map<string,{observation:SpatialObservation;assignment:TopologyAssignment}>();
-  for(const row of [...early,...recent] as Array<{observation:string;assignment:string}>){const observation=JSON.parse(row.observation) as SpatialObservation;rows.set(observation.id,{observation,assignment:JSON.parse(row.assignment) as TopologyAssignment});}
-  return [...rows.values()].sort((a,b)=>a.observation.atMs-b.observation.atMs);
- }
 	pending(limit=4):SpatialObservation[]{
 		this.limit(limit);return (this.db.prepare("SELECT raw FROM observations WHERE pending=1 ORDER BY seq LIMIT ?").all(limit) as Array<{raw:string}>).map(r=>JSON.parse(r.raw) as SpatialObservation);
 	}

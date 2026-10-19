@@ -2,26 +2,33 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';import {join,extname} 
 import type {SpatialLoopModel,SpatialLoopDecision} from './spatial-context-loop.js';
 
 /** Dedicated experimental unified protocol; the old scored prompt stays frozen. */
-export function spatialContextVlm(root:string,maxCalls=12,maxEstimatedUSD=.25):SpatialLoopModel{
+export function spatialContextVlm(root:string,maxCalls=12,maxEstimatedUSD=.25,onRaw?:(atMs:number,value:unknown)=>Promise<void>):SpatialLoopModel{
  let calls=0,cost=0;
  return async input=>{
   if(calls>=maxCalls)throw Error('Unified VLM total request budget exhausted');
   const reservation=(128000*.1356+1200*.4584)/1e6;if(cost+reservation>maxEstimatedUSD)throw Error('Unified VLM cost budget exhausted');
   const current=input.context.current;if(!current)throw Error('No current view');
-  if(!current.frames.length||current.frames.length>3||input.evidenceImages.length>12)throw Error('Unified model image budget exceeded');
+  if(!input.observations.length||input.observations.length>4||input.observations.some(o=>!o.frames.length||o.frames.length>3)||input.evidenceImages.length>12)throw Error('Unified model image budget exceeded');
   const key=process.env.QWEN_API_KEY,base=process.env.QWEN_BASE_URL;if(!key||!base)throw Error('Missing Qwen configuration');
   const directory=join(root,String(calls++).padStart(4,'0'));await mkdir(directory,{recursive:true});
   const {evidenceImages,...metadata}=input;
-  const content:Array<Record<string,unknown>>=[{type:'text',text:`你是持续空间记忆代理。每次调用都判断当前观察的具体地点身份，然后选择下一步。工作context是背景而非已查看图像，不能用相同功能名确认同一地点。新区域用placeId="new"，已知区域只能用context或已查看证据中的准确placeId；不足用null。assessment必须包含当前observationId、atMs、placeId、reason、sourceIds，只引用本次实际交付图像来源。问题为null时完成观察可finish；有问题先依据当前图和context，证据不足则search(单个短字面query)再inspect(ids)，看过原图后才能引用。无证据或最后一轮仍不足则answer并abstained=true。不要把历史状态说成当前事实，不凭装饰推断同层。输出纯JSON {"assessment":{"observationId":"...","atMs":0,"placeId":null,"reason":"...","sourceIds":["..."]},"next":{"kind":"finish|search|inspect|answer",...}}。search额外query，inspect额外ids，answer额外answer、sourceIds、abstained。当前材料：${JSON.stringify(metadata)}`}];
-  content.push({type:'text',text:'协议补充：assessment.sourceIds和next.sourceIds是两个独立字段。next.kind="answer"时必须同时给answer、sourceIds、abstained，即使assessment已经有sourceIds也不能省略next.sourceIds。正确示例：{"assessment":{"observationId":"CURRENT_ID","atMs":0,"placeId":null,"reason":"当前图支持的判断","sourceIds":["CURRENT_ID"]},"next":{"kind":"answer","answer":"当前图可确认的特征","sourceIds":["CURRENT_ID"],"abstained":false}}。不要复制旧reason当当前判断；context有recent记录时不能说无历史记录。地点身份是具体布局，不需要先确定学校/工厂等建筑用途。'});
-  for(const path of current.frames){const mimeType=extname(path).toLowerCase()==='.png'?'image/png':'image/jpeg';content.push({type:'text',text:`CURRENT sourceId=${current.id}`},{type:'image_url',image_url:{url:`data:${mimeType};base64,${(await readFile(path)).toString('base64')}`}});}
+  const content:Array<Record<string,unknown>>=[{type:'text',text:`你是持续空间记忆代理。每次调用必须为空间观察窗口observations中的每个观察给一个判断，然后选择下一步操作；不是只回答用户，也不是只判断最后一帧。同一时刻三图是一个位置。通过具体布局、开口和实例判断身份，不能只用房间功能名匹配；旋转或新物体不必新建。新地点用new-1、new-2等本窗口别名，同地用同一别名；已知地点使用context或已查看图像中的准确placeId，不足null。context是短期背景，outputs是未核实的模型交互，不是事实或已查看原图。不要复制旧reason冒充当前证据。
+输出纯JSON：{"assessments":[{"observationId":"窗口准确ID","atMs":0,"placeId":null,"reason":"当前具体证据","sourceIds":["该观察ID"]}],"next":{"kind":"finish"}}。
+assessments必须按窗口顺序恰好覆盖所有观察，每项sourceIds必须含该观察ID且只能引用已交付图像。无问题时可finish；有问题时先依据context和当前图，证据不足则search（额外query：短字面关键词）或inspect（额外ids：搜索候选或context中已知历史来源），实际取图再引用。answer必须包含四个字段：{"kind":"answer","answer":"正文","sourceIds":["原图来源ID"],"abstained":false}，不能省略sourceIds，即使assessments已有引用。无证据或最后一轮仍不足则明确拒答abstained=true。不能把历史状态当当前、不凭装饰推断同层。每个reason简短，回答简洁。当前输入：${JSON.stringify(metadata)}`}];
+  if(input.historicalEvidenceRequired){
+   const windowIds=new Set(input.observations.map(o=>o.id));
+   const older=[...new Set([...input.context.recent,...input.context.anchors].flatMap(e=>e.sourceIds))].filter(id=>!windowIds.has(id));
+   const viewed=[...new Set(input.evidenceImages.map(i=>i.id))].filter(id=>!windowIds.has(id));
+   content.push({type:'text',text:`历史证据门禁：本窗口全部ID=${JSON.stringify([...windowIds])}，它们绝不是前一窗口。此前窗口已知、可直接inspect但本轮未必已看图的来源=${JSON.stringify(older)}。本轮已实际取回的历史原图=${JSON.stringify(viewed)}。${viewed.length?'回答必须引用这些历史原图之一。':'尚无任何历史原图！不得直接肯定回答或声称已经看过前一窗口。下一步必须inspect一个此前窗口ID，或search找来源；找不到时只能明确拒答。'}不要复制context中此前被拒绝的回答。${input.feedback??''}`});
+  }
+  for(const observation of input.observations)for(const path of observation.frames){const mimeType=extname(path).toLowerCase()==='.png'?'image/png':'image/jpeg';content.push({type:'text',text:`WINDOW_TARGET sourceId=${observation.id}; atMs=${observation.atMs}`},{type:'image_url',image_url:{url:`data:${mimeType};base64,${(await readFile(path)).toString('base64')}`}});}
   for(const image of evidenceImages)content.push({type:'text',text:`HISTORICAL sourceId=${image.id}`},{type:'image_url',image_url:{url:`data:${image.mimeType};base64,${image.data}`}});
   await writeFile(join(directory,'input.json'),JSON.stringify(metadata,null,2));
   // Reserve before sending; even an interrupted request remains in the audit.
   cost+=reservation;await writeFile(join(directory,'reservation.json'),JSON.stringify({reservedInputTokens:128000,maxOutputTokens:1200,model:'qwen3.8-flash',enableThinking:false,estimatedUSD:cost,maxEstimatedUSD}));
   try{
    const response=await fetch(base.replace(/\/$/,'')+'/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:'qwen3.8-flash',enable_thinking:false,temperature:0,max_tokens:1200,response_format:{type:'json_object'},messages:[{role:'user',content}]}),signal:AbortSignal.timeout(120000)});
-   const text=await response.text();await writeFile(join(directory,'response.txt'),text);if(!response.ok)throw Error(`Unified VLM HTTP ${response.status}`);
+   const text=await response.text();await writeFile(join(directory,'response.txt'),text);await onRaw?.(current.atMs,{question:input.question,rawResponse:text,status:'unverified-raw-model-response'});if(!response.ok)throw Error(`Unified VLM HTTP ${response.status}`);
    const body=JSON.parse(text);if(!body.usage)throw Error('Missing VLM usage');await writeFile(join(directory,'usage.json'),JSON.stringify(body.usage));
    if(!Number.isFinite(body.usage.prompt_tokens)||!Number.isFinite(body.usage.completion_tokens))throw Error('Invalid VLM usage');
    cost+=((body.usage.prompt_tokens*.1356+body.usage.completion_tokens*.4584)/1e6)-reservation;

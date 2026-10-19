@@ -10,3 +10,7 @@ test('compression bounds history and evidence without claiming raw deletion',()=
  assert.throws(()=>c.retrieve({id:'future',atMs:21,reason:'future',placeId:null},new Set(['future'])));
  assert.throws(()=>c.retrieve({id:'old',atMs:1,reason:'not viewed',placeId:null},new Set()));
 });
+test('short-term context expires without reconstructing from long-term memory',()=>{
+ const c=new SpatialWorkingContext();c.observe({id:'a',atMs:0,frames:[]});c.commit({observationId:'a',atMs:0,placeId:'p',reason:'old',sourceIds:['a']});c.recordOutput(0,{answer:'old answer'});
+ c.observe({id:'b',atMs:61000,frames:[]});assert.equal(c.view().recent.length,0);assert.equal(c.view().anchors.length,0);assert.equal(c.view().outputs.length,0);
+});
