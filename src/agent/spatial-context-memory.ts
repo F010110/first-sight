@@ -26,7 +26,7 @@ export class SpatialContextMemory implements SpatialLoopMemory {
   const existing=this.store.observation(observation.id);if(existing){if(JSON.stringify(existing)!==JSON.stringify(observation))throw Error('Observation identity collision');}else this.store.ingest(observation);
   this.observation=structuredClone(observation);this.last=null;this.candidates.clear();this.aliases.clear();
   const assignment=this.store.assignment(observation.id);if(assignment)this.last={observationId:observation.id,atMs:observation.atMs,placeId:assignment.placeId,reason:assignment.reason,sourceIds:[observation.id]};
-  this.session=this.retriever.session({asOfMs:observation.atMs-1,...this.clock?{clock:this.clock}:{}},12);
+  this.session=this.retriever.session({asOfMs:observation.atMs-1,...this.clock?{clock:this.clock}:{}},12,16);
  }
  async writeAssessment(assessment:ContextJudgment){
   const observation=this.store.observation(assessment.observationId);if(!observation)throw Error('No active observation');

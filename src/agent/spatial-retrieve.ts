@@ -16,9 +16,10 @@ export class SpatialRetriever {
 	private readonly db:DatabaseSync;
 	constructor(path:string,private readonly events:SpatialEventStore|null=null){this.db=new DatabaseSync(path,{readOnly:true});}
 	close(){this.db.close();}
-	session(scope:RetrievalScope,imageBudget=8){
+	session(scope:RetrievalScope,imageBudget=8,searchBudget=12){
 		if(!Number.isFinite(scope.asOfMs)||!Number.isInteger(imageBudget)||imageBudget<0||imageBudget>24)throw new Error("Invalid retrieval scope/budget");
-		return new RetrievalSession(this.db,{...scope},imageBudget,this.events);
+		if(!Number.isInteger(searchBudget)||searchBudget<1||searchBudget>32)throw new Error("Invalid retrieval search budget");
+		return new RetrievalSession(this.db,{...scope},imageBudget,this.events,searchBudget);
 	}
 }
 
@@ -27,7 +28,7 @@ export class RetrievalSession {
 	private allowed=new Map<string,RetrievedObservation>();
 	private searches=0;
 	readonly inspected=new Set<string>();
-	constructor(private readonly db:DatabaseSync,private readonly scope:RetrievalScope,imageBudget:number,private readonly events:SpatialEventStore|null=null){this.remaining=imageBudget;}
+	constructor(private readonly db:DatabaseSync,private readonly scope:RetrievalScope,imageBudget:number,private readonly events:SpatialEventStore|null=null,private readonly searchBudget=12){this.remaining=imageBudget;}
 	/** Prompt-only view of committed causal per-observation judgments. Does not
 	 * register candidates/inspection or read mutable future place summaries. */
 	memorySummary(){
@@ -47,7 +48,7 @@ export class RetrievalSession {
 	}
 	search(input:RetrievalQuery={}){
 		input=calendarFilters(input,this.scope.clock);
-		if(++this.searches>12)throw new Error("Retrieval search budget exceeded");
+		if(++this.searches>this.searchBudget)throw new Error("Retrieval search budget exceeded");
 		const limit=input.limit ?? 6,cursor=input.cursor ?? 0;
 		if(!Number.isInteger(limit)||limit<1||limit>24||!Number.isSafeInteger(cursor)||cursor<0)throw new Error("Invalid retrieval page");
 		for(const time of [input.beforeMs,input.afterMs])if(time!==undefined&&!Number.isFinite(time))throw new Error("Invalid time filter");
