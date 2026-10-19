@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { SpatialSqliteStore } from "./spatial-sqlite-store.js";
 import { SpatialRetriever } from "./spatial-retrieve.js";
 import { RequestAgent,HistoricalAnswerValidationError } from "./request-agent.js";
-import {withCurrentEvidence} from '../sim/current-evidence-session.js';
+import {withCurrentEvidence} from '../sim/evaluation/current-evidence-session.js';
 
 for(const backend of ['topology','archive'] as const)for(const constrainedFinal of [false,true])for(const currentRegistered of constrainedFinal?[false,true]:[false])test(`RequestAgent searches and inspects ${backend}, constrained final=${constrainedFinal}, current=${currentRegistered}`,{timeout:15000},async()=>{
 	const root=await mkdtemp(join(tmpdir(),"request-integration-"));

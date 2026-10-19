@@ -1,6 +1,17 @@
 # 文档导航
 
-当前研究版本：**v1.1.0-test.5**。稳定应用基线：**v1.0.0**。
+当前正式版本：**[v1.2.0](releases/v1.2.0.md)**。旧v1.0.0手机基线及v1.1测试研究记录保留，不覆盖。
+
+## 当前入口
+
+- [发布说明、成绩与已知问题](releases/v1.2.0.md)
+- [完整90题实测](application/inspect-repair-full90-results.md)
+- [持续空间Context架构](application/spatial-context-refactor.md)
+- [地点轨迹审核](application/spatial-graph-human-audit.md)
+- [工具分类](../sim/README.md) · [仓库维护规则](maintenance/repository-layout.md)
+- [历史归档与原工作日志](archive/README.md)
+
+下列研究协议与报告属于各自冻结阶段，不将旧“当前”措辞视为本版状态。
 
 - [当前主体＋单图标注冻结协议](research/group-identity-annotations-v3-1.json)
 - [空间记忆版本历史与旧方案归档](archive/spatial-memory-version-history.md)

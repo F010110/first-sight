@@ -30,7 +30,7 @@ test.3后续边界协议：`vlm-boundary-groups-val4-{input,response,report,revi
 
 | 层 | 代码入口 | 说明 |
 | --- | --- | --- |
-| 生产Place/Space记忆修订 | `src/agent/place-memory.ts` | [分层记忆](../application/layered-place-memory.md) |
+| 生产Place/Space记忆修订 | `src/agent/place-memory.ts` | [分层记忆](../archive/application-history/layered-place-memory.md) |
 | 概率拓扑定位基线 | `src/sim/topological-eval.ts` | [基线](../archive/topological-baseline.md) |
 | 视觉重叠分组对照 | `src/sim/grouping-eval.ts` | [分组基线](../archive/grouping-experiment.md) |
 | 观测优先经历底座 | `src/agent/experience-graph.ts` | [架构](../archive/experience-graph.md)、[早期审计](../archive/experience-graph-audit.md) |

@@ -1,0 +1,39 @@
+{
+  "version": "1.2.0",
+  "status": "released-with-known-limitations-by-user-approval",
+  "evaluationRun": "run/inspect-repair-full90-v1",
+  "evaluatedSnapshot": "dist/inspect-probe-grading-v1",
+  "scores": {
+    "实际问题解决": 96.66666666666667,
+    "长程与干扰": 94.11764705882354,
+    "回答可信": 96.38888888888889
+  },
+  "knownErrors": [
+    "scene-misidentification",
+    "unsupported-same-floor-inference",
+    "unsupported-camera-off-interval-assertion"
+  ],
+  "sourceHashesLfNormalized": {
+    "src/agent/spatial-context-loop.ts": "59c1739a099ae08fd2805564cdae7620955e655b38d27a211d32c2d336d0856a",
+    "src/agent/spatial-context-memory.ts": "02d412511348d6dda8ccbd7ec6c9ab0ea9954334f0e67042145ec22572eabe16",
+    "src/agent/spatial-context-protocol.ts": "c6f3d0f44960560c069dd5f1c39469a63d6e26fe2e269ebad54cf94981143548",
+    "src/agent/spatial-context-vlm.ts": "2d4c4c944e83aabd7afb378d08b80213666ac7a7f9c61c15fae6ab9c6e7532a2",
+    "src/agent/spatial-working-context.ts": "12257d22ee7f14018811217c2ec5783e314ad714c6efc3b3a83733486c3c23b0",
+    "src/agent/spatial-retrieve.ts": "c3e5b70b90808f6666690ffc1b08e99a5cc03652fc1f121348d3a2a46a4fabb4",
+    "src/agent/spatial-sqlite-store.ts": "10a44a967b4531086fa7be7744f81ae44ab8115917b232a974e35d9fc7c47add",
+    "src/agent/spatial-window-schedule.ts": "244d8801d68b0e3cd45633931b78468a4c6f972d4648f99011e0330379375ccf",
+    "src/agent/memory-clock.ts": "4460ff5b3daacc2b78553092d35b921bd3e6178c3a066a6c02f81fd65363a886",
+    "src/agent/bounded-network-retry.ts": "61d8551c3e8ef217d457be2d14663b447f4311a446f090791ba20aa9fe455ef6",
+    "src/sim/evaluation/interleaved-memory-evaluation.ts": "f65f1434ed35c50782e548ac3f8288a5266f7b053f779805de03ec70e26ab2f0",
+    "src/sim/evaluation/interleaved-memory-schedule.ts": "af0ee3b268e6d2d96927ac60d0a01d7cd1b065a46fa098544146dd12d99ae569",
+    "src/sim/evaluation/memory-evaluation-grade.ts": "dd223f6fd33a6807259f6650f8a246b2ab110182588da33557357b82a4761ab6"
+  },
+  "evaluationArtifactHashes": {
+    "run/inspect-repair-full90-v1/full/complete.json": "be890f95feb23fd4d58deb72dd3afa3708185ebd095ae5899512434432906594",
+    "run/inspect-repair-full90-v1/full/results.jsonl": "f772798129ec2fbc7c7ad99dfff8b40a4a1f7ace15805c9534bafe1bff0f3675",
+    "run/inspect-repair-full90-v1/full-grading/grades.jsonl": "e524af96dca36236d753203c8905fa87259891942edb295d7108142ffcc1eecd",
+    "run/inspect-repair-full90-v1/full-grading/scorecard.json": "88cb2c61796a2e05cfb7fdadfe0fb1d525d4ffd33c6663a526720af36f93d995",
+    "run/inspect-repair-full90-v1/code-freeze.json": "9420d5bd2677656b3d523de33c7a98eb52b219fcf47bcc6a7f58bcdf0472120e"
+  },
+  "note": "Reorganized source tree, same core algorithm as evaluated candidate; new source paths do not rewrite frozen evaluation receipts. Fresh-context same-family automated grading, no human review."
+}
