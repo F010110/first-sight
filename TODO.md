@@ -1,10 +1,69 @@
 # First Sight TODO
 
-更新：2026-10-11。每次任务结束前核对本文件，完成项写明文件/验证结果；部分完成不得勾选整个阶段。维护此文件与实现清单，保留失败试验记录。
+更新：2026-10-14。每次任务结束前核对本文件，完成项写明文件/验证结果；部分完成不得勾选整个阶段。维护此文件与实现清单，保留失败试验记录。
 
 ## 当前方向与限制
 
-### 唯一当前主线：四步验收（用户确认）
+### 当前唯一主线：完整活动样本与用户问题分层评分（最新用户要求）
+
+最新执行要求：题目显式分当下／短期／长期，至少大几十道；优先标齐支撑所有提问的信息并追溯来源，不再要求先把所有无关观察/门口边界细标完。能从源模型/地图/位姿/生成流程直接得到的结构标签优先，缺官方房间图时不假造。
+
+#### 首次完整评测（用户授权按三步完成，进行中）
+
+**67分回归已定位并实测修复**：用户催修后暂停v3两个付费进程并记在途预留。2题2×2同图同库对照：原提示JSON开/关及新提示JSON关均search+inspect2/2，新提示＋全程JSON开0/2；属于评测调用交互回归。mock又发现agent.state.tools=[]未改变正在run的HTTP工具schema；已修发送层取证required tools无JSON→来源就绪后移除tools并JSON回答，源时标补入工具图元数据。9项TS测试过；真实端点两题各3次共6/6恢复完整链、每次3请求。`*-runtime-fixed-v4`已启动，6冒烟最终协议/公开来源访问全部通过才允许90全量和判分。文档`docs/application/memory-runtime-regression-fix.md`。旧失败和分数全保留，未宣称生产可用。
+
+**来源时钟适配修正v3**：v2 oracle全90判分83.3，但发现输入只标活动atMs，缺第N段T秒源时标，导致多题误认已提供图不对应目标记录。已补每图sourceReference/episode/sourceAtMs/activityAtMs，新增来源收据与“已提供却声称缺失”的公开反馈；不提供答案。两组`*-provenance-v3`已启动6冒烟→90全量及判分，独立编译`dist/provenance-v3`不破坏v2冻结产物；v2原分/失败保留，未批准投入使用。
+
+**用户要求继续消除非空间失分及判断可用性**：修复来源协议v2（真实hash核验已输入当前图直接登记，无需再工具inspect，历史仍严校）、JSON约束opt-in，统一全90题重跑两组，首次＋最多2修复，不循环刷高分。`*-provenance-v2`两组已启动6冒烟→判分→90全量→判分；5项TS测试通过。文档`docs/application/memory-provenance-protocol-v2.md`。残余须分协议/证据标签/回答模型/空间算法；当前不批准无人监督正式使用，重访/跨层/状态变化/跨环境仍有验收缺口。
+
+**失败反馈修复完成**：配对报告`run/school-spatial-oracle-v1/repair-paired-report-v1.json`，文档`docs/application/memory-protocol-repair-results.md`。空间10题18尝试，三卡87.2→90.6/88.2→91.2/97.2→96.1；oracle12题12尝试，84.4→97.8/88.2→97.1/98.6不变。未重试题保留原grade，最后尝试非best-of。空间仍有6道内容正确但引用失败＋1对比不足＋1称谓半分＋1跨层零分，不能说残余全部是空间算法；需解决当前直接输入图与inspect来源协议不一致。未追加无限重试、未跑Full。
+
+**用户要求失败反馈重试**：已新增公开协议验证（JSON、明确时标/当前图引用、abstained冲突）＋原因反馈，最多2次，新目录两组`*-repair-v1`已启动并接判分。原结果不覆盖，不喂标准答案，不按私有分数挑题，语义-only错保留，最后一次而非best-of。最终报告未重试题沿用原grade，防止重评随机抬分；脚本`sim/report_memory_repair.py`。新增4项TS测试通过；残余仍需分空间错误/证据不足/理解/标签，而非全归空间算法。
+
+**逐题诊断完成**：`docs/application/spatial-oracle-diagnosis.md`，机器审计`run/school-spatial-oracle-v1/diagnosis-v2.json`。算法78满/1半/11零，失11.5原始分中10分是引用/flag、1.5分为内容/标签；76/90按精确时标查，4/90用placeId，不能说地点关联已验证。Oracle canonical90/90一致、73组219原图hash匹配；算法优于oracle9题中7题两组实际图片集合相同，普遍“oracle取错图”无证据。两组均误判跨层，端点图不足证明楼层，应另冻结中间楼梯过程证据；部分走廊/更衣区称谓标签需复核。未改旧分数，未追加付费调用，Full memory仍暂缓。
+
+**两组补测完成**：实际SpatialRetriever实验90问答＋90判分，oracle对照90＋90，ID核对通过。三卡算法87.2/88.2/97.2，oracle84.4/88.2/98.6；oracle语义96.7，11道语义满分但任务失分、9输出拒绝/1调用失败；算法语义98.3、2拒绝/0执行失败。oracle端到端低于算法，尚不能称校准的上限；先审引用协议及跨层证据，不启动Full memory。结果`docs/application/spatial-oracle-results.md`。补测含冒烟账本923请求、公开价含预留约USD0.51755，非账单；不含旧建库/基线。
+
+**最新安排**：用户暂缓full-memory，只继续spatial-memory/memory-oracle并监测；oracle低时再考虑full。核对进程正常，算法59/90、oracle66/90。oracle6题冒烟任务50分，5题内容正确，失分包括漏引用及跨楼层误判；待90题全量盲评后分析，不为抬分修改本轮协议或挑题重跑。
+
+**用户追加三组对比**：full-memory、memory-oracle两个对照；spatial-memory一个实验。旧三种访问基线不冒充这三组。已生成`run/school-spatial-oracle-v1/full-memory`90题全部因果原图＋判断输入清单/hash及容量审计；86/90超当前单请求安全范围，最大2553图/约2.2GiB base64载荷，未发付费请求，不截断/摘要、不以4题代替完整组。三组正式对比因此仍未齐全，需核实端点大载荷/上下文支持；若改全文本需显式另命名。见`docs/application/three-group-memory-comparison.md`。
+
+**范围纠正与补测**：旧270条是访问范围基线，不能称空间记忆算法成绩，旧full-history也不是oracle。已接现有SpatialRetriever真实search/inspect，另建直接提供参考原图的memory-oracle，两个隔离进程/目录：`run/school-spatial-oracle-v1/{spatial-memory,memory-oracle}`，各6冒烟→判分→90全量→判分，已启动。空间组不读参考证据文件；oracle不提供答案文本。详见`docs/application/spatial-algorithm-and-oracle-evaluation.md`。现90题仍以时间查记录为主，不充分检验重访/身份合并；后续必须补地点关系任务，不能把接retrieve等同于全能力验证。
+
+**2026-10-18完成更新**：851组统一库完成；18冒烟及判分通过；270条唯一完整问答与270条对应判分已核对。full-history三卡82.8/79.4/91.7；当下/短期/长期任务分76.7/88.3/83.3。保留2次执行失败及17次输出拒绝。全部阶段账本2068请求、公开价含预留估算约USD1.4562，非实际账单。详见`docs/application/first-memory-evaluation-results.md`。下方未勾选和“成绩未出”为历史进度记录，由此完成更新取代；独立人评、跨环境、状态变化仍未完成。
+
+- [ ] 1. 执行/隔离/判分适配与统一建库：90题和6道冒烟选择已冻结，实际851观察/10段切217窗口；真实v2识别＋复用复核建库后台运行`run/school-memory-evaluation-v1/memory`。补当前三摄、工具级时间/近期范围、联合窗判断可用水位；受限条件屏蔽完整历史摘要，非仅提示图裁剪。公开PAI北京单价已有官方依据，仍只报估算非账户账单。QA前冻结编译代码与判分量表。协议`docs/application/first-memory-evaluation.md`。
+- [ ] 2. 冒烟6题×3条件18次问答＋独立上下文自动判分；执行/用量/引用权限通过后才放全量。不把答错自动当协议失败重跑。
+- [ ] 3. 完整90题×3条件270次问答及盲评，发布静态学校profile三卡/时间层次对照、保留失败与账单审计。对象变化/跨环境仍未测；同模型家族judge及AI初标局限明确。
+
+恢复进度：用户催查时原进程已退出，131/217窗、514已提交/4pending，旧usage262请求/约0.40美元公开价估算；扫描实际263个响应＋1个缺响应请求。新增恢复重算全请求用量，缺响应保留128k/1800token预算，不冒称已知账单。首次恢复被重复pending插入校验拒绝且0新调用，已修复并通过6项TS测试（含已提交不重复计费/pending恢复/预算拒绝/权限及真实RequestAgent mock）。已重启事件驱动顺序执行器，建库成功后自动18冒烟→判分→270完整→判分；冻结的题库/QA/评分文件未变，完成前不勾选。
+
+建库已完成217窗/851观察/pending0，436请求（含1缺响应预算预留），公开价估算上界约0.694美元，非账单。v1冒烟第6次因未经inspect就引用被正确拒绝，前5答＋失败原文/16调用保留。修正评测失败分类：模型输出被拒绝记为失败并继续，不放宽校验，不把模型错误当系统故障删掉后续题；网络/计费/输入故障仍停。`run/school-memory-evaluation-v2`重新冻执行/判分代码、原6题整批重跑18次，之后270全量与盲评自动衔接；原题库/答案/模型/统一库不改，hash核验只读复用v1库，不重新建库计费。当前最终成绩未出。
+
+- [x] 原16题分类审计：12事实题紧贴证据帧，是当下理解；4拒答控制，0道合格短期/长期题。
+- [x] 已实际生成90题到`D:\Datasets\activity-benchmark-v1\school-memory-tasks-v2`：当下/短期/跨段长期各30；历史需证据核验52题（短26/长26），每组另4拒答控制。70事实题使用70个不同目标观察，非同一题简单改时间复制。当前无模型预测，不冒称已验证无当前画面语义捷径。
+- [x] 支撑题目的163条标签：源帧/双时钟/位姿、任务属性与答案、拒答依据；显式可见表面标注独立于房间类型；逐题supportLabelIds可溯源。生成源位姿路线SVG，标明不是官方房间/楼层地图；本地仅有原生位姿/config和已审语义，没有官方房间polygon。详见`docs/application/memory-horizon-task-bank.md`。
+- [x] 三条件输入证据权限审计：仅当前／最近5分钟／完整截止历史；当前条件无历史题全部必要证据，近期条件无长期题全部必要证据；22项activity测试通过，0付费调用。
+- [ ] 实际三条件问答对照与评分profile适配：限制retrieve/inspect/缓存而非只限制提示图；区分猜中答案和有效历史引用，保留当下基线与记忆分层，独立审核标注。当前长期为跨段合成日程≥20分钟且≥50组干扰，实际视觉间隔另记，非真实日级记忆；变化/自然找物等未测能力不由90题题量代替。
+
+用户允许自由寻找空间模型/数据、构造多种现实活动；样本通常含室内↔室外，时长不能过短。可组合合理短片段并明确真实/模拟时间间隔，例如全天仅移动2–3小时才开摄像头；不再以必须连续录制或只用现有学校路线限制数据构建。仍保留来源/许可/原图/模拟合成声明，不将无关空间硬称同一连通场景。
+
+最终评分以用户问题的实际正确性与错误后果分层：误合并可能污染回答，误拆分/边界偏差若不影响任务不应等额扣分。不是单一准确率，也不是大量率的罗列；覆盖率、门控率等仅内部诊断，不进入最终成绩。
+
+- [x] D1 广泛检索并实核可用数据/场景：官方核查TartanGround、LA-EQA、uHumans2/TESSE、SPEAR/Unreal、ProcTHOR/MansionWorld、OpenEQA、Ego4D/EPIC；D盘固定revision/hash实际下载6环境40轨迹metadata，合计97.72分钟，保留数据卡。发现uHumans的24h指人数、动态版本同轨迹，不虚计时长/独立性。设计与来源见`docs/application/activity-benchmark-design.md`；可编辑新引擎仍未宣称本机已跑通。
+- [ ] D2 制定并实现完整样本协议：`sim/download_activity_sources.py`有界下载/hash校验中；`sim/build_activity_samples.py`实现3个≥20分钟真实视觉源时长的分段样本包装，20分钟显式未记录空档、源/合成时钟、匿名模型输入、位姿真值隔离、禁止重复刷时长。另取OldTownSummer辅助室外路线；不同世界不宣称道路连通。`sim/review_activity_samples.py`输出分段三摄复核图与未审核草稿。包装2测试通过，但真实下载/实际包装/室内外及任务证据复核未完成，不勾选。
+- [ ] D3 实现用户问题驱动的分层评分：`sim/score_activity_benchmark.py`已实现三张成绩卡（实际问题解决/长程与干扰/回答可信），无单一总分，无覆盖率/UUID直接处罚；分类型固定权重、样本等权、回答hash绑定独立评判、原图inspect/时钟隔离。10评分测试通过，含无害拆分不变、错楼层/未来引用、全拒答不能刷实用分、缺题不删分母、缺标注/类别不发布、缺挑战显示未测。新长样本任务标注/真实预测/独立评判尚待完成，不称已有系统分数。
+- [ ] D4 完整验收：样本可视化复核、无泄漏测试、评分夹具/真实基线、环境隔离测试集与可复现成绩单；没有真实预测或有效真值时不编准确率。
+
+执行补充：两路下载均因TLS EOF终止，有界重试未恢复；独立curl同样握手失败，直连超时，暂不反复启动下载、不关闭证书验证。学校10条路线三摄已下载校验，已启动`school-offline-v1`单样本离线打包；其他环境及室外源未完成。支持`--sample`逐样本完成，不把其他下载失败掩盖成全量成功。当前15项activity测试通过；正式数据/任务/系统成绩仍未验收。
+
+实物更新：学校离线样本打包完成，10轨迹/27分49.7秒源视觉/851组三摄2553图；合成含空档日程3小时27分49.7秒，不能把日程跨度当视觉时长。已生成15张复核图/98稀疏卡，实际看过前两张：首episode有室外院落→入口→室内走廊→木地板球场。其余图及全量地点/问题证据尚未复核，不提升scoreEligible。结果`docs/application/activity-benchmark-local-results.md`。
+
+源辅助标注/评分更新（取代上条“仅看两张”的进度）：已阅读打包源码、10源metadata/config/原生位姿，并检查全部15张稀疏三摄图；`sim/annotate_school_activity.py`逐条核验851观察源索引/位姿/双时钟/原生zip图片hash，98锚点AI语义初标，753观察语义未审、实例/楼层未知仍null。相机高度随轨迹变化，不直接跨路线比较原始Z；P0007 26/80s同源Z差5.00197m。产物`D:\Datasets\activity-benchmark-v1\school-annotations-v2`，冻结16道事实/拒答题及13身份探针到`school-tasks-v2`；16题尚未执行QA。旧三库只读身份探针3正确/1跨层误并/9身份不足，路线等权开发分20.63/95.24，明确不是整段QA/准确率/保留集或正式三卡。机制`docs/application/activity-annotation-and-scoring.md`，18项activity测试通过，0付费调用。下一步仍须补全语义/边界、最后见到/顺序真值、统一整段库回放及独立审阅；不勾选D2–D4完成。
+
+以下四步及R1–R14保留为历史工作，不再限制当前样本构建策略。
+
+### 历史主线：四步验收
 
 以`docs/application/four-step-acceptance.md`为准，暂停新增论文/基准接入；下方R1–R14仅保留历史台账。
 
@@ -13,8 +72,11 @@
 - [x] 3. 有界历史问答闭环：最新身份库上四题目标事实/引用/拒答通过（`school-qa-final-real-v2`）；最早外墙与体育馆地板读图引用，WiFi/早期历史不足拒答。漏abstained失败保留并修正历史模式完整模板，执行器出错停止后续题。不是综合QA准确率或全部附带叙述已验证。
 - [ ] 4. 前三项验收后再延长：未通过不扩大；不以重复短片凑15–30分钟或一天，8小时须真实单价和金额硬限。
 
-
 ### 当前执行队列：复用成熟视觉／长期记忆方法（2026-10-17用户授权）
+
+后续实做：`docs/application/temporal-auxiliary-memory.md`。可选FTS辅助文本索引接原图search/inspect/引用链（非官方EgoRAG/Video-RAG）；MeMoREval57任务183请求的fresh-context/答案与控制器隔离已实导出。空间TS20测试及新增Python2测试通过，0云端调用。尚无真实OCR/ASR/同预算QA效果，不勾选整阶段；HF某路径401不足以确认EgoMonth必须身份认证。
+
+实跑补充：`docs/application/research-integration-local-results.md`。SALAD/AnyLoc已各完成270图；代理端点top1/top2分别5/14、8/14与4/14、8/14，不是地点准确率。LightGlue6观察对、多样性sidecar、DirectMe官方toy已运行；身份复核wrapper及SuperMemory隔离/评分适配通过新增测试。以下整阶段仍未全部验收，不因局部接口/样例勾选。EgoMonth401需合法访问授权，完整校园/独立路线/真实价格与MeMoREval官方实现仍缺。
 
 按顺序独立完成、测试、记录实跑结果和commit；不把接口完成当模型复现完成。详见`docs/application/research-method-comparison.md`、`docs/application/vlm-memory-benchmark-findings.md`。保持冻结v1、原图/时间来源、unknown、可逆修订及evaluation-only隔离；不开启无预算付费长测。
 
@@ -34,6 +96,153 @@
 - [ ] R14 联合回归及长测：固定/门控同数据对照，候选召回、匹配、身份误拆/误并、事件漏检、问答、unknown、修订/重启及延迟；独立多路线/相似负例后15–30分钟校准，确认真实端点单价和金额硬限后再决定8小时。
 - [ ] 后续条件项 LMEE：仅在主动导航成为目标且Habitat/HM3D-Sem授权及设备问题解决后评估；不阻塞被动记忆主线，不代签或改系统权限。
 
+### 当前优先：产品整合（以下优先于历史研究进度记录）
+
+#### 新阶段：模拟器开发闭环（用户要求2026-10-15）
+
+##### 当前优先纠偏：可靠超大空间数据集（用户强调）
+
+- [ ] 学校重复建点已做固定上下文诊断：原17响应reasoning_content均空，只有输出reason可审计；100s只改参考措辞后恢复旧ID，116s仍失败，去掉重复摘要候选后恢复。支持提示歧义+历史重复身份污染，非单纯召回/数据库错；单次非统计证明。`docs/application/school-replay-diagnosis.md`，新增3请求26556输入/1806输出token，原库未改。仍需新增点复核/独立负例验证，不能把摘要相同自动合并。
+
+- [ ] 学校门控整段已跑完但建模未通过：90→62组/17请求，135906输入+8673输出token、pending0、9候选点；人工发现同一红砖通道P4/P5/P3重复建点，候选已召回，理由误读“参考禁止分类”。失败轮另计3请求17434/1651token。提示歧义已修正+mock验证，尚未第三次付费复测，不扩大8小时；详见`docs/application/school-gated-replay.md`。
+
+- [ ] 按90组2秒学校流实跑本地门控→召回→VLM：选62/跳28/17窗口，跳过帧不伪造身份。首轮第二窗历史参考多输出assignment，协议修复仍失败，3请求17434输入/1651输出token已保留；新增独立v2严格目标白名单提示并测试，新目录重跑。结果与局限`docs/application/school-gated-replay.md`。
+
+- [ ] 用户确认沿用2秒一组三摄观察：已核对原HSSD脚本2fps保存/每4帧window，学校已另打包`run/tartanground-school-fixed2s-v1`（89定时组+末帧=90组）。旧19/8观察仅token校准，不代表90组效果；本地视觉调用门控未接，不能将v2候选召回称为自适应调用。需补门控后评测真实调用轮数/事件漏检/延迟。
+
+- [x] 固定小开发样本：学校已渲染P0000/19观察全集及8观察校准子集，不重新渲染/不伪造一天；`docs/application/spatial-v2-visual-recall.md`。
+- [x] 独立v2旧地点视觉候选接入校准service：本地RGB布局/直方图sidecar，2视觉+1近期候选、原图交VLM判定；当前归属JOIN支持修订/重启。10地点夹具召回退出近期6节点旧ID；真实RGB代理对rank1；同8观察真实v2两调用12838输入/1071输出token，pending0。冻结v1和默认API未改。
+- [ ] v2仍是粗视觉基线，磁盘查询O(N)，尚未接UI通用retrieve；本次真实数据仅3地点，没有证明超过近期候选预算的真实召回改善。需独立多路线、相似地点负例和更久重访评测，必要时升级学习型视觉索引；门控/8小时未启动。
+
+- [x] 学校/社区Ground P0000三摄+metadata全部下载并哈希；学校177.5s/210m，确认室外至室内，社区53.5s此路线主要室外。学校19观察原图/私有位姿分离打包，8观察2窗口真实Flash非thinking校准：12850输入/1133输出token，pending0，1个80s几何代理重访ID一致。`docs/application/spatial-calibration-protocol.md`记录方法/失败/局限，不当15分钟或8小时通过。
+- [x] 新实验校准入口增加真实单价配置、窗口/观察限制、保守请求预留、usage缺失停机；mock成功计费/调用前预算拒绝/usage缺失停止测试通过。未改v1冻结源。
+- [ ] 长测前仍需旧地点视觉候选扩展（本轮未实现）、多独立路线、15–30分钟校准和真实端点价格；当前不启动8小时，token小校准不等于金额硬限或实际账单。
+
+- [ ] 校园一日活动准入未通过：主候选实为约17×24米平面四层综合教育楼，无已验证室外/食堂/运动区。四层加载测试完成，开门后F2部分不通、F1查询失败，F3/F4房间可达但资源完整性未通过。详见`docs/application/campus-scene-verification.md`。保留楼内辅助基线，不能因37房间/1576㎡就称完整校园或通过重复步行凑一天。
+
+- [x] MansionWorld两个zip下载/哈希完成；30教育候选已审计，提取不同布局主备学校到`D:\Datasets\MansionWorld\school-audit-v2`。隔离定制THOR三摄通过；主校一层CreateHouse/2658可达点通过。见`docs/application/campus-sampling-plan.md`，不能当完整校园验收。
+- [ ] 学校资源完整性：源235顶层对象与运行163对象的ID匹配有大量差异，检查asset hook、命名映射及实际缺失；先补资产/纹理再正式采集，室外通行和跨层连续性仍未验收。
+
+- [ ] 最新授权：无需身份验证的学校场景先下载到D盘，不等待许可澄清（仍保存条款，不默认允许分发/云处理）。已启动固定revision的MansionWorld场景库+patch下载，目标`D:\Datasets\MansionWorld\8dd4f01dbf78`；完成后校验hash、筛学校、隔离定制THOR依赖、验收室内外连接。`docs/application/campus-sampling-plan.md`定义五会话样本方案；下载启动不等于学校数据可运行。
+
+- [ ] 用户进一步明确目标为中小型学校/校园，最好室内外连通，不局限超大楼宇；候选需核实教室/走廊/楼梯/庭院或操场实际可走，不用多小屋/室外贴图拼接替代。用户选择先核实MansionWorld许可；发现CC-BY与research-only冲突、官网license仍TODO，未代签/未下载资产/未向作者发帖。完整办理入口和询问模板`docs/application/campus-dataset-access.md`，HM3D仅真实室内支线。
+- [x] 独立Chrome实际DOM/点击/三摄及历史图加载/未确认付费拒绝验收通过，报告/截图`run/dev-browser-acceptance-v3/`，0模型调用；不再将“内置browser bridge未连”当无法做浏览器自动化的唯一阻塞。bridge本身仍未连，完整人工验收未做。
+- [x] 替代内核AI2-THOR5.0/WSLg同步三摄320px实渲染通过`run/thor-alternative-runtime-v1/`；Habitat只读设备权限诊断`run/large-building-preflight-v1/habitat.json`、MansionWorld固定revision/zip大小/hash/冲突许可审计`run/mansionworld-license-audit-v1/`已保存。前者FloorPlan1不是学校数据，后者只是元数据，不当已取得大楼资产。
+
+- [ ] 把旧HSSD小场景路线验证与新大楼数据方案分开；不能将3建筑初探118观察、重复采样或多小屋拼接称为超大连续场景。定义可测的可通行面积、最大连通区、房间/楼层、路径直径、跨会话覆盖和图像质量准入门槛。
+- [ ] Habitat已查明当前用户无`/dev/dri/renderD128`读写权限（不在render/video组），sudo需要交互认证；补环境预检和明确修复步骤，修复后实际渲染/路线重测，不自动改系统权限。AI2-THOR Linux64已本机实测FloorPlan1渲染成功，是可运行替代内核，不代表大楼资产已就绪。
+- [ ] 核查MANSION/MansionWorld作为大型可编辑主候选：已确认公开代码/数据入口及固定HF revision；额外资产、定制THOR包、真实大楼尺寸与连通性待核验。CC-BY4.0与数据卡research-only文字冲突须确认；多层加载型移动与连续楼梯分开记录。HM3DSEM保留真实扫描支线，不代签个人授权。
+- [ ] 浏览器内置桥接仍未连接，尝试独立本机Chrome自动化完成实际DOM/点击/图片与截图验收，不再只停在HTTP测试。
+
+- [x] 本轮验证：13空间相关TS测试、模拟器真实HTTP重启/拒绝未确认付费/GT无路由、数据打包/评测防泄漏测试、v1冻结hash通过。真实Request前两次预算失败均留档；修复最终收口后，同房间样本7调用/16632tokens/16.866秒、读取并引用两条旧原观察；变化Agent恢复旧front并VLM fallback判未变化。记录`docs/application/spatial-dev-console.md`，不把这一例当新轨迹/变化准确率。
+- [x] 比较结果新增独立`changes.sqlite`有来源审计，可经retrieve读历史变化；同观察对幂等、重启恢复与录制/截止权限测试通过。原身份事件保留，merge/split尚不自动重标旧事件。
+- [ ] 明确阻塞：桌面browser未连接；WSL Habitat独立路线渲染3次EGL_NOT_INITIALIZED，保留失败目录，未改系统权限/驱动、未伪造新路线。3建筑已有初探118三摄观察已打包，但跨session任务0，不能勾选完整Benchmark；HM3DSEM授权/资产和可编辑变化尚缺。开发入口`http://127.0.0.1:3417`，启动/限制见`docs/application/spatial-dev-console.md`。
+
+- [x] 1. 已阅读EAM主线visual_memory/controller及实现状态，核对原证据、时间权限、代表恢复/inspect预算与引用约束；不引入oracle位姿/房间服务，不将其诊断当本项目效果。见`docs/application/spatial-memory-v2-plan.md`。
+- [x] 2a. 新增独立`spatial-retrieve.ts`只读检索v1库：观察理由词项AND检索、地点/录制/历史截止过滤、按游标恢复非代表原观察、每查询12次search/8图默认预算、已inspect引用校验、同录制有界真实历史序列；无匹配unknown。词法/时间召回不是视觉向量算法；原v1冻结hash不改。
+- [x] 3a. 独立模拟器本机开发服务`src/sim/spatial-dev-server.ts`和`sim/spatial-dev.html`：三摄/录制切换、逐观察入队、显式付费识别、状态/分页归属、历史证据图、访问/边、Agent结构化预置任务、修订。只绑定127.0.0.1，CSRF随机token、GT无路由、不接产品trial-server。HTTP入队/拒绝未确认付费/重启恢复通过；桌面浏览器未连接，未声称可视验收。
+- [x] 4a. RequestAgent新增可选历史检索/inspect工具及引用拒绝、8轮/120秒预算，模拟器模式qwen3.8-flash显式enable_thinking=false；旧产品模式不改。SceneChange桥接同已赋身份严格早于当前原观察的front图，unknown不比较、重启可重建基线；桥接测试无付费通过。真实模型完整运行待验证。
+- [x] 5a. `build_long_term_dataset.py`按真实capture输出三同步相机、跨session时钟、原时间、媒体hash；GT/tasks分离到evaluation-only，拒绝重复轨迹冒充独立session/同建筑跨split/覆盖输出。首个真实HSSD40观察包`run/long-term-pilot-v2-initial`完成，0跨会话任务（只有初探，明确不冒充Benchmark）。新独立路线两次EGL失败保留，正在核查系统Mesa/WSL依赖。HM3DSEM许可/资产、可编辑变化和5类会话尚待完成。
+- [ ] 2. 实现有预算、证据来源及unknown的retrieve算法，供地点识别、RequestAgent与场景变化Agent共用；覆盖久远地点、时间约束、无匹配、过时记忆、录制隔离测试，不向模型泄露模拟真值。
+- [ ] 3. 仅模拟器增加电脑开发者界面：录制/轨迹选择与回放、当前多摄图、队列/调用状态、记忆节点/访问/边、检索证据、变化与Agent结果、人工修订；不加语言输入输出，不改实际产品前端。
+- [ ] 4. 接入现有RequestAgent和场景变化Agent，结构化调试任务触发，共用持久记忆/retrieve，区分历史证据与当前确认，完成重启及错误回归。
+- [ ] 5. 按`建议9.md`构建多会话长期记忆数据协议/生成器：初探、不同路线重访、相似区域干扰、可编辑环境变化、仅依赖历史的任务。算法只获图像/时间/允许事件；位姿/房间/全局图真值仅评测使用。核实场景可用性/许可，不把文档中的论文或数据规模直接当已验证事实。
+- [ ] 6. 分别报告身份、Recall@K、历史路径检索（非导航成功）、变化/过时记忆和成本；真实数据与合成工程测试分开。完成可运行端到端验证，分阶段commit，不覆盖旧实验与冻结库。
+
+
+- [x] 长期记忆正式冻结提交`dcc270f`（long-term-memory-v1），此前`1458ba4`底座、`6ab2843`局部修订均已提交，未push。规格和源码hash已入库，冻结测试通过。默认空间API现为SQLite；本轮范围收口，不再扩展该版算法。其余未提交历史研究/UI/需求文件未混入。
+
+- [x] 长期记忆v1本轮收口：`SpatialSqliteService`替换空间API JSON后端，旧JSON首次事务迁移不覆盖；日常ingest/status/commit/pending/分页不装载全历史。模型目录<=6（近期/拓扑邻居/显式FTS），历史参考图<=3；访问区间首末证据+地点描述、place访问/边查询、按年月/录制图像分片、512MiB磁盘预留、基础图片头检查。Node最低22.13同步锁文件。规格`docs/application/long-term-memory-v1.md/json`记录全部限制/源码hash。
+- [x] 收口验证：9相关TS测试、真实HTTP登录/重启库恢复、10000观察无模型压力约75s、旧记忆75/75、80真实观察副本迁移（5节点/13访问/11转移证据）通过，0新增VLM。完整图快照仅显式备份操作；检索召回不保证、PNG/JPEG/WebP只检查头非完整解码、单进程worker、凭据轮换/删除保留策略/浏览器/新SQLite真实VLM长时试验未认证。停止继续扩展本版算法，bugfix另留版本记录；其他Agent/前端另阶段。
+
+- [x] 按用户要求阶段commit：`1458ba4`保存拓扑worker/API/库授权/SQLite底座及测试，未push；其他HSSD/UI试验和用户需求原文件未混入。
+- [x] SQLite原生局部修订实现：merge/split/confirm、局部before/after审计、按涉及录制重建访问/转移边、索引首末代表、跨重启undo及引用增长冲突拒绝，原观察不改。build＋2 SQLite测试（含1000观察）通过，无模型调用。下一步切换worker存储及有限候选上下文仍待做，生产API仍JSON，不提前宣称完成。
+
+- [x] 长期SQLite仓库第一阶段：`spatial-sqlite-store.ts`观察/节点/归属/访问/转移证据/修订分表，WAL/外键/索引，局部批次事务出队、有限pending/FTS候选/访问查询；原图引用保留，显式JSON导入导出。build＋1000观察无模型测试（重启、回滚、bounded检索、中英文、导出往返）通过约6.8s。真实80观察副本导入`run/product-topology-sqlite-v1/memory.sqlite`，5节点/13访问/11转移证据，0API调用。旧数据不改。
+- [ ] SQLite后续：先实现局部修订事件和受影响访问/边重算，再替换服务worker JSON事务及全目录模型上下文。当前新仓库尚未接生产API，不能宣称无限历史链路完成。FTS短查询退回recent，语义视觉候选召回/访问摘要压缩/原图分片/100k压力测试待做。说明`docs/application/spatial-long-term-storage.md`。
+
+- [x] 长期库授权与跨登录恢复：新增`spatial-library.ts`，create-library返回UUID库ID＋256bit recoveryKey，磁盘仅存secret hash，open-library验密后绑定；同库共享API/worker避免多写者，旧session路径兼容不迁移。真实HTTP隔离测试`sim/test_spatial_http.py`登录/建库/上传/二次登录/错误秘密拒绝/恢复pending/无API拒绝start通过，0付费调用；build及6相关TS单测通过。尚无账户、凭据轮换/撤销、跨进程HTTP恢复验证/浏览器UI，切换库前需stop旧worker。
+
+- [x] 服务器新增`POST /api/spatial`，复用登录/同源/限流，action observe(202入队)/status/snapshot/start/stop/revise/undo；服务器保存base64原图，不接受客户端路径；只有显式start可触发模型，修复stop状态accept仍pump的漏洞；修订须stop且无在途。`spatial-topology-api.ts`串行命令与异步worker，build及5相关单测通过。未实际HTTP/浏览器验收，无新增付费调用。
+- [ ] 产品剩余边界：目前按登录session隔离，无跨登录用户记忆库认领/授权；文件恢复不等于账户恢复。图像仅编码/类型/大小验证，解码/摄像头同步未验；历史容量/磁盘预算与过期worker清理待完善。新增API尚未接前端采集或RequestAgent/变化Agent，不自动切换原生产链路。接口文档`docs/application/spatial-topology-integration.md`。
+
+- [x] 候选状态/可逆修订底座：新节点candidate、旧文件缺状态默认candidate、显式confirm；merge源保留retired、split真子集新UUID；原始身份/观察保留，重建代表/转移边，before-after原子审计。undo对后续身份变化拒绝覆盖；退休节点不进VLM上下文。build及4相关单测通过。原P5没有自动合并，原真实图未改；尚缺HTTP/UI审核与自动建议，不宣称长期粒度漂移已解决。
+
+- [x] 第二录制ID回放结束：80累计观察、5节点、7边、pending0。四旧UUID主要复用，原4路径边证据计数1→2，无跨录制连接证据。但recording-2观察38/39新建“走廊”P5，第一录制同段为客厅P2，粒度漂移/候选重复仍在，不宣称稳定4节点验收；原答案不删，不直接合并。`run/product-topology-val5-cross-recording-v1/topology.json`。工程恢复/身份引用通过，长期目录稳定和可逆修订尚缺。
+
+- [x] 后台timer/容量保护实现：`spatial-topology-worker.ts`1s tick、accept仅等待落盘、忙时合并、失败暂停需显式resume、stop不隐式付费drain，状态暴露pending/最后确认时间；service默认pending上限120、满时明确拒收源须保留重试。build＋3相关单测通过。尚未挂采集HTTP路由、无磁盘字节限额，不宣称实时压力验收。
+- [ ] 第二录制ID真实复用测试启动：复制首次图快照至独立`run/product-topology-val5-cross-recording-v1/`，同val5录像recording-2，原recording-1图不改。只验证跨录制工程复用/不建跨录制虚构边，不是新轨迹泛化，结果待核查。
+
+- [x] 新拓扑链路val5真实回放完成40观察、4稳定UUID节点、5有证据有向转移边、pending0，`run/product-topology-val5-v1/topology.json`。失败期间pending原子恢复，协议修复允许历史ID省略重复声明，未知ID仍拒绝；进程再次相同录制回放40/4/5不变，无新增模型调用。两次失败响应保留。主路径厨房→客厅→卧室→卫生间→卧室→客厅，回访复用ID。边界7/32/38及摘要玻璃门分隔陈述仍需审查，不把全40当人工验收。采集timer/容量限制/不同轨迹录制重访尚未完成。
+
+- [x] 前两项软件底座实现：`spatial-topology-service.ts`durable inbox/一个在途调用/tick合并/4观察窗口/10s等待/5s最短间隔，原子身份+出队；稳定UUID节点、逐观察访问序列、有证据有向转移边，unknown及跨录制不连虚构边，最近首/末代表。`spatial-topology-vlm.ts`真实nonthinking适配和日志，`spatial-topology-replay.ts`录制ID隔离、pending重启恢复、原时间保留。build＋2拓扑测试通过；旧PlaceMemory生产不改。设计`docs/application/spatial-topology-integration.md`。
+- [ ] 前两项完整验收待完成：val5真实VLM回放已启动`run/product-topology-val5-v1/`，待观察/节点/重访/边/预算核查及真实进程重启。当前回放await模型而非实时压力，采集timer尚未挂服务器，inbox磁盘容量限制/数据库伸缩尚缺；不勾选生产整合完成。
+
+- [ ] 用户允许厨房/客厅局部地点分开，不将旧粗粒度一致率误当唯一正确性。val5 nonthinking机械窗口修复后独立重跑已启动：修正历史代表候选按最近访问而非最近创建排序，补安全执行失败日志和--home过滤。原提示保持（仍偏向开放区合并，不伪称已设计多层目录），原结果保留；3单测通过。核查可见布局理由/重访/未知及预算，不能以拆分本身判bug或自动删旧身份。
+
+- [x] 完整nonthinking家庭机械窗口结束：`run/home-window-vlm-1791984861814848300/`25请求均完成，57/40覆盖；val4核心44无误拆/误合并，总token72799→40806(-43.9%)、516.7→74.7s；val5核心28覆盖但首客餐厨拆成2身份（8同区域关系冲突），29514token/54.4s。共同前8块40561→23299(-42.6%)，旧val5超时32/40不能全量比较。无reasoning返回，边界变化保留；仍全原图分批，较离线全图一次贵约26%/28%。`compare_window_thinking.py`已生成诊断，结果`docs/research/window-thinking-results.md`。仅快路径候选，等质/长期稳定/生产实时尚未验收。
+
+- [ ] 用户要求完整检验关闭thinking质量/预算：`python sim/home_window_vlm_trial.py --no-thinking --mechanical-only`已后台启动，两家庭57/40观察全库存、原机械窗口/提示/历史代表/max_tokens不变，仅extra_body enable_thinking=false。原结果保留，最多1协议修复，2单测通过。推理后`sim/compare_window_thinking.py <new-run>`对比家庭核心同/不同关系冲突、覆盖/未知、实际prompt/completion/reasoning token；旧val5仅32/40且超时，共同已完成块预算单列，不用不完整全量比宣称省费。暂不改生产默认/冻结基线。
+
+- [ ] 速度诊断：当前短窗口Python未显式enable_thinking，实际response存在reasoning_content/reasoning_tokens；官方deep-thinking文档确认qwen3.8-flash默认思考、可extra_body enable_thinking=false。6固定历史输入（两家庭机械block0/1/3）关闭thinking对照已启动`sim/probe_window_vlm_speed.py`，图/提示/max_tokens1800保持，120s/SDK重试0/无协议修复，独立`run/window-vlm-speed-*/`。旧批次耗时非配对稳定延迟，输出一致不等于正确；冻结基线不改。核实短窗口仍全部原图分批＋历史代表重复：val4机械72799token > 全场32440，不宣称预算节省；先检验thinking再做精简输出/抽帧/背压。
+
+- [ ] 机械时间上限窗口试验已启动`sim/home_window_vlm_trial.py`，输出独立`run/home-window-vlm-*/`：家庭val4全部57与val5全部40观察，纯机械10s vs视觉提前＋10s上限，最短视觉关闭间隔5s。每块全部原观察逐图输出，可跨多个区域；历史最多3身份各1代表＋摘要，旧摘要不被当前猜测覆盖。时间上限在下一观察到达检查（约3s cadence，可能12s），末尾显式flush不冒充日常间隔。2单测通过，网络120s无重试、最多1协议修复、首次合法回答保留；不读评分标签、不覆盖旧失败/冻结基线。此为顺序因果窗口实验，忙时背压/实时定时器尚未接入产品，不能宣称在线默认可用。自动分组仅作辅助切块，不再依赖其及时跨门正确性。
+
+- [ ] 事件触发家庭v1实跑启动`run/home-vlm-event-v1/`：val4原57观察/44核心、val5原40观察/28核心（用户提56/44，已说明库存差异，不改输入）。首次即时、组变化连续2观察确认、最短5s、最长30s；采用每时刻冻结prefix而非最终组。val4固定10s17调用 vs event10，val5 12 vs5；事件查询图29/14，高于固定17/12，省token尚待实测。两个家庭两个arm共44正常请求，最多1协议修复/请求，原基线未覆盖。build、2调度单测通过。混合时间证据逐图标注ID/时间，身份只绑定最新目标；不把包内所有观察强赋同地点，未确认/尾部保留pending。不宣称全57/40逐图识别；目前观测时间调度回放，不是忙时合并生产队列，组内新颖度触发及实时背压尚未实现。
+
+- [ ] 用户纠正增量调用节奏：恢复10s基线，对比10s检查＋局部组未变跳过（最长20s复查），分组仅调度/选证据，不强制整组身份。原观察未提交保持待确认。家庭causal prefix调度`sim/prepare_home_vlm_schedule.py`：val4 17→11请求、val5 12→8请求，但查询图17→19、12→14，不提前宣称token下降。共享VLM上下文路径去重、最近图减至1、历史最多3地点首/末；原每点试验保留。val5完整120s两个arm顺序实跑已启动`run/home-vlm-scheduling-v1/`（20正常请求最多20修复），val4仅准备调度不付费。分组本轮读现有冻结prefix，未读最终分组/未来图，是回放对照非实时生产调度器；耗时/usage及短访问漏检待结果审查。
+
+- [x] 增量VLM v1设计/适配/回放已实现：`incremental-spatial-vlm.ts`固定qwen3.8-flash、当前图＋最近3观察＋最多4地点各3代表＋文字目录、same/known/new/unknown严格ID协议，120s超时/最多1协议修复/原上下文响应usage留存。`src/sim/incremental-spatial-replay.ts`顺序prefix失败停止。build及3单测通过，val5前10观察小预算试验已启动`run/incremental-spatial-val5-v1/`，未得到结果前不认证识别/实时吞吐。设计局限见`docs/research/incremental-spatial-v1.md`；不接生产默认，不改冻结结果。
+
+- [x] 增量记忆底座第一步：`src/agent/incremental-spatial-memory.ts`串行后台识别队列、稳定UUID地点、same/known/new/unknown、原观察保留、摘要＋最多3代表观察＋最近3观察模型上下文、原子保存/恢复、同步快照/文字查询；无未来输入、未知清空当前地点、失败不毒化队列、重复ID/逆序拒绝。build与2项测试通过。代表为首＋最近，不宣称最优抽帧；尚未绑定真实VLM、超时/限流、变化Agent或RequestAgent，也无可逆修订，不能勾选整合完成。
+- [ ] 下一步绑定qwen3.8-flash增量识别适配器和原始响应日志，现有录像prefix回放验证；再提供只读查询桥接/地点变化事件。当前认知器可注入仅用于底座测试，未付费实跑。
+
+- [x] 纯VLM离线基线已commit `2a9d3ed`，未push。只提交基线运行/冻结/预算对比及必要依赖，其他HSSD/UI试验、README/TODO旧修改和用户需求原文件未混入。
+- [x] 产品链路初查：`src/trial-server.ts`当前仍由`SceneAgent.observe`生成生产地点，RequestAgent通过回调读取其内存中的scenes/history/transitions与变化事件；尚未接入冻结纯VLM结果。先建立后台记忆整理→持久化版本快照→RequestAgent只读查询桥接，不能把全场百秒推理直接塞进请求路径。
+- [ ] 整合第一步：明确采集观察ID/时间/图像来源与稳定地点ID，设计纯VLM区域编号到持久化身份的映射及修订接口；不能将每次输出P/R编号当跨批稳定ID。保留旧生产入口和回归，先离线导入/回放验收，再接后台队列。
+- [ ] 产品验收最小闭环：录制→后台整理→历史查询→重启恢复→第二次录制重访→用户纠正及撤回。无硬件先用现有回放适配器，不宣称真实设备同步和延迟已通过。
+
+- [x] 按用户决定冻结纯VLM离线基线：`docs/research/pure-vlm-offline-baseline-v1.json`原输入/答案/提示hash；脚本`sim/freeze_pure_vlm_baseline.py`拒绝覆盖变化。快速复用4方法预算，0新增API调用，结果`docs/research/pure-vlm-baseline-quick-comparison.md`。短视觉组旧批次输出较少，但未证明等质省预算，不做AI一致率排行榜；全部全图并非压缩实验。
+- [ ] 当前方向改为产品投入使用：先审计采集→记忆→RequestAgent链路，再真实设备采集/重启持久化/重访验收；后台整理不阻塞请求，预算限流/超时降级/未知拒绝/可逆纠正。离线冻结不是在线默认切换，家庭原成功记录保持。暂停追加分组参数和大规模预算网格，实际产品瓶颈再触发压缩对照。
+
+- [x] 无预分组首轮消融完成：`run/single-observation-vlm-1791942042733665700/` 7有效场景×2arm=14首次合法完成。逐观察全场聚合家庭固定val4 44/44、val5 28/28；同批time-2 42/44、27/28。HSSD core参考一致singleton123/166=74.1%，time-2 129/166=77.7%；边界3/15与1/15，仍弱。HSSD输入token65854/65314仅+0.8%，总token130194/123695仅+5.3%，非预算翻倍；耗时815.6/722.8秒。time-2较上一轮140/166下降，尤其会议33/40→19/40，暴露模型/粒度不稳定，不能挑上轮好结果宣称稳定84.3%。仅全场离线/开发标签，无部署/在线可靠性/家庭边界保证，详见`docs/research/single-observation-vlm-results.md`。
+
+- [ ] 用户新增无预分组消融：家庭val4/val5＋5有效HSSD，每观察一个独立单元，VLM一次全场聚合；同批重新跑每2观察分块控制，全部原图/原提示不变，无目录，不把“一大组”当不分组。记录真实API token、请求/纠错、耗时/传输字节，不能先假设单元数翻倍就花费翻倍。家庭固定44/28查询/边界与HSSD暂定AI参考分别报告，原计划第6输入失败保留；输出独立`run/single-observation-vlm-*/`，不覆盖成功基线与网站。脚本`sim/single_observation_vlm_trial.py`。
+
+- [x] 首轮固定时间分块消融完成：5有效场景×4arm=20推理全完成，181观察每arm全展示，test.5同提示，原第6输入失败保留。内部严格AI标签一致：time-2 140/166=84.3%，time-4 134/166=80.7%，time-6 101/166=60.8%，visual-cap-4 124/166=74.7%；边界召回分别3/15、2/15、3/15、0/15。证明复杂视觉分块没有稳定优势，不能把同模型AI标签一致当真人准确率。完整`run/hssd-chunking-trial-1791899137179507700/`，见`docs/research/hssd-chunking-ablation-results.md`。此完成项仅首轮，不代表已固定最优参数、重复可靠性或灵活评审已完成。
+
+- [ ] 固定时间“笨分组”消融：HSSD原观察按时间连续2/4/6点分块，再交同一VLM聚合；对照既有视觉切分＋最多4点上限。所有方案展示全部同一批原观察，不因首中末代表差异偷换证据预算；分块不是物理跨门断言，原图/时间/分母不变。记录未知、协议/网络失败、耗时、重复地点及错合并，不只看组内纯度。若时间分块同样好或更好，接受结论，不能预设复杂分组必胜。
+- [ ] 找HSSD合适研究配置：先跑上述四arm五有效场景（原计划6含采集失败），不跑新轨迹、不调渲染、模型qwen3.8-flash。输出独立`run/hssd-chunking-trial-*/`，不覆盖以前回答/网页。当前`7368aca`仅保家庭原基线，**不是适用HSSD的统一最终冻结算法**；家庭原18/23组与输入不动，不宣称VLM重复必全对。
+- [ ] 已知目录消融：同一目标观察，无目录／仅地点名称／名称＋实例内容＋范围规则／再加独立代表图；目录版本事先固定、代表与测试图分开。允许unknown/目录外，明确这是给定目录识别，不冒充无标签发现。暂定AI目录不当人工真值，不能按模型输出调整目录后挑好分数。
+- [ ] 未知区域发现机制：隐藏部分目录地点，检验不强塞已有类；以可见实例命名新候选、保留功能未知/范围未知，之后支持关联、待定、新建及建议合并/拆分。目录带版本与证据，历史原观察不删，修订可撤回。connected、same-local-place、same-region与同建筑严格区分；走廊内部不是整段边界。
+- [ ] 灵活/多解评测：明确相同／明确不同／歧义关系分开；人工确认硬约束与可接受粒度，现有AI标签只能是参考解释。检索/回访、约束冲突、碎片化、unknown、修订稳定性及覆盖同时报告；不同参考划分不自动算错，全合并/逐图新地点也不算成功。严格标签一致率单列，不当真实准确率，边界零样本记NA，失败和歧义不偷偷从分母去掉。
+- [x] 已完成原分组对照、多代表试验及VLM局部地点两轮：多代表更保守未改善HSSD；第一轮181锚点自报grounded、80关系arm78成功，第二轮21请求20成功，层级说明改善部分住宅/房间混淆但unknown增加且局部粒度仍波动。不能把181编号当181个正确地点，不按有利重复覆盖。见`docs/research/hssd-place-organization-round2-diagnosis.md`。
+
+- [ ] 用户批准先修算法并重跑旧家庭：实现弱初锚点后续正证据恢复（阈值不降/不偷看未来/不重叠/gap隔离）、利用既有native帧密集上下文证据且保留原观察时间/分母；旧bundle加载/追加继承legacy策略，新fresh observe记录新策略。62 TS视觉记忆单测实际通过。`run_anchor_recovery_trial.py`真实重跑已启动，先val4/val5要求44/44和28/28不降，再5例HSSD；输出`run/anchor-recovery-v1/`不覆盖任何旧预测。渲染改善另批，当前不改原图；具体设计/纠正旧THOR也有弱首对但24 supported锚点的区别见`docs/research/anchor-recovery-trial-v1.md`。
+
+- [x] HSSD既有输入工程测试完成：6计划例中5例/181观察完成回放/保存重启/冻结test.5推理/独立预标签/网站，1例两次采集失败未推理。五例局部组全1，2例各40点全未知，3例38/40/23点绑定1区域；未知80/181不能把101已绑定当正确。仅2例完成回访，3例截断。结果页已更新，正确率未测；本轮仅揭示失败/诊断，不验收泛化可靠。
+
+- [x] HSSD独立同机位灯光诊断完成：原配置复现与原JPEG差0.79/0.84像素；显式default灯光灰度31.1/29.3→35.2/33.0，正面SIFT53→74、75→100，但首对多bearing置信度两种都0.117<0.4。不是“补默认灯即可解决”；官方参考照明/材质/更高分辨率未验证，不把渲染质量简单归因数据源。原视频与预测未覆盖，见`run/hssd-lighting-diagnostic-v2/report.json`/`pair-diagnostic.json`及诊断文档。
+
+- [ ] HSSD原因诊断：首三例旧cohort首对0/0.117/0.117<0.4，切组始终固定段首两点，弱启动使后续路径失效；第三例仍有4强相邻pair和SIFT中位数182却1组。证据矩阵诊断未改cache，完整query方向也未救首对；matcher只回candidate最佳query是额外接口风险。VO155/159、146/151、137/159未知；观察2秒首转84–96°，大组仅给3代表导致混组未知或过度确定。已读原回答/原图，不当功能polygon作物理真值。照明默认no_lights且未显式配置，独立同机位default灯光A/B执行中，原输入/预测不覆盖，见`docs/research/hssd-cause-diagnosis.md`。
+
+- [ ] 用户看视频反馈HSSD复杂/标签不清/渲染明显劣于先前THOR，要求在现有样本测试：5例有效视频已发布，第6例黑画面两次采集失败保留。`sim/run_hssd_six.py --require-existing-captures`仅测用户看过的原始采集，不换轨迹/增强画面/改test.5 prompt与分组阈值。已有3例局部组均1：教室候选40/40未知；办公候选38点和会议候选40点均绑定1区域（不当正确率）。剩2例运行中。质量/未知/耗时/回访/失败解释报告`sim/summarize_hssd_results.py`，网页`http://127.0.0.1:8879/hssd-videos/results.html`；具体物理区域真值未确认，准确率未测，画质差不能简单归因HSSD资源本身或与THOR直接对比。
+
+- [ ] 用户优先人工看六个视频：暂停完整推理队列（已成功采集/推理/预标签不覆盖），新增`http://127.0.0.1:8879/hssd-videos/`全屏审核页与根入口，六例按钮切换、24fps视频/拖动/速度、整体通过/不通过及理由、时间点问题、浏览器保存与导出，无姓名字段。前三例视频HTTP200/Range206已验证，后三例`sim/prepare_hssd_videos.py`采集队列运行，界面明确未就绪并可刷新。此审核针对视频采集质量，不冒称具体区域真值。修复完整队列读UTF8推理报告导致的Windows UnicodeDecodeError；预标签/预测仍独立显示。
+
+- [ ] HSSD首6例完整测试：固定revision依赖闭包2546文件/503MB已下载，全部本地hash/1635 GLB格式/6 stage官方LFS hash验证通过（物体未逐个核对上游hash）。61项TS视觉记忆/75项Python离线回归通过。首例实际action采集/全链路运行中；首次孤立目标/门口polygon间隙导致无路线的失败保留，修正采集器选连通岛/仅允许≤0.35m未标注门口间隙且拒绝已知室外。真实24fps/hash与全解码、图像VO/记忆、原模拟timestamps、中途保存重启、test.5原prompt无评分推理、独立AI预标签/原网站队列见`docs/research/hssd-six-integration.md`。无人工真值正确率未测，不把脚本/回归通过当6例通过。浏览器工具当前未连接，只能做HTTP/文件校验，不能称真实浏览器互动验收通过。
+
+- [x] 用户确认当前非商业评估使用HSSD；固定revision实查168/168 rigid场景及区域配置，找到教室3/会议室3/办公室60/图书室2等用途标签（不是建筑类型认证）。20候选与先6试渲染清单见`docs/research/hssd-initial-selection.md`，室外不计筛选，异常尺度候选暂缓；尚无mesh下载/新轨迹/Qwen测试/网站条目，下一步完整依赖manifest和下载预算。
+
+- [ ] HM3D许可阻碍后改查HSSD：CC BY-NC4.0，当前HF gated=false、配置公开可读，无HM3D学术限定但仍非商业，产品用途/云处理需核对。Habitat smoke补dataset-config与scene ID入口，静态物体进navmesh；HSSD实资产未下载/未渲染。确认用途后固定revision依赖下载/筛20结构，不整库拉取、不保证学校/办公室类型，见`docs/research/hssd-access-and-rendering.md`。
+
+- [x] Habitat隔离环境与公开室内测试场景GPU冒烟完成：Python3.9/Habitat0.3.3；WSL默认CUDA/EGL失败，指定EGL默认＋Mesa D3D12/NVIDIA后真实RTX4060渲染3×320三视图，navmesh约565m²。已查看正常大厅图像(v5)，失败/软件渲染/随机屋顶空白(v1–4)保留。不是20正式案例完成；受限大楼许可仍需本人申请，未下载/上传云API。
+
+- [ ] 20多类型室内案例前置：许可/渲染准备。HM3D本人Matterport学术非商业申请；Stanford旧表单已迁移Redivis，核对最新条件，仓库许可不覆盖数据。云Qwen上传/审核分享用途不能默认获准，需本人确认。隔离WSL Habitat安装已启动（Python3.9/Habitat0.3.3 headless，不改THOR），公开城堡测试资产38MB hash通过；待GPU三视图/navmesh冒烟，正式大楼数据未下载。见`docs/research/indoor-building-data-access.md`。
+
+- [ ] 用户要求改为大量多域批量数据，不逐个加案例：目标100建筑/户型×6轨迹×80–120点（4.8万–7.2万计划点，非已生成），非住宅尽量≥1/3；独立建筑去重、结构分层、多路线队列/断点续作。官方已查ProcTHOR-10K住宅、HM3D住宅/商业/公共扫描、Stanford 2D-3D-S教育/办公3建筑6区域；需许可/存储与Habitat或网格渲染接入，全景采样不冒充连续轨迹。见`docs/research/dataset-expansion-plan.md`新增批量方案，原逐例计划已标历史。
+
+- [ ] 数据扩展计划已整理：现有正式可审核val4/val5共97观察点、仅2相似户型/路线，密集视频和重复推理不增加案例。优先val-3双卧室（元数据候选、待视觉确认），另选实体分隔厨房/客厅及走廊/回环结构，每新户型2不同路线；第一批计划240–360点，不直接批量沿用往返。路线计划入口、辅助/盲审分离、持久化重启重访测试待建，见`docs/research/dataset-expansion-plan.md`。
 
 **当前固定研究基线v1.1.0-test.5：主体＋单图标注v3.1**。每组唯一主体/边界/未知，单图异议不覆盖身份，具体错误反馈与最多2次协议修复冻结。val5重复核心均28/28，但边界召回25%/0%、附注5/0，不认证普遍可靠性。旧test.4方案按`docs/archive/spatial-memory-version-history.md`历史记录归档，原代码/报告/标签路径不搬动删除；不选择某次结果覆盖网页。下一阶段多结构/路线及人工审查。
 
@@ -89,51 +298,6 @@ test.3发布检查：memory 75、visual-pipeline 61、helmet/repair 7、research
 待办：独立盲审与固定分类对照、历史版本真实适配、剩余混合组与历史身份恢复；手机接入另立阶段，暂缓。
 
 ### 本轮整理及研究/应用边界
-
-#### 新阶段：模拟器开发闭环（用户要求2026-10-15）
-
-##### 当前优先纠偏：可靠超大空间数据集（用户强调）
-
-- [ ] 学校重复建点已做固定上下文诊断：原17响应reasoning_content均空，只有输出reason可审计；100s只改参考措辞后恢复旧ID，116s仍失败，去掉重复摘要候选后恢复。支持提示歧义+历史重复身份污染，非单纯召回/数据库错；单次非统计证明。`docs/application/school-replay-diagnosis.md`，新增3请求26556输入/1806输出token，原库未改。仍需新增点复核/独立负例验证，不能把摘要相同自动合并。
-
-- [ ] 学校门控整段已跑完但建模未通过：90→62组/17请求，135906输入+8673输出token、pending0、9候选点；人工发现同一红砖通道P4/P5/P3重复建点，候选已召回，理由误读“参考禁止分类”。失败轮另计3请求17434/1651token。提示歧义已修正+mock验证，尚未第三次付费复测，不扩大8小时；详见`docs/application/school-gated-replay.md`。
-
-- [ ] 按90组2秒学校流实跑本地门控→召回→VLM：选62/跳28/17窗口，跳过帧不伪造身份。首轮第二窗历史参考多输出assignment，协议修复仍失败，3请求17434输入/1651输出token已保留；新增独立v2严格目标白名单提示并测试，新目录重跑。结果与局限`docs/application/school-gated-replay.md`。
-
-- [x] 固定小开发样本：学校已渲染P0000/19观察全集及8观察校准子集，不重新渲染/不伪造一天；`docs/application/spatial-v2-visual-recall.md`。
-- [x] 独立v2旧地点视觉候选接入校准service：本地RGB布局/直方图sidecar，2视觉+1近期候选、原图交VLM判定；当前归属JOIN支持修订/重启。10地点夹具召回退出近期6节点旧ID；真实RGB代理对rank1；同8观察真实v2两调用12838输入/1071输出token，pending0。冻结v1和默认API未改。
-- [ ] v2仍是粗视觉基线，磁盘查询O(N)，尚未接UI通用retrieve；本次真实数据仅3地点，没有证明超过近期候选预算的真实召回改善。需独立多路线、相似地点负例和更久重访评测，必要时升级学习型视觉索引；门控/8小时未启动。
-
-- [x] 学校/社区Ground P0000三摄+metadata全部下载并哈希；学校177.5s/210m，确认室外至室内，社区53.5s此路线主要室外。学校19观察原图/私有位姿分离打包，8观察2窗口真实Flash非thinking校准：12850输入/1133输出token，pending0，1个80s几何代理重访ID一致。`docs/application/spatial-calibration-protocol.md`记录方法/失败/局限，不当15分钟或8小时通过。
-- [x] 新实验校准入口增加真实单价配置、窗口/观察限制、保守请求预留、usage缺失停机；mock成功计费/调用前预算拒绝/usage缺失停止测试通过。未改v1冻结源。
-- [ ] 长测前仍需旧地点视觉候选扩展（本轮未实现）、多独立路线、15–30分钟校准和真实端点价格；当前不启动8小时，token小校准不等于金额硬限或实际账单。
-
-- [ ] 用户进一步明确目标为中小型学校/校园，最好室内外连通，不局限超大楼宇；候选需核实教室/走廊/楼梯/庭院或操场实际可走，不用多小屋/室外贴图拼接替代。用户选择先核实MansionWorld许可；发现CC-BY与research-only冲突、官网license仍TODO，未代签/未下载资产/未向作者发帖。完整办理入口和询问模板`docs/application/campus-dataset-access.md`，HM3D仅真实室内支线。
-- [x] 独立Chrome实际DOM/点击/三摄及历史图加载/未确认付费拒绝验收通过，报告/截图`run/dev-browser-acceptance-v3/`，0模型调用；不再将“内置browser bridge未连”当无法做浏览器自动化的唯一阻塞。bridge本身仍未连，完整人工验收未做。
-- [x] 替代内核AI2-THOR5.0/WSLg同步三摄320px实渲染通过`run/thor-alternative-runtime-v1/`；Habitat只读设备权限诊断`run/large-building-preflight-v1/habitat.json`、MansionWorld固定revision/zip大小/hash/冲突许可审计`run/mansionworld-license-audit-v1/`已保存。前者FloorPlan1不是学校数据，后者只是元数据，不当已取得大楼资产。
-
-- [ ] 把旧HSSD小场景路线验证与新大楼数据方案分开；不能将3建筑初探118观察、重复采样或多小屋拼接称为超大连续场景。定义可测的可通行面积、最大连通区、房间/楼层、路径直径、跨会话覆盖和图像质量准入门槛。
-- [ ] Habitat已查明当前用户无`/dev/dri/renderD128`读写权限（不在render/video组），sudo需要交互认证；补环境预检和明确修复步骤，修复后实际渲染/路线重测，不自动改系统权限。AI2-THOR Linux64已本机实测FloorPlan1渲染成功，是可运行替代内核，不代表大楼资产已就绪。
-- [ ] 核查MANSION/MansionWorld作为大型可编辑主候选：已确认公开代码/数据入口及固定HF revision；额外资产、定制THOR包、真实大楼尺寸与连通性待核验。CC-BY4.0与数据卡research-only文字冲突须确认；多层加载型移动与连续楼梯分开记录。HM3DSEM保留真实扫描支线，不代签个人授权。
-- [ ] 浏览器内置桥接仍未连接，尝试独立本机Chrome自动化完成实际DOM/点击/图片与截图验收，不再只停在HTTP测试。
-
-
-- [x] 本轮验证：13空间相关TS测试、模拟器真实HTTP重启/拒绝未确认付费/GT无路由、数据打包/评测防泄漏测试、v1冻结hash通过。真实Request前两次预算失败均留档；修复最终收口后，同房间样本7调用/16632tokens/16.866秒、读取并引用两条旧原观察；变化Agent恢复旧front并VLM fallback判未变化。记录`docs/application/spatial-dev-console.md`，不把这一例当新轨迹/变化准确率。
-- [x] 比较结果新增独立`changes.sqlite`有来源审计，可经retrieve读历史变化；同观察对幂等、重启恢复与录制/截止权限测试通过。原身份事件保留，merge/split尚不自动重标旧事件。
-- [ ] 明确阻塞：桌面browser未连接；WSL Habitat独立路线渲染3次EGL_NOT_INITIALIZED，保留失败目录，未改系统权限/驱动、未伪造新路线。3建筑已有初探118三摄观察已打包，但跨session任务0，不能勾选完整Benchmark；HM3DSEM授权/资产和可编辑变化尚缺。开发入口`http://127.0.0.1:3417`，启动/限制见`docs/application/spatial-dev-console.md`。
-
-- [x] 1. 已阅读EAM主线visual_memory/controller及实现状态，核对原证据、时间权限、代表恢复/inspect预算与引用约束；不引入oracle位姿/房间服务，不将其诊断当本项目效果。见`docs/application/spatial-memory-v2-plan.md`。
-- [x] 2a. 新增独立`spatial-retrieve.ts`只读检索v1库：观察理由词项AND检索、地点/录制/历史截止过滤、按游标恢复非代表原观察、每查询12次search/8图默认预算、已inspect引用校验、同录制有界真实历史序列；无匹配unknown。词法/时间召回不是视觉向量算法；原v1冻结hash不改。
-- [x] 3a. 独立模拟器本机开发服务`src/sim/spatial-dev-server.ts`和`sim/spatial-dev.html`：三摄/录制切换、逐观察入队、显式付费识别、状态/分页归属、历史证据图、访问/边、Agent结构化预置任务、修订。只绑定127.0.0.1，CSRF随机token、GT无路由、不接产品trial-server。HTTP入队/拒绝未确认付费/重启恢复通过；桌面浏览器未连接，未声称可视验收。
-- [x] 4a. RequestAgent新增可选历史检索/inspect工具及引用拒绝、8轮/120秒预算，模拟器模式qwen3.8-flash显式enable_thinking=false；旧产品模式不改。SceneChange桥接同已赋身份严格早于当前原观察的front图，unknown不比较、重启可重建基线；桥接测试无付费通过。真实模型完整运行待验证。
-- [x] 5a. `build_long_term_dataset.py`按真实capture输出三同步相机、跨session时钟、原时间、媒体hash；GT/tasks分离到evaluation-only，拒绝重复轨迹冒充独立session/同建筑跨split/覆盖输出。首个真实HSSD40观察包`run/long-term-pilot-v2-initial`完成，0跨会话任务（只有初探，明确不冒充Benchmark）。新独立路线两次EGL失败保留，正在核查系统Mesa/WSL依赖。HM3DSEM许可/资产、可编辑变化和5类会话尚待完成。
-- [ ] 2. 实现有预算、证据来源及unknown的retrieve算法，供地点识别、RequestAgent与场景变化Agent共用；覆盖久远地点、时间约束、无匹配、过时记忆、录制隔离测试，不向模型泄露模拟真值。
-- [ ] 3. 仅模拟器增加电脑开发者界面：录制/轨迹选择与回放、当前多摄图、队列/调用状态、记忆节点/访问/边、检索证据、变化与Agent结果、人工修订；不加语言输入输出，不改实际产品前端。
-- [ ] 4. 接入现有RequestAgent和场景变化Agent，结构化调试任务触发，共用持久记忆/retrieve，区分历史证据与当前确认，完成重启及错误回归。
-- [ ] 5. 按`建议9.md`构建多会话长期记忆数据协议/生成器：初探、不同路线重访、相似区域干扰、可编辑环境变化、仅依赖历史的任务。算法只获图像/时间/允许事件；位姿/房间/全局图真值仅评测使用。核实场景可用性/许可，不把文档中的论文或数据规模直接当已验证事实。
-- [ ] 6. 分别报告身份、Recall@K、历史路径检索（非导航成功）、变化/过时记忆和成本；真实数据与合成工程测试分开。完成可运行端到端验证，分阶段commit，不覆盖旧实验与冻结库。
-
-
 
 ### 当前三条工作线（2026-10-11更新）
 

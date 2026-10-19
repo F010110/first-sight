@@ -56,6 +56,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset', type=Path); parser.add_argument('report', type=Path); parser.add_argument('output', type=Path)
     parser.add_argument('--labels', type=Path); parser.add_argument('--fps', type=float, default=2)
+    parser.add_argument('--dense-video', type=Path, help='Actual rendered 24fps intermediate poses, never frame holds')
+    parser.add_argument('--dataset-id', help='Stable unique scene identifier for catalog and review storage')
     args = parser.parse_args()
     if not 0 < args.fps <= 60:
         raise ValueError('Invalid display fps')
@@ -68,16 +70,33 @@ def main():
     if not frames or numbers != list(range(numbers[0], numbers[-1] + 1)) or numbers[0] != 0 or any(sample['tick'] > numbers[-1] for sample in payload['samples']):
         raise ValueError('Require contiguous recorded triple frames starting at zero')
     args.output.mkdir(parents=True, exist_ok=False); (args.output / 'images').mkdir()
-    export_display_video(frames, args.output / 'motion-hold.mp4', args.fps)
+    if args.dense_video:
+        shutil.copy2(args.dense_video, args.output / 'motion-hold.mp4')
+    else:
+        export_display_video(frames, args.output / 'motion-hold.mp4', args.fps)
     for sample, window in zip(payload['samples'], windows):
         source = args.dataset / 'triple' / Path(window['frame']).name
         sample['imageSha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
         import cv2
         cv2.imwrite(str(args.output / sample['image']), display_triptych(cv2.imread(str(source))))
     payload.update({'fps': args.fps, 'frameCount': len(frames), 'reportSha256': hashlib.sha256(args.report.read_bytes()).hexdigest(), 'datasetId': args.dataset.name, 'regionReasons': report.get('answer', {}).get('regions', []), 'reviewScope': 'AI suggestions visible; assisted human review, NOT blind independent labels. Playback fps is presentation speed, not real capture time.'})
+    if args.dataset_id:
+        payload['datasetId'] = args.dataset_id
     payload['displayInterpolation'] = {'method': 'frame-hold', 'subdivisions': 12, 'outputFps': args.fps * 12, 'syntheticDisplayOnly': True, 'viewGapPixels': 24}
+    if args.dense_video:
+        payload['displayInterpolation'] = {'method': 'actual-action-rerender', 'outputFps': 24, 'syntheticDisplayOnly': False, 'viewGapPixels': 24, 'videoSha256': hashlib.sha256(args.dense_video.read_bytes()).hexdigest()}
+        payload['reviewScope'] = 'AI prelabels and predictions are separate outputs; assisted human review, not independent ground truth. Dense video renders actual intermediate action positions at 24fps.'
     (args.output / 'data.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
     template = Path(__file__).with_name('region_review_site.html').read_text(encoding='utf-8')
+    if args.dense_video:
+        template = template.replace('24fps重复原帧，无淡化；原素材2帧/秒，不代表新增转动细节。', '24fps真实小步动作逐帧渲染，无重复帧平滑或淡化；原观察素材2帧/秒。')
+    capture_manifest = args.dataset / 'manifest.json'
+    if capture_manifest.exists():
+        source = read(capture_manifest)
+        if source.get('protocol') == 'hssd-action-capture-v1':
+            payload['attribution'] = {'dataset': 'Habitat Synthetic Scenes Dataset (HSSD)', 'authors': 'Mukul Khanna et al.', 'source': source['source'], 'license': source['license'], 'licenseUrl': 'https://creativecommons.org/licenses/by-nc/4.0/', 'revision': source['revision'], 'changes': 'Rendered camera views, action tour, review video, image-only AI suggestions.'}
+            (args.output / 'data.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+            template = template.replace('</header>', '</header><span class="muted">素材：HSSD · Khanna等；<a href="https://3dlg-hcvc.github.io/hssd/">来源</a> · <a href="https://creativecommons.org/licenses/by-nc/4.0/">CC BY-NC 4.0</a>；衍生渲染/视频/AI建议，仅非商业审核。</span>', 1)
     (args.output / 'index.html').write_text(template, encoding='utf-8')
     print(json.dumps({'site': str(args.output), 'samples': len(payload['samples']), 'frames': len(frames)}))
 
