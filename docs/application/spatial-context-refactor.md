@@ -35,6 +35,14 @@ full-replay-v2在36组已完成后停止。第37—40组推理引用的地点ID�
 
 `run/window-context-identity-probe-v1`遗漏next的失败保留；`run/window-context-identity-probe-v2`首次40组/10窗口复跑完成：2地点、40归属、8条unknown、pending=0，11次模型调用、估算USD0.01661。该次真实运行没有触发旧ID拒绝，不能说它实测证明了恢复分支；恢复分支由确定性回归测试验证。下一全量回放使用新目录`run/window-context-full-replay-v3`，旧v2的失败不覆盖，不报告为最终分数。
 
+### v3无问题窗口的额外描述
+
+full-replay-v3记录88组完整流程成功后，第89—90组VLM返回有效空间判断，并额外输出“当前位置是体育馆内部”。该窗口question=null；旧控制器把任何answer动作都要求绑定用户问题，于是错误中止，而非真的引用了未读来源。原始response保留在requests/0023。
+
+修复只改无问题窗口的控制处理：额外描述仍双写，并另标unsolicited-answer-retained-not-delivered；有效空间判断照常保存，返回observed，不触发用户回答、播报或虚构待答任务。有真实用户问题时，引用、拒答字段及历史来源校验全部保持原样。相应回归测试确认原描述留存在两类记忆，但返回值不含用户answer。
+
+13项控制循环/真实SQLite/检索/短期Context/窗口调度测试通过；下一完整回放另存`run/window-context-full-replay-v4`，从第一窗口使用同一冻结版本重跑，不拼接v3前88组与新版后续结果。
+
 下文保留早期实现与失败分析以便追溯；其中“自动恢复Context”“每观察一次调用”的描述已经失效。
 
 ## 版本范围

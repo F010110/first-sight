@@ -43,3 +43,9 @@ test('observation-only output may omit control action without inventing a user a
  const loop=new SpatialContextLoop(memory,async()=>({assessment} as any));const result=await loop.run(current);assert.equal(result.status,'observed');assert.equal(outputs.length,1);assert.equal((outputs[0] as any).decision.next,undefined);
  const questionLoop=new SpatialContextLoop(memory,async()=>({assessment} as any),1);assert.equal((await questionLoop.run(current,'question')).status,'budget-exhausted');
 });
+test('unsolicited answer is retained but not delivered as a user response',async()=>{
+ const outputs:any[]=[];const memory:SpatialLoopMemory={async writeObservation(){},async writeOutput(_t,v){outputs.push(v)},async writeAssessment(){},async search(){return []},async inspect(){return []}};
+ const loop=new SpatialContextLoop(memory,async()=>({assessment,next:{kind:'answer',answer:'当前位置是体育馆内部。',sourceIds:['current'],abstained:false}}));
+ const result=await loop.run(current);assert.equal(result.status,'observed');assert.ok(!('answer' in result));assert.ok(outputs.some(o=>o.status==='unsolicited-answer-retained-not-delivered'));
+ assert.ok(loop.context.view().outputs.some(o=>(o.value as any).status==='unsolicited-answer-retained-not-delivered'));
+});

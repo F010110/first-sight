@@ -63,7 +63,11 @@ export class SpatialContextLoop {
     for(const target of observations){const assessment=assessments.find(a=>a.observationId===target.id)!;const persisted=await this.memory.writeAssessment(assessment);this.context.commitHistorical(persisted??assessment);}
     if(action.kind==='finish'){if(question!==null)throw Error('Question requires an explicit answer or abstention');return {status:'observed' as const,calls:call+1};}
     if(action.kind==='answer'){
-     if(question===null||typeof action.answer!=='string'||!action.answer.trim()||typeof action.abstained!=='boolean'||!Array.isArray(action.sourceIds)||action.sourceIds.some(id=>!inspected.has(id))||!action.abstained&&!action.sourceIds.length)throw Error('Invalid answer or uninspected evidence');
+     if(question===null){
+      const retained={status:'unsolicited-answer-retained-not-delivered',answer:action};await this.memory.writeOutput?.(observation.atMs,retained);this.context.recordOutput(observation.atMs,retained);
+      return {status:'observed' as const,calls:call+1,unsolicitedAnswerRetained:true};
+     }
+     if(typeof action.answer!=='string'||!action.answer.trim()||typeof action.abstained!=='boolean'||!Array.isArray(action.sourceIds)||action.sourceIds.some(id=>!inspected.has(id))||!action.abstained&&!action.sourceIds.length)throw Error('Invalid answer or uninspected evidence');
      if(requirements.historicalEvidenceRequired&&!action.abstained&&!action.sourceIds.some(id=>!id.startsWith('model-output:')&&!observations.some(o=>o.id===id))){feedback='The question requires a PREVIOUS window image. Every observations ID is in the CURRENT window, not a previous window. Your answer cited only current images or prior statements and is rejected. Inspect an older context source or search then inspect, or explicitly abstain if unavailable. Do not claim a current-window image belongs to a previous window.';const rejected={status:'rejected-source-scope',question,answer:action};await this.memory.writeOutput?.(observation.atMs,rejected);this.context.recordOutput(observation.atMs,rejected);continue;}
      return {status:'answered' as const,calls:call+1,answer:action.answer,sourceIds:action.sourceIds,abstained:action.abstained};
     }
