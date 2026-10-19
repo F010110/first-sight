@@ -27,6 +27,7 @@ export function spatialProtocolError(value:unknown,observations:SpatialObservati
  }
  if(action.kind==='answer'){
   if(question===null)return null; // Retained as a statement, never delivered.
+  if(typeof action.answer==='string'&&action.abstained===false&&/无法确认|无法确定|无法判断|无法证明|不能确认|不能确定|不能证明|证据不足|^(无法|不确定|不知道|不能[。！，])/.test(action.answer))return 'The answer explicitly refuses verification but abstained=false. Keep the answer wording and set abstained=true; do not invent certainty.';
   return typeof action.answer==='string'&&!!action.answer.trim()&&typeof action.abstained==='boolean'&&strings(action.sourceIds)&&action.sourceIds.every(id=>inspected.has(id))&&(action.abstained||action.sourceIds.length>0)?null:'answer requires nonempty answer, boolean abstained and sourceIds citing only delivered evidence; nonabstaining answers need citations.';
  }
  return `Unknown next.kind=${JSON.stringify(action.kind)}. Only finish/search/inspect/answer are supported. New locations belong in assessments[].placeId as new-1 etc, never in a new-place control action.`;

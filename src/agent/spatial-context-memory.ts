@@ -5,6 +5,7 @@ import {SpatialRetriever,type RetrievalSession} from './spatial-retrieve.js';
 import type {SpatialObservation} from './incremental-spatial-memory.js';
 import type {SpatialLoopMemory} from './spatial-context-loop.js';
 import type {ContextJudgment} from './spatial-working-context.js';
+import type {MemoryClock} from './memory-clock.js';
 
 /** New databases only. Uses the actual topology retriever, not an archive scan. */
 export class SpatialContextMemory implements SpatialLoopMemory {
@@ -16,7 +17,7 @@ export class SpatialContextMemory implements SpatialLoopMemory {
  private outputs:DatabaseSync;
  private aliases=new Map<string,string>();
  private candidates=new Map<string,{id:string;atMs:number;placeId:string|null;reason:string}>();
- constructor(path:string){this.store=new SpatialSqliteStore(path);this.retriever=new SpatialRetriever(path);this.outputs=new DatabaseSync(path);this.outputs.exec('CREATE TABLE IF NOT EXISTS model_outputs(seq INTEGER PRIMARY KEY,at_ms REAL NOT NULL,kind TEXT NOT NULL,raw TEXT NOT NULL);CREATE INDEX IF NOT EXISTS model_output_time ON model_outputs(at_ms);');}
+ constructor(path:string,private readonly clock?:MemoryClock){this.store=new SpatialSqliteStore(path);this.retriever=new SpatialRetriever(path);this.outputs=new DatabaseSync(path);this.outputs.exec('CREATE TABLE IF NOT EXISTS model_outputs(seq INTEGER PRIMARY KEY,at_ms REAL NOT NULL,kind TEXT NOT NULL,raw TEXT NOT NULL);CREATE INDEX IF NOT EXISTS model_output_time ON model_outputs(at_ms);');}
  close(){this.outputs.close();this.retriever.close();this.store.close();}
  counts(){return this.store.counts();}
  async writeOutput(atMs:number,value:unknown){this.outputs.prepare('INSERT INTO model_outputs(at_ms,kind,raw) VALUES(?,?,?)').run(atMs,'unverified-model-output',JSON.stringify(value));}
@@ -25,7 +26,7 @@ export class SpatialContextMemory implements SpatialLoopMemory {
   const existing=this.store.observation(observation.id);if(existing){if(JSON.stringify(existing)!==JSON.stringify(observation))throw Error('Observation identity collision');}else this.store.ingest(observation);
   this.observation=structuredClone(observation);this.last=null;this.candidates.clear();this.aliases.clear();
   const assignment=this.store.assignment(observation.id);if(assignment)this.last={observationId:observation.id,atMs:observation.atMs,placeId:assignment.placeId,reason:assignment.reason,sourceIds:[observation.id]};
-  this.session=this.retriever.session({asOfMs:observation.atMs-1},12);
+  this.session=this.retriever.session({asOfMs:observation.atMs-1,...this.clock?{clock:this.clock}:{}},12);
  }
  async writeAssessment(assessment:ContextJudgment){
   const observation=this.store.observation(assessment.observationId);if(!observation)throw Error('No active observation');

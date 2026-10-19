@@ -55,3 +55,13 @@ test('unknown control action gets bounded correction, no invented location or ex
  assert.equal((await loop.run(current)).status,'observed');assert.equal(calls,2);assert.equal(writes,1);assert.ok(outputs.some(o=>o.status==='rejected-model-protocol'));assert.ok(outputs.some(o=>o.decision?.next?.kind==='new-place'));
  const bad=new SpatialContextLoop(memory,async()=>({assessment,next:{kind:'new-place'}} as any),2);assert.equal((await bad.run(current)).status,'budget-exhausted');assert.equal(writes,1);
 });
+test('public named-source requirement cannot be satisfied by a different current image',async()=>{
+ let calls=0;const memory:SpatialLoopMemory={async writeObservation(){},async writeAssessment(){},async search(){return [{id:'past',atMs:1,placeId:null,reason:'past'}]},async inspect(){return [{id:'past',atMs:1,placeId:null,reason:'past'}]}};
+ const loop=new SpatialContextLoop(memory,async input=>{calls++;assert.deepEqual(input.requiredEvidenceIds,['current','past']);const a={...assessment,placeId:null};if(calls===1)return {assessment:a,next:{kind:'answer',answer:'current only',sourceIds:['current'],abstained:false}};assert.ok(input.feedback?.includes('PUBLIC question'));if(calls===2)return {assessment:a,next:{kind:'search',query:'past'}};if(calls===3)return {assessment:a,next:{kind:'inspect',ids:['past']}};return {assessment:a,next:{kind:'answer',answer:'current and past',sourceIds:['current','past'],abstained:false}};},4);
+ const result=await loop.runWindow([current],'Compare named records',{requiredEvidenceIds:['current','past']});assert.equal(result.status,'answered');assert.equal(calls,4);if(result.status==='answered')assert.deepEqual(result.inspectedIds,['current','past']);
+});
+test('explicit refusal cannot pass with a false abstention flag',async()=>{
+ let calls=0;const memory:SpatialLoopMemory={async writeObservation(){},async writeAssessment(){},async search(){return []},async inspect(){return []}};
+ const loop=new SpatialContextLoop(memory,async input=>{calls++;if(calls>1)assert.ok(input.feedback?.includes('abstained=true'));return {assessment,next:{kind:'answer',answer:'无法确定这个未知事实。',sourceIds:[],abstained:calls>1}};},2);
+ const result=await loop.run(current,'unknown?');assert.equal(result.status,'answered');if(result.status==='answered'){assert.equal(result.abstained,true);assert.equal(result.answer,'无法确定这个未知事实。');}assert.equal(calls,2);
+});

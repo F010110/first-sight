@@ -1,9 +1,10 @@
 import {mkdir,readFile,writeFile} from 'node:fs/promises';import {join,extname} from 'node:path';
 import type {SpatialLoopModel,SpatialLoopDecision} from './spatial-context-loop.js';
 import {boundedNetworkRetry} from './bounded-network-retry.js';
+import {wallTime,type MemoryClock} from './memory-clock.js';
 
 /** Dedicated experimental unified protocol; the old scored prompt stays frozen. */
-export function spatialContextVlm(root:string,maxCalls=12,maxEstimatedUSD=.25,onRaw?:(atMs:number,value:unknown)=>Promise<void>):SpatialLoopModel{
+export function spatialContextVlm(root:string,maxCalls=12,maxEstimatedUSD=.25,onRaw?:(atMs:number,value:unknown)=>Promise<void>,clock?:MemoryClock):SpatialLoopModel{
   let calls=0,cost=0,unknownCallsReserved=0;
  return async input=>{
   if(calls>=maxCalls)throw Error('Unified VLM total request budget exhausted');
@@ -24,8 +25,13 @@ assessments必须按窗口顺序恰好覆盖所有观察，每项sourceIds必须
   }
   content.push({type:'text',text:'地点建立规则：不知道建筑用途/房间名称，或context没有旧地点，不等于无法判断具体空间。首次观察若可见连贯的墙体、路径、开口、围栏等正面布局证据，可以建立new-1候选；同一窗口里连续的同一具体区域共用该候选。已有context地点有对应具体布局时可沿用。只有当前图不足以辨认区域或证据冲突时才用null；不要仅因历史为空而全部null。反过来，不能仅因旧地点匹配失败就新建不同地点，仍需正面空间证据。'});
   if(input.feedback)content.push({type:'text',text:`RUNTIME VALIDATION FEEDBACK: ${input.feedback} This rejection is authoritative; old context.outputs are only a record of statements, not permission to reuse a rejected identity.`});
-  for(const observation of input.observations)for(const path of observation.frames){const mimeType=extname(path).toLowerCase()==='.png'?'image/png':'image/jpeg';content.push({type:'text',text:`WINDOW_TARGET sourceId=${observation.id}; atMs=${observation.atMs}`},{type:'image_url',image_url:{url:`data:${mimeType};base64,${(await readFile(path)).toString('base64')}`}});}
+  if(clock)content.push({type:'text',text:`Calendar clock (${clock.kind}, not verified capture date): ${JSON.stringify(clock)}. Current time=${wallTime(current.atMs,clock)}. For a named calendar record use search.query equal to the COMPLETE ISO timestamp only, with no extra words. Then inspect its returned ID; context statements cannot substitute for the named image.`});
+  for(const observation of input.observations)for(const path of observation.frames){const mimeType=extname(path).toLowerCase()==='.png'?'image/png':'image/jpeg';content.push({type:'text',text:`WINDOW_TARGET sourceId=${observation.id}; atMs=${observation.atMs}${clock?`; calendarTime=${wallTime(observation.atMs,clock)} (${clock.kind})`:''}`},{type:'image_url',image_url:{url:`data:${mimeType};base64,${(await readFile(path)).toString('base64')}`}});}
   for(const image of evidenceImages)content.push({type:'text',text:`HISTORICAL sourceId=${image.id}`},{type:'image_url',image_url:{url:`data:${image.mimeType};base64,${image.data}`}});
+  if(input.question!==null){
+   const missing=(input.requiredEvidenceIds??[]).filter(id=>!input.inspectedIds.includes(id));
+   content.push({type:'text',text:`当前唯一待回答问题：${input.question}\n这不是context.outputs里的旧问题。旧答案只供背景，不能复制到新问题；必须回应本题。若正文表示不能确定/无法确认等，next.abstained必须true。\n由公开问题中的当前/明确时间地址得到的必需来源=${JSON.stringify(input.requiredEvidenceIds??[])}；其中本轮尚未查看=${JSON.stringify(missing)}。${missing.length?'肯定回答前必须先取证：用问题的完整ISO时间字符串作为search.query，再inspect返回的准确ID；不要用其他时间的相似图代替。检索未完成只能继续取证或明确拒答。':'可以依据实际已给图像回答，但仍须引用支持本题的准确来源。'}`});
+  }
   await writeFile(join(directory,'input.json'),JSON.stringify(metadata,null,2));
   // Reserve before sending; even an interrupted request remains in the audit.
    const ledger=()=>writeFile(join(root,'usage.json'),JSON.stringify({calls,estimatedUSD:cost,unknownCallsReserved,maxEstimatedUSD,estimate:'Public list price plus unknown-call reservations, not invoice'}));

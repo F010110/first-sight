@@ -16,7 +16,7 @@ export interface SpatialLoopDecision {
  assessments?:ContextJudgment[];
  next:{kind:'finish'}|{kind:'search';query:string}|{kind:'inspect';ids:string[]}|{kind:'answer';answer:string;sourceIds:string[];abstained:boolean};
 }
-export type SpatialLoopModel=(input:{context:SpatialContextView;observations:SpatialObservation[];question:string|null;candidates:ContextEvidence[];inspectedIds:string[];evidenceImages:Array<{id:string;mimeType:string;data:string}>;remainingCalls:number;historicalEvidenceRequired:boolean;feedback:string|null})=>Promise<SpatialLoopDecision>;
+export type SpatialLoopModel=(input:{context:SpatialContextView;observations:SpatialObservation[];question:string|null;candidates:ContextEvidence[];inspectedIds:string[];evidenceImages:Array<{id:string;mimeType:string;data:string}>;remainingCalls:number;historicalEvidenceRequired:boolean;requiredEvidenceIds?:string[];feedback:string|null})=>Promise<SpatialLoopDecision>;
 
 /** New experimental control loop. No legacy path is silently replaced.
  * Each inference, including retrieval continuations, must assess current space.
@@ -31,7 +31,7 @@ export class SpatialContextLoop {
  async run(observation:SpatialObservation,question:string|null=null){
   return this.runWindow([observation],question);
  }
- async runWindow(observations:SpatialObservation[],question:string|null=null,requirements:{historicalEvidenceRequired?:boolean}={}){
+ async runWindow(observations:SpatialObservation[],question:string|null=null,requirements:{historicalEvidenceRequired?:boolean;requiredEvidenceIds?:string[]}={}){
   if(!observations.length||observations.length>4||new Set(observations.map(o=>o.id)).size!==observations.length||observations.some((o,i)=>i>0&&o.atMs<observations[i-1]!.atMs))throw Error('Invalid observation window');
   const observation=observations[observations.length-1]!;
   if(this.busy)throw Error('Spatial context loop is already running');this.busy=true;
@@ -42,8 +42,9 @@ export class SpatialContextLoop {
    let candidates:ContextEvidence[]=[];const allowed=new Set<string>(),inspected=new Set<string>(observations.map(o=>o.id));const evidenceImages:Array<{id:string;mimeType:string;data:string}>=[];
    let feedback:string|null=null;
    for(const entry of [...this.context.view().recent,...this.context.view().anchors])if(entry.atMs<observation.atMs)for(const id of entry.sourceIds)allowed.add(id);
+   for(const entry of this.context.view().retrieved)if(entry.atMs<observation.atMs)allowed.add(entry.id);
    for(let call=0;call<this.maxCalls;call++){
-    const decision=await this.model({context:this.context.view(),observations:structuredClone(observations),question,candidates:structuredClone(candidates),inspectedIds:[...inspected],evidenceImages:structuredClone(evidenceImages),remainingCalls:this.maxCalls-call,historicalEvidenceRequired:requirements.historicalEvidenceRequired??false,feedback});
+    const decision=await this.model({context:this.context.view(),observations:structuredClone(observations),question,candidates:structuredClone(candidates),inspectedIds:[...inspected],evidenceImages:structuredClone(evidenceImages),remainingCalls:this.maxCalls-call,historicalEvidenceRequired:requirements.historicalEvidenceRequired??false,requiredEvidenceIds:requirements.requiredEvidenceIds??[],feedback});
     // Preserve even rejected structured outputs as model statements, not facts.
     const output={question,decision,status:'unverified-model-output'};await this.memory.writeOutput?.(observation.atMs,output);this.context.recordOutput(observation.atMs,output);
     const protocolError=spatialProtocolError(decision,observations,question,inspected,allowed);
@@ -72,7 +73,9 @@ export class SpatialContextLoop {
      }
      if(typeof action.answer!=='string'||!action.answer.trim()||typeof action.abstained!=='boolean'||!Array.isArray(action.sourceIds)||action.sourceIds.some(id=>!inspected.has(id))||!action.abstained&&!action.sourceIds.length)throw Error('Invalid answer or uninspected evidence');
      if(requirements.historicalEvidenceRequired&&!action.abstained&&!action.sourceIds.some(id=>!id.startsWith('model-output:')&&!observations.some(o=>o.id===id))){feedback='The question requires a PREVIOUS window image. Every observations ID is in the CURRENT window, not a previous window. Your answer cited only current images or prior statements and is rejected. Inspect an older context source or search then inspect, or explicitly abstain if unavailable. Do not claim a current-window image belongs to a previous window.';const rejected={status:'rejected-source-scope',question,answer:action};await this.memory.writeOutput?.(observation.atMs,rejected);this.context.recordOutput(observation.atMs,rejected);continue;}
-     return {status:'answered' as const,calls:call+1,answer:action.answer,sourceIds:action.sourceIds,abstained:action.abstained};
+     const missing=action.abstained?[]:(requirements.requiredEvidenceIds??[]).filter(id=>!action.sourceIds.includes(id));
+     if(missing.length){feedback=`Answer omitted the specific source records named by the PUBLIC question: ${JSON.stringify(missing)}. Search the question's exact calendar timestamp and inspect the returned source, then cite every supported part. Similar-looking or other-time records cannot substitute. If unavailable, explicitly abstain. No answer key is provided.`;const rejected={status:'rejected-public-source-requirement',question,answer:action,missingIds:missing};await this.memory.writeOutput?.(observation.atMs,rejected);this.context.recordOutput(observation.atMs,rejected);continue;}
+     return {status:'answered' as const,calls:call+1,answer:action.answer,sourceIds:action.sourceIds,abstained:action.abstained,inspectedIds:[...inspected]};
     }
     if(action.kind==='search'){
      if(!action.query.trim()||action.query.length>200)throw Error('Invalid search');
