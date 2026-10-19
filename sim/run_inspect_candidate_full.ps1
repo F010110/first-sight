@@ -11,6 +11,9 @@ function Save-State($value) {
 }
 function Invoke-Phase($phase, $arguments) {
     $process = Start-Process -FilePath (Get-Command node).Source -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $lifecycle "$phase.stdout.log") -RedirectStandardError (Join-Path $lifecycle "$phase.stderr.log")
+    # Retain a native handle while the child is alive. Otherwise Windows
+    # PowerShell may observe HasExited but lose access to the exit code.
+    $retainedHandle = $process.Handle
     while (-not $process.HasExited) {
         Save-State @{phase=$phase;at=[DateTime]::UtcNow.ToString('o');processId=$process.Id;alive=$true;supervisorPid=$PID}
         Start-Sleep -Seconds 15
@@ -18,6 +21,7 @@ function Invoke-Phase($phase, $arguments) {
     }
     $process.WaitForExit()
     @{phase=$phase;at=[DateTime]::UtcNow.ToString('o');processId=$process.Id;exitCode=$process.ExitCode} | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $lifecycle "$phase.exit.json")
+    if ($null -eq $process.ExitCode) { throw "$phase exit code unavailable; verify completion artifacts before recovery. Preserve run and logs." }
     if ($process.ExitCode -ne 0) { throw "$phase failed, exit code $($process.ExitCode). Preserve run and logs." }
 }
 try {
