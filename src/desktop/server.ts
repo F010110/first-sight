@@ -12,6 +12,7 @@ import {CampusSource} from '../assistant/campus-source.js';
 import {PreparedMemory} from '../assistant/prepared-memory.js';
 import {QuestionAgent,QuestionMemoryService} from '../assistant/question-agent.js';
 import type {ObservationService} from '../assistant/contracts.js';
+import {latestQuestionTimeline} from '../assistant/playback-timeline.js';
 
 /** Parse JPEG dimensions, without trusting browser-provided MIME/dimensions. */
 export function jpegSize(bytes:Buffer){
@@ -41,7 +42,7 @@ async function body(req:IncomingMessage){
  for await(const chunk of req){size+=chunk.length;if(size>7000000)throw Error('Request body exceeds limit');chunks.push(chunk);}
  return JSON.parse(Buffer.concat(chunks).toString());
 }
-export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:string,port:number,preparedMemoryReady=false){
+export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:string,port:number,preparedMemoryReady=false,positions:Array<{atMs:number;episodeNumber:number;name:string}>=[]){
  const web=resolve('web/desktop');
  const images=new Map<string,{path:string;id:string;direction:string;mime?:string;sha256?:string}>();
  let importing=false;
@@ -105,6 +106,7 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
    if(req.headers.origin&&req.headers.origin!==`http://${host}`)return json(403,{error:'Cross-origin requests rejected'});
    const url=new URL(req.url??'/','http://'+host);
    if(req.method==='GET'&&url.pathname==='/api/state')return json(200,runtime.view());
+   if(req.method==='GET'&&url.pathname==='/api/playback-timeline')return json(200,{...await latestQuestionTimeline(resolve('run/campus-assistant-pilot')),positions});
    if(req.method==='GET'&&url.pathname==='/api/videos'){
     const manifest=await videoManifest();return json(200,{fps:manifest.fps,memoryReady:preparedMemoryReady,episodes:manifest.episodes.map((episode:Record<string,unknown>)=>({...episode,src:'/video/'+episode.src}))});
    }
@@ -256,7 +258,7 @@ async function main(){
  const capabilities=assistantCapabilities(memory,enabled).map(capability=>!prepared&&['visual.current','memory.query','task.watch','task.find'].includes(capability.id)?{...capability,available:false,reason:'独立空间记忆尚未准备好，问答不触发空间建模。'}:capability);
  const runtime=new AssistantRuntime(new QwenPlanner(join(root,'dialogue-requests'),enabled),memory,journal,capabilities,enabled);
  await journal.append('session-created',{state:runtime.view(),root,preparedRoot:preparedRoot??null,modelEnabled:enabled,spatialModelCalls:0,questionBudgetUSD:.25,dialogueMaxCalls:64});
- const server=desktopServer(runtime,journal,root,port,!!prepared);
+ const server=desktopServer(runtime,journal,root,port,!!prepared,prepared?.positionTimeline()??[]);
  server.listen(port,'127.0.0.1',()=>console.log(`First Sight 桌面助手：http://127.0.0.1:${port}\n模型：${enabled?'仅问答模型已授权；本进程不运行空间建模':'未启用；可看连续视频和已有回放'}\n独立空间记忆：${preparedRoot??'尚未准备好'}\n本地记录：${root}`));
  const shutdown=()=>{server.close();void runtime.close().then(()=>journal.snapshot(runtime.view())).then(()=>process.exit(0));};
  process.once('SIGINT',shutdown);process.once('SIGTERM',shutdown);

@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {SpatialRetriever,type RetrievalSession} from '../agent/spatial-retrieve.js';
 import type {SpatialObservation} from '../agent/incremental-spatial-memory.js';
 import type {SpatialContextView} from '../agent/spatial-working-context.js';
+import {shortLocation} from './playback-timeline.js';
 
 export interface MemorySnapshot {availableAtMs:number;observationIds:string[];context:SpatialContextView}
 export interface PreparedObservation {observation:SpatialObservation;sha256:string[];availableAtMs:number}
@@ -19,6 +20,7 @@ export class PreparedMemory {
  }
  select(id:string){const row=this.rows.find(row=>row.observation.id===id);if(!row)throw Error('Observation not in prepared memory');return structuredClone(row);}
  selectAt(atMs:number){const row=[...this.rows].reverse().find(row=>row.observation.atMs<=atMs);if(!row)throw Error('No observation available at this time');return structuredClone(row);}
+ positionTimeline(){return this.snapshots.map(snapshot=>({atMs:snapshot.availableAtMs,episodeNumber:Number(snapshot.context.current?.recordingId?.match(/^campus-episode-(\d+)$/)?.[1]??0),name:shortLocation(snapshot.context.location?.reason??'',snapshot.context.location?.placeId??null)}));}
  context(atMs:number,current:SpatialObservation){
   if(current.atMs>atMs)throw Error('Current observation lies in the future');
   const snapshot=[...this.snapshots].reverse().find(row=>row.availableAtMs<=atMs);

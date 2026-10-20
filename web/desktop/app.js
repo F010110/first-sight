@@ -1,8 +1,9 @@
-import {projectRecording} from './view-model.js';
+import {projectRecording,projectAtTime,formatSampleTime} from './view-model.js';
 const $=id=>document.getElementById(id);
 let mode='recording',recording=null,index=0,timer=null,liveRunning=false,polling=false,selection=0;
 let imageKey='',questionKey='',answerKey='';
 let videos=[],memoryReady=false,videoEpisode=null;
+let playbackTimeline={questions:[],positions:[]};
 const video=$('continuous-video');
 const say=text=>{$('status').textContent=text;};
 async function get(path){const response=await fetch(path);const value=await response.json();if(!response.ok)throw Error(value.error??'连接失败');return value;}
@@ -18,12 +19,21 @@ function messages(id,rows,empty){
  if(id==='questions')questionKey=key;else answerKey=key;
  const box=$(id);box.replaceChildren();
  if(!rows.length){const p=document.createElement('p');p.className='empty';p.textContent=empty;box.append(p);}
- for(const row of rows){const item=document.createElement('article');item.className='message';const time=document.createElement('small');time.textContent=new Date(row.atMs).toLocaleTimeString();const text=document.createElement('div');text.textContent=row.text;item.append(time,text);box.append(item);}box.scrollTop=box.scrollHeight;
+  for(const row of rows){const item=document.createElement('article');item.className='message';const time=document.createElement('small');time.textContent=row.sampleTime?formatSampleTime(row.atMs):new Date(row.atMs).toLocaleTimeString();const text=document.createElement('div');text.textContent=row.text;item.append(time,text);box.append(item);}box.scrollTop=box.scrollHeight;
 }
 function stop(){if(timer!==null)clearTimeout(timer);timer=null;$('play').textContent='播放';}
+function renderVideoTime(seconds=video.currentTime){
+ if(!videoEpisode)return;
+ const atMs=videoEpisode.sourceScheduleStartMs+seconds*1000;
+ const view=projectAtTime(playbackTimeline,videoEpisode.episodeNumber,atMs);
+ $('sample-time').textContent=formatSampleTime(atMs);$('location-name').textContent=view.location;
+ messages('questions',view.question?[{id:view.question.id,text:view.question.question,atMs:view.question.atMs,sampleTime:true}]:[],'等待下一个问题');
+ messages('answers',view.answer!==null?[{id:view.question.id,text:view.answer,atMs:view.question.answerAtMs,sampleTime:true}]:[],view.question?'用户问题Agent正在回答…':'等待助手回答');
+}
 function renderRecording(){
  if(!recording)return;
- const view=projectRecording(recording.timeline,index);images(view.frame?.views??[]);messages('questions',view.questions,'暂无问题');messages('answers',view.answers,'等待助手回答');
+  const view=projectRecording(recording.timeline,index);images(view.frame?.views??[]);messages('questions',view.questions,'暂无问题');messages('answers',view.answers,'等待助手回答');
+  if(view.frame?.scheduleAtMs!==undefined){$('sample-time').textContent=formatSampleTime(view.frame.scheduleAtMs);$('location-name').textContent=projectAtTime(playbackTimeline,view.frame.episodeNumber,view.frame.scheduleAtMs).location;}
  $('position').value=String(index);$('progress').textContent=`${index+1} / ${recording.timeline.length} · 校园回放`;
  say(index===recording.timeline.length-1?'回放结束': '回放 · 语音内容以文字显示');
 }
@@ -37,19 +47,18 @@ async function selectSource(){
  const version=++selection;stop();video.pause();recording=null;images();messages('questions',[],'暂无问题');messages('answers',[],'等待助手回答');
  const id=$('source').value;mode=id==='live'?'live':id.startsWith('video:')?'video':'recording';
  if(previousMode==='live'&&mode!=='live'&&liveRunning){try{await post('/api/simulator',{action:'pause'});liveRunning=false;}catch(error){mode='live';$('source').value='live';say('未能暂停当前输入：'+error.message);return;}if(version!==selection)return;}
- video.hidden=mode!=='video';$('views').hidden=mode==='video';
+  video.hidden=mode!=='video';$('views').hidden=mode==='video';
+  $('question-form').hidden=mode!=='live';$('sample-time').textContent='--:--:--';$('location-name').textContent='尚未判断';
  const canAsk=mode==='live'||mode==='video'&&memoryReady;
  $('question').disabled=!canAsk;$('send').disabled=!canAsk;$('question').placeholder=mode==='recording'?'回放中显示当时的用户问题':mode==='video'&&!memoryReady?'空间记忆准备中，完成后即可独立问答':'输入你想问的问题…';$('position').disabled=mode==='live';
- if(mode==='video'){videoEpisode=videos.find(row=>row.episodeNumber===Number(id.slice(6)));video.src=videoEpisode.src;$('position').max=String(Math.round(videoEpisode.durationSeconds*10));$('position').value='0';$('progress').textContent='原生10fps观看 · VLM只读取每2秒观察';say(memoryReady?'空间记忆已缓存 · 问答不重新建模':'连续视频可看 · 独立空间记忆准备中');await poll();return;}
+  if(mode==='video'){videoEpisode=videos.find(row=>row.episodeNumber===Number(id.slice(6)));video.src=videoEpisode.src;$('position').max=String(Math.round(videoEpisode.durationSeconds*10));$('position').value='0';$('progress').textContent='原生10fps · 问题与回答按样本时间展示';say('时间轴回放 · 不重新调用模型');renderVideoTime(0);return;}
  if(mode==='live'){await poll();return;}
  say('正在载入回放…');
  try{const value=await get('/api/recording?run='+encodeURIComponent(id));if(version!==selection)return;recording=value;index=0;$('position').max=String(Math.max(0,value.timeline.length-1));renderRecording();}catch(error){if(version===selection)say(error.message);}
 }
 async function poll(){
   if(!['live','video'].includes(mode)||polling)return;polling=true;const version=selection;
-  if(mode==='video'){
-   try{if(memoryReady&&!video.paused)await syncScene();const state=await get('/api/state');if(version!==selection)return;messages('questions',state.messages.filter(m=>m.role==='user'),'暂无问题');messages('answers',state.messages.filter(m=>m.role==='assistant'),'等待助手回答');say(state.processing?'助手正在回答，画面继续播放…':!memoryReady?'连续视频可看 · 空间记忆准备中':state.modelEnabled?'问答独立运行 · 不重新建模':'仅观看 · 当前未启用付费问答');}catch(error){if(version===selection)say(error.message);}finally{polling=false;}return;
-  }
+   if(mode==='video'){polling=false;return;}
  try{const [state,sim]=await Promise.all([get('/api/state'),get('/api/simulator')]);if(mode!=='live'||version!==selection)return;
   liveRunning=sim.running;images(sim.images);messages('questions',state.messages.filter(m=>m.role==='user'),'暂无问题');messages('answers',state.messages.filter(m=>m.role==='assistant'),'等待助手回答');
   $('play').textContent=sim.running?'暂停':'播放';$('progress').textContent=`${sim.index} / ${sim.total} · 校园录制输入`;
@@ -65,9 +74,10 @@ $('play').addEventListener('click',async()=>{
 $('position').addEventListener('input',()=>{if(mode==='video'){video.currentTime=Number($('position').value)/10;return;}stop();index=Number($('position').value);renderRecording();});
 async function syncScene(force=false){if(!videoEpisode)return;await post('/api/scene',{episodeNumber:videoEpisode.episodeNumber,sourceSeconds:video.currentTime,force});}
 video.addEventListener('play',()=>{$('play').textContent='暂停';});video.addEventListener('pause',()=>{$('play').textContent='播放';});
-video.addEventListener('timeupdate',()=>{if(mode==='video'){$('position').value=String(Math.round(video.currentTime*10));$('progress').textContent=`${video.currentTime.toFixed(1)} / ${videoEpisode.durationSeconds.toFixed(1)}秒 · 原生10fps · VLM 0.5fps`;}});
+video.addEventListener('timeupdate',()=>{if(mode==='video'){$('position').value=String(Math.round(video.currentTime*10));$('progress').textContent=`${video.currentTime.toFixed(1)} / ${videoEpisode.durationSeconds.toFixed(1)}秒 · 原生10fps`;renderVideoTime();}});
+video.addEventListener('seeked',()=>{if(mode==='video')renderVideoTime();});
 $('question-form').addEventListener('submit',async event=>{event.preventDefault();if(!['live','video'].includes(mode))return;const text=$('question').value.trim();if(!text)return;$('send').disabled=true;try{if(mode==='video')await syncScene(true);await post('/api/messages',{text,capability:'auto'});$('question').value='';await poll();}catch(error){say(error.message);}finally{$('send').disabled=mode==='recording'||mode==='video'&&!memoryReady;}});
 async function init(){
-  try{const [runs,display]=await Promise.all([get('/api/recordings'),get('/api/videos')]);videos=display.episodes;memoryReady=display.memoryReady;for(const row of videos){const option=document.createElement('option');option.value='video:'+row.episodeNumber;option.textContent=`校园第${row.episodeNumber}段 · 连续画面`;$('source').append(option);}for(const [i,run] of runs.entries()){const option=document.createElement('option');option.value=run.id;option.textContent=i===0?'最新校园试跑':`校园试跑 ${runs.length-i}`;$('source').append(option);}if(videos.length)$('source').value='video:'+videos[0].episodeNumber;else if(runs.length)$('source').value=runs[0].id;else $('source').value='live';await selectSource();}catch(error){say(error.message);}
+   try{const [runs,display,timed]=await Promise.all([get('/api/recordings'),get('/api/videos'),get('/api/playback-timeline')]);playbackTimeline=timed;videos=display.episodes;memoryReady=display.memoryReady;for(const row of videos){const option=document.createElement('option');option.value='video:'+row.episodeNumber;option.textContent=`校园第${row.episodeNumber}段 · 连续画面`;$('source').append(option);}for(const [i,run] of runs.entries()){const option=document.createElement('option');option.value=run.id;option.textContent=i===0?'最新校园试跑':`校园试跑 ${runs.length-i}`;$('source').append(option);}if(videos.length)$('source').value='video:'+videos[0].episodeNumber;else if(runs.length)$('source').value=runs[0].id;else $('source').value='live';await selectSource();}catch(error){say(error.message);}
 }
 void init();setInterval(()=>void poll(),1000);

@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {projectRecording} from '../../web/desktop/view-model.js';
+import {projectRecording,projectAtTime,formatSampleTime} from '../../web/desktop/view-model.js';
 
 test('simple frontend has only view, question and spoken-text sections',async()=>{
  const html=await readFile(new URL('../../web/desktop/index.html',import.meta.url),'utf8');
@@ -9,12 +9,22 @@ test('simple frontend has only view, question and spoken-text sections',async()=
  for(const title of ['当前视图','用户问题','VLM语音输出'])assert.ok(html.includes(title));
  for(const hidden of ['原始JSON','任务与能力边界','开发诊断','/recording.js'])assert.equal(html.includes(hidden),false);
 });
+test('timed question and answer persist until next question; rewinding hides future output',()=>{
+ const timeline={questions:[{id:'q1',episodeNumber:1,atMs:6000,question:'第一问',answer:'第一答',answerAtMs:8000},{id:'q2',episodeNumber:1,atMs:14000,question:'第二问',answer:'第二答',answerAtMs:17000}],positions:[{episodeNumber:1,atMs:6000,name:'室外通道'}]};
+ assert.equal(projectAtTime(timeline,1,5999).question,null);
+ assert.equal(projectAtTime(timeline,1,6000).question.id,'q1');assert.equal(projectAtTime(timeline,1,7999).answer,null);
+ assert.equal(projectAtTime(timeline,1,13999).answer,'第一答');
+ assert.equal(projectAtTime(timeline,1,14000).question.id,'q2');assert.equal(projectAtTime(timeline,1,14000).answer,null);
+ assert.equal(projectAtTime(timeline,1,18000).answer,'第二答');assert.equal(projectAtTime(timeline,1,9000).answer,'第一答');
+ assert.equal(projectAtTime(timeline,2,18000).question,null);assert.equal(projectAtTime(timeline,1,9000).location,'室外通道');
+ assert.equal(formatSampleTime(28806100),'08:00:06.1');
+});
 test('playback shows only delivered speech, never raw VLM reasoning or future frames',()=>{
  const events=[
   {kind:'task-created',atMs:1,value:{id:'q',text:'这是哪里？'}},
   {kind:'campus-frame',value:{id:'first',views:[]}},
   {kind:'vlm-language',value:{output:{assessments:[{reason:'不应显示'}]}}},
-  {kind:'message-delivered',value:{id:'a',atMs:4,text:'这里是室外。'}},
+  {kind:'message-delivered',value:{id:'a',taskId:'q',atMs:4,text:'这里是室外。'}},
   {kind:'campus-frame',value:{id:'future',views:[]}}
  ];
  const waiting=projectRecording(events,2);assert.equal(waiting.frame.id,'first');assert.equal(waiting.answers.length,0);assert.equal(waiting.questions[0].text,'这是哪里？');
