@@ -18,7 +18,22 @@ def main():
     parser.add_argument("--substeps", type=int, default=1, help="Visualization-only interpolated camera poses per recorded action")
     parser.add_argument("--fov", type=float, default=90, help="Square pinhole horizontal/vertical FOV, not diagonal lens FOV")
     parser.add_argument("--projection", choices=["pinhole", "equidistant-fisheye"], default="pinhole")
+    parser.add_argument("--hardware-profile", type=Path, help="Explicit uncalibrated 640x480 hardware approximation; leaves legacy default unchanged")
+    parser.add_argument("--hardware-source-size", type=int, help="Override source raster for approximation; larger requires sufficient X display resolution")
     args = parser.parse_args()
+    profile = None
+    if args.hardware_profile:
+        from sim.capture.hardware_camera import load_profile, geometry
+        if args.fov != 90 or args.projection != 'pinhole':
+            raise ValueError('Do not combine hardware profile with legacy FOV/projection switches')
+        profile = load_profile(args.hardware_profile)
+        if args.hardware_source_size:
+            if not 640 <= args.hardware_source_size <= 4096:raise ValueError('Hardware source size must be 640..4096')
+            profile['simulationAssumption']['renderSourceSize'] = args.hardware_source_size
+        camera_geometry, _, _, _ = geometry(profile)
+        args.fov = camera_geometry['sourceSquarePinholeFovDegrees']
+    elif args.hardware_source_size:
+        raise ValueError('--hardware-source-size requires --hardware-profile')
     if not 0 < args.fov < 180:
         raise ValueError("FOV must be strictly between 0 and 180")
     manifest = json.loads((args.episode / "manifest.json").read_text())
@@ -46,7 +61,8 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     for name in ("frames", "left", "right", "triple"):
         (args.output / name).mkdir()
-    controller = Controller(scene=json.loads(args.house.read_text()), width=manifest["image_size"], height=manifest["image_size"], fieldOfView=args.fov, platform=Linux64, gridSize=0.25, rotateStepDegrees=90, snapToGrid=False, quality=manifest["quality"], server_timeout=120)
+    source_size = profile['simulationAssumption']['renderSourceSize'] if profile else manifest["image_size"]
+    controller = Controller(scene=json.loads(args.house.read_text()), width=source_size, height=source_size, fieldOfView=args.fov, platform=Linux64, gridSize=0.25, rotateStepDegrees=90, snapToGrid=False, quality=manifest["quality"], server_timeout=120)
     audits = []
     try:
         for row in rows:
@@ -61,7 +77,8 @@ def main():
             # Use the main camera's self-culling instead, replaying orientation only
             # in a static scene; these renders are not fed to the motion timeline.
             sides = []
-            for yaw in (row["yaw"] - 90, row["yaw"] + 90):
+            offsets = profile['rigYawDegrees'] if profile else {'left': -90, 'right': 90}
+            for yaw in (row["yaw"] + offsets['left'], row["yaw"] + offsets['right']):
                 event = controller.step(action="TeleportFull", position={k: row[k] for k in ("x", "y", "z")}, rotation={"x": 0, "y": yaw % 360, "z": 0}, horizon=row["horizon"], standing=True, forceAction=True)
                 if not event.metadata["lastActionSuccess"]:
                     raise RuntimeError(event.metadata.get("errorMessage", "Camera render failed"))
@@ -69,6 +86,13 @@ def main():
                     raise RuntimeError("Side optical center differs from front")
                 sides.append(Image.fromarray(event.frame.copy()))
             left, right = sides
+            if profile:
+                import numpy as np
+                from sim.capture.hardware_camera import project
+                projected = [project(np.asarray(image), profile) for image in (front, left, right)]
+                front, left, right = [Image.fromarray(image) for image, _ in projected]
+                if row == rows[0]:
+                    (args.output / 'camera-model.json').write_text(json.dumps({**projected[0][1], 'profile': profile}, indent=2))
             if args.projection == "equidistant-fisheye":
                 import numpy as np
                 from sim.capture.wide_angle_camera import equidistant_fisheye
@@ -77,7 +101,7 @@ def main():
                 if row == rows[0]:
                     Image.fromarray(projected[0][1]).save(args.output / "valid-pixels.png")
             size = front.width
-            triple = Image.new("RGB", (size * 3, size + 24), "white")
+            triple = Image.new("RGB", (size * 3, front.height + 24), "white")
             draw = ImageDraw.Draw(triple)
             for index, (label, image) in enumerate((("LEFT -90 deg", left), ("FRONT 0 deg", front), ("RIGHT +90 deg", right))):
                 triple.paste(image, (index * size, 24))
@@ -94,8 +118,16 @@ def main():
         (args.output / "windows.jsonl").write_text("".join(json.dumps(row) + "\n" for row in windows))
         (args.output / "observations.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows if row["tick"] <= max_tick))
         (args.output / "pose-audit.json").write_text(json.dumps(audits, indent=2))
-        (args.output / "camera-model.json").write_text(json.dumps({"projection": args.projection, "fovDegrees": args.fov, "fovConvention": "horizontal/vertical on square pinhole; circle diameter for equidistant fisheye", "synthetic": True, "hardwareCalibration": False, "voRequiresExplicitCalibration": args.fov != 90 or args.projection != "pinhole", "limitations": "Same-center static renders; no rig baseline, synchronization, measured lens distortion or edge blur. Pinhole-to-fisheye resampling may undersample the center at large FOV."}, indent=2))
+        if not profile:
+            (args.output / "camera-model.json").write_text(json.dumps({"projection": args.projection, "fovDegrees": args.fov, "fovConvention": "horizontal/vertical on square pinhole; circle diameter for equidistant fisheye", "synthetic": True, "hardwareCalibration": False, "voRequiresExplicitCalibration": args.fov != 90 or args.projection != "pinhole", "limitations": "Same-center static renders; no rig baseline, synchronization, measured lens distortion or edge blur. Pinhole-to-fisheye resampling may undersample the center at large FOV."}, indent=2))
         (args.output / "manifest.json").write_text(json.dumps({**manifest, "sourceEpisode": str(args.episode), "sourceFrames": source_max_tick + 1, "frames": max_tick + 1, "substeps": args.substeps, "visualizationOnly": args.substeps > 1, "views": ["front", "left-90", "right+90"], "rendering": "same optical center in static scene, sequential orientation-only main-camera renders to exclude avatar self-occlusion; NOT hardware synchronization. Substeps >1 are interpolated visualization poses, NOT measured robot dynamics and NOT agent evaluation inputs.", "triptych": "left/front/right, labeled; weak CV uses front only in both conditions"}, indent=2))
+        if profile:
+            target_manifest=json.loads((args.output/'manifest.json').read_text())
+            target_manifest.update(image_size=front.width,image_width=front.width,image_height=front.height,
+                                   source_image_size=source_size,camera_profile=profile,
+                                   requestedSampleIntervalMs=profile['sampleIntervalMs'],
+                                   timingNote='Optical rerender only; does not invent a 2-second action clock for old poses')
+            (args.output/'manifest.json').write_text(json.dumps(target_manifest,indent=2))
         print(args.output, flush=True)
     finally:
         controller.stop()

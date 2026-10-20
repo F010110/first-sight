@@ -31,3 +31,20 @@ test('hardware scheduling rejects duplicate timestamps and unannounced device se
  assert.throws(()=>scheduler.push({...row,id:'b'}),/Duplicate/);
  assert.throws(()=>scheduler.push({...row,id:'c',atMs:2000,recordingId:'restart'}),/session/);
 });
+
+test('Wi-Fi input accepts three independent archived paths, not duplicate views or excessive dispatch skew',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'wifi-input-'));
+ try{
+  await mkdir(join(root,'frames'));
+  const cameras=[];
+  for(const [index,direction] of ['front','left','right'].entries()){
+   const frame=join(root,'frames',direction+'.jpg'),bytes=Buffer.from([255,216,index,255,217]);await writeFile(frame,bytes);
+   cameras.push({direction,cameraId:direction,deviceClockAligned:false,frame,requestAtMs:100+index*10,receivedAtMs:800+index*10,sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length});
+  }
+  const row={id:'r:0',recordingId:'r',transport:'wifi-http',atMs:100,sourceAtMs:100,timestampSource:'host-request',exposureTimeKnown:false,frames:cameras.map(c=>c.frame),cameras,dispatchSkewMs:20,maxDispatchSkewMs:250};
+  const observation=await cameraObservation(row,root);assert.equal(observation.frames.length,3);
+  await assert.rejects(cameraObservation({...row,dispatchSkewMs:300},root),/Invalid/);
+  await assert.rejects(cameraObservation({...row,cameras:[cameras[0],cameras[0],cameras[2]]},root),/Invalid/);
+  await assert.rejects(cameraObservation({...row,exposureTimeKnown:true},root),/Invalid/);
+ }finally{await rm(root,{recursive:true,force:true});}
+});

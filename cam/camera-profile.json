@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "esp32-ov2640-vga-nominal160-uncalibrated",
+  "width": 640,
+  "height": 480,
+  "sampleIntervalMs": 2000,
+  "nominalFovDegrees": 160,
+  "nominalFovConvention": "unknown-seller-specification",
+  "measuredFovDegrees": null,
+  "projection": "unknown",
+  "hardwareCalibration": false,
+  "simulationAssumption": {
+    "projection": "equidistant",
+    "fovConvention": "diagonal",
+    "fovDegrees": 160,
+    "principalPoint": "image-center",
+    "renderSourceSize": 1536
+  },
+  "rigYawDegrees": {"front": 0, "left": -90, "right": 90},
+  "rigExtrinsicsMeasured": false,
+  "notes": "640x480 and 2s capture are verified. Lens FOV, projection, principal point and camera mounting angles are NOT measured. The simulator assumption is for sensitivity testing, not calibrated reproduction."
+}

@@ -1,5 +1,8 @@
 #include <Arduino.h>
 #include "esp_camera.h"
+#ifdef FIRST_SIGHT_WIFI
+#include "wifi_transport.h"
+#endif
 
 bool ready = false;
 uint32_t serialBaud = 115200;
@@ -28,8 +31,15 @@ void setup() {
   Serial.printf("SENSOR_PID=0x%04x\n", s->id.PID);
   ready=true;
   Serial.println("READY: send c to capture");
+#ifdef FIRST_SIGHT_WIFI
+  wifiSetup();
+#endif
 }
 void loop() {
+#ifdef FIRST_SIGHT_WIFI
+  if(ready)wifiLoop();else delay(100);
+  return;
+#endif
   if(!Serial.available()) { delay(10); return; }
   int command = Serial.read();
   // Boot/reboot always uses 115200; switching is explicit and acknowledged

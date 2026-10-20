@@ -26,3 +26,16 @@ test('capture runner validates committed receipts, never invents missing views, 
   assert.match(JSON.parse(await readFile(join(invalid,'stopped.json'),'utf8')).error,/duplicate/);
  }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('Wi-Fi paid use is blocked without explicit unverified exposure-sync acknowledgement',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'wifi-gate-'));
+ try{
+  const capture=join(root,'capture');await mkdir(capture);
+  await writeFile(join(capture,'plan.json'),JSON.stringify({schemaVersion:1,transport:'wifi-http',recordingId:'r',timestampSource:'host-request',exposureTimeKnown:false,requestedFrames:1}));
+  const result=await new Promise<{code:number|null;stderr:string}>((resolve,reject)=>{
+   const child=spawn(process.execPath,[new URL('./run-camera.js',import.meta.url).pathname.replace(/^\/(\w:)/,'$1'),capture,join(root,'output'),'--confirm-paid'],{env:{...process.env,QWEN_API_KEY:'test-no-network',QWEN_BASE_URL:'http://127.0.0.1:1'},stdio:'pipe'});
+   let stderr='';child.stderr.on('data',chunk=>stderr+=chunk);child.on('error',reject);child.on('close',code=>resolve({code,stderr}));
+  });
+  assert.notEqual(result.code,0);assert.match(result.stderr,/requires --allow-unverified-sync/);
+ }finally{await rm(root,{recursive:true,force:true});}
+});
