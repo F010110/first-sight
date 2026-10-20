@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>First Sight · 生活助手工作台</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<body><header><div><p class="eyebrow">FIRST SIGHT · 桌面原型</p><h1>生活助手工作台</h1><p>空间记忆是一项能力，不是整个助手。</p></div><span id="connection" role="status">正在连接…</span></header>
+<main>
+ <section class="notice" aria-label="原型边界"><strong>浏览器文字输出，不需要扬声器。</strong> 硬件／模拟器暂缓。本页只使用你手动导入的图片，不是实时摄像头，不提供安全导航。<p id="model-status"></p></section>
+ <div class="layout">
+  <aside>
+   <section class="card"><h2>状态与可靠控制</h2><p id="capture-state" role="status"></p><p id="observation-state"></p>
+    <div class="buttons"><button data-control="capture.start">开始观察</button><button data-control="capture.pause">暂停观察</button><button data-control="capture.stop">停止观察</button></div>
+    <label for="mode">普通提示模式</label><select id="mode"><option value="daily">日常 · 克制提示</option><option value="explore">探索</option><option value="focus">专注</option><option value="quiet">勿扰 · 仍回应提问</option></select>
+    <div class="buttons"><button data-control="output.interrupt">中止待交付回答</button><button data-control="output.resume">恢复文字输出</button><button data-control="tasks.cancel">取消当前任务</button><button data-control="output.repeat">重复上一条</button></div>
+    <p class="muted">中止输出不停止观察；停止观察不等于删除历史。取消后的旧结果不再交付。模式不代表已有主动事件检测。</p>
+   </section>
+   <section class="card"><h2>导入观察</h2><p>1–3张不同的JPG，每张≤1.5MB；只提供实际拥有的视图，不补图。导入时间不是拍摄时间。</p>
+    <form id="images-form"><label>前视／单张图<input type="file" id="front" accept="image/jpeg"></label><label>左视（可选）<input type="file" id="left" accept="image/jpeg"></label><label>右视（可选）<input type="file" id="right" accept="image/jpeg"></label><button type="submit" id="import-button">保存这次观察</button></form>
+    <div id="previews" class="previews"></div><p class="muted">图片与交互保存在本机run目录，不自动删除。仅授权模型运行后，所需内容才会发送至已配置的模型服务。</p>
+   </section>
+  </aside>
+  <div>
+   <section class="card conversation"><div class="section-head"><h2>与助手交流</h2><span id="processing"></span></div><div id="messages" role="log" aria-label="对话记录" aria-live="polite"></div>
+    <form id="message-form"><label for="capability">处理方式</label><select id="capability"><option value="auto">由Agent选择能力</option></select><label for="message">输入问题或指令</label><textarea id="message" rows="3" maxlength="2000" placeholder="普通交流不需要图片。也可选择图片问答或本会话历史查询。"></textarea><button type="submit" id="send">发送</button></form>
+    <p id="status" role="status" aria-live="polite"></p>
+   </section>
+   <section class="card"><h2>任务与能力边界</h2><div id="tasks"></div><details><summary>已接入与预留能力</summary><ul id="capabilities"></ul></details></section>
+   <details class="card"><summary>开发诊断与来源</summary><p id="session"></p><p id="last-error"></p><p>模型文字与空间判断均为未独立核实的助手陈述；有引用也不保证语义正确。历史查询只查本次会话，不接入冻结评测库。</p><a href="/api/events" target="_blank" rel="noopener">查看本会话审计（含私人内容，请勿分享）</a></details>
+  </div>
+ </div>
+</main><footer>First Sight · 视障生活助手架构原型，非安全辅助设备。页面可键盘操作；真实读屏／视障用户验收尚未完成。</footer></body></html>

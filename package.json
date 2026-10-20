@@ -31,6 +31,7 @@
     "harness:feedback": "npm run build && node dist/current/record-feedback.js",
     "harness:summary": "npm run build && node dist/current/summarize.js",
     "trial:web": "npm run build && node --use-env-proxy dist/current/trial-server.js",
+    "assistant:web": "npm run build && node --use-env-proxy dist/current/desktop/server.js",
     "trial:qr": "npm run build && node --use-env-proxy dist/current/start-mobile-trial.js",
     "motion:replay": "npm run build && node dist/current/motion-replay.js",
     "motion:plot": "npm run build && node dist/current/plot-trajectory.js",
