@@ -41,3 +41,11 @@ test('output policy rejects expired and duplicate proactive messages',()=>{
  assert.equal(policy.decide(candidate,state,100).deliver,true);assert.equal(policy.decide(candidate,state,101).deliver,false);
  assert.equal(policy.decide({...candidate,expiresAtMs:1},state,102).reason,'expired');
 });
+test('new question invalidates an old answer even while delivery audit is awaiting IO',async()=>{
+ let ready!:()=>void,release!:()=>void,blocked=false;
+ const entered=new Promise<void>(resolve=>{ready=resolve;}),gate=new Promise<void>(resolve=>{release=resolve;});
+ const memory:ObservationService={async observe(){},async question(){throw Error('unused');},discardPending(){},close(){}};
+ const runtime=new AssistantRuntime({async plan(){return {capability:'conversation'};}},memory,{async append(kind){if(kind==='output-decision'&&!blocked){blocked=true;ready();await gate;}}},[{id:'conversation',title:'对话',available:true,requiresFreshObservation:false,async execute(text){return {text:'回答'+text,source:'conversation',sourceIds:[]};}}],true);
+ await runtime.submit('旧问题');await entered;await runtime.submit('新问题');release();await runtime.idle();
+ assert.equal(runtime.view().messages.some(m=>m.role==='assistant'&&m.text==='回答旧问题'),false);assert.equal(runtime.view().tasks[0]?.status,'cancelled');assert.equal(runtime.view().messages.at(-1)?.text,'回答新问题');await runtime.close();
+});

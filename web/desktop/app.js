@@ -13,7 +13,7 @@ function render(view){
  $('mode').value=view.mode;$('import-button').disabled=view.capture!=='recording';
  $('session').textContent='会话：'+view.sessionId+'。服务重启新建会话，不自动恢复旧Context。';
  $('last-error').textContent=view.lastError?'最近错误：'+view.lastError:'';
- $('send').disabled=view.tasks.some(t=>t.status==='queued'||t.status==='running');
+ $('send').disabled=false;
  const key=JSON.stringify(view.messages);
  if(key!==lastMessages){
   lastMessages=key;const box=$('messages');box.replaceChildren();
@@ -29,16 +29,20 @@ function render(view){
  $('tasks').replaceChildren();
  for(const task of [...view.tasks].reverse().slice(0,6)){const item=document.createElement('div');item.className='task';item.textContent=`${statuses[task.status]}：${task.text}`;const small=document.createElement('small');small.textContent=task.capability+(task.error?' · '+task.error:'');item.append(small);$('tasks').append(item);}
  if(!view.tasks.length)$('tasks').textContent='暂无任务。';
+ $('watches').replaceChildren();
+ for(const watch of view.watches??[]){const item=document.createElement('div');item.className='task';item.textContent=`${watch.kind==='find'?'寻找':'关注'}：${watch.condition} · ${watch.status} · 已提醒${watch.notificationCount}次`;
+  for(const [action,label] of [['watch.cancel','取消'],...(watch.kind==='find'&&watch.status==='candidate'?[['watch.confirm','确认找到了']]:[])]){if(!['active','candidate'].includes(watch.status))continue;const button=document.createElement('button');button.textContent=label;button.addEventListener('click',async()=>{try{render(await post('/api/control',{action,value:watch.id}));}catch(error){status(error.message);}});item.append(button);}$('watches').append(item);}
  if(!initialized){
   for(const capability of view.capabilities){
    const li=document.createElement('li');li.textContent=capability.title+'：'+(capability.available?'已接入':capability.reason);$('capabilities').append(li);
-   if(['conversation','visual.current','memory.query'].includes(capability.id)){const option=document.createElement('option');option.value=capability.id;option.textContent=capability.title;$('capability').append(option);}
+   if(['conversation','visual.current','memory.query','task.watch','task.find'].includes(capability.id)){const option=document.createElement('option');option.value=capability.id;option.textContent=capability.title;$('capability').append(option);}
   }initialized=true;
  }
 }
 let simKey='';
 async function poll(){if(polling)return;polling=true;try{const response=await fetch('/api/state');if(!response.ok)throw Error('服务不可用');render(await response.json());const simResponse=await fetch('/api/simulator');if(simResponse.ok){const sim=await simResponse.json();$('sim-state').textContent=`${sim.running?'播放中':'暂停／结束'} · ${sim.index}/${sim.total}帧${sim.error?' · '+sim.error:''}`;const key=JSON.stringify(sim.images);if(key!==simKey){simKey=key;$('sim-previews').replaceChildren();for(const image of sim.images){const figure=document.createElement('figure'),img=document.createElement('img'),caption=document.createElement('figcaption');img.src=image.url;img.alt='模拟器'+image.direction+'画面';caption.textContent=image.direction;figure.append(img,caption);$('sim-previews').append(figure);}}}}catch(error){$('connection').textContent='连接中断 · 状态可能过期';status(error.message);}finally{polling=false;}}
 for(const [id,action] of [['sim-start','start'],['sim-pause','pause']])$(id).addEventListener('click',async()=>{try{await post('/api/simulator',{action});await poll();status('模拟回放控制已执行。');}catch(error){status(error.message);}});
+ $('campus-start').addEventListener('click',async()=>{try{await post('/api/simulator',{action:'start',source:'campus'});await poll();status('原校园样本已接入。');}catch(error){status(error.message);}});
 document.querySelectorAll('[data-control]').forEach(button=>button.addEventListener('click',async()=>{try{render(await post('/api/control',{action:button.dataset.control}));status('控制已执行。');}catch(error){status(error.message);}}));
 $('mode').addEventListener('change',async()=>{try{render(await post('/api/control',{action:'mode.set',value:$('mode').value}));}catch(error){status(error.message);}});
 $('message-form').addEventListener('submit',async event=>{event.preventDefault();try{const text=$('message').value.trim();if(!text)return;const result=await post('/api/messages',{text,capability:$('capability').value});$('message').value='';render(result.state);status(result.taskId?'任务已接收。':'控制已执行。');}catch(error){status(error.message);}});

@@ -1,12 +1,13 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>First Sight · 生活助手工作台</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>First Sight · 生活助手工作台</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script><script type="module" src="/recording.js"></script></head>
 <body><header><div><p class="eyebrow">FIRST SIGHT · 桌面原型</p><h1>生活助手工作台</h1><p>空间记忆是一项能力，不是整个助手。</p></div><span id="connection" role="status">正在连接…</span></header>
 <main>
  <section class="notice" aria-label="原型边界"><strong>浏览器文字输出，不需要扬声器。</strong> 支持模拟器录制轨迹播放与手动导图；不是真实摄像头，不提供安全导航。<p id="model-status"></p></section>
+ <section class="card"><h2>观看校园助手试跑</h2><p>读取已完成运行的实际画面、问题、调用后文字与任务事件，不重新生成答案。与下方实时会话独立。</p><label for="recorded-run">已保存运行</label><select id="recorded-run"><option value="">请选择运行</option></select><div class="buttons"><button id="record-refresh">刷新运行列表</button><button id="record-load">载入</button><button id="record-play">播放／暂停（按真实事件间隔）</button><button id="record-step">下一事件</button></div><label for="record-position">事件位置</label><input type="range" id="record-position" min="0" max="0" value="0"><p id="record-status" role="status"></p><div id="record-images" class="previews"></div><div id="record-text" role="log" aria-live="polite"></div></section>
  <div class="layout">
   <aside>
-   <section class="card"><h2>模拟器画面</h2><p>640×480三视图，近似160°对角广角（未标定）。按2秒播放录制轨迹，处理繁忙时等待，不循环冒充新经历。</p><div class="buttons"><button id="sim-start">开始／继续模拟回放</button><button id="sim-pause">暂停回放</button></div><p id="sim-state" role="status"></p><div id="sim-previews" class="previews"></div></section>
+   <section class="card"><h2>校园模拟输入</h2><p>原校园851次PNG三视图，保留时间差和记录空缺。输入不等待模型；不改成假160°视野。光学4帧仅是单独小样本。</p><div class="buttons"><button id="campus-start">开始／继续校园样本</button><button id="sim-start">光学小样本（独立会话）</button><button id="sim-pause">暂停回放</button></div><p id="sim-state" role="status"></p><div id="sim-previews" class="previews"></div></section>
    <section class="card"><h2>状态与可靠控制</h2><p id="capture-state" role="status"></p><p id="observation-state"></p>
     <div class="buttons"><button data-control="capture.start">开始观察</button><button data-control="capture.pause">暂停观察</button><button data-control="capture.stop">停止观察</button></div>
     <label for="mode">普通提示模式</label><select id="mode"><option value="daily">日常 · 克制提示</option><option value="explore">探索</option><option value="focus">专注</option><option value="quiet">勿扰 · 仍回应提问</option></select>
@@ -24,7 +25,7 @@
     <p id="status" role="status" aria-live="polite"></p>
    </section>
    <section class="card"><h2>VLM调用后的文字输出</h2><p class="muted">以下为原始模型判断与语言，尚未经过协议／事实核验，不等于助手已交付答案。正式回答见上方对话。</p><pre id="vlm-output">尚无VLM返回。</pre></section>
-   <section class="card"><h2>任务与能力边界</h2><div id="tasks"></div><details><summary>已接入与预留能力</summary><ul id="capabilities"></ul></details></section>
+   <section class="card"><h2>任务与能力边界</h2><div id="tasks"></div><h3>寻找／关注</h3><p class="muted">默认有效期两分钟。仅检查收到的新画面；寻找的候选需确认。暂停观察不暂停任务期限。</p><div id="watches"></div><details><summary>已接入与预留能力</summary><ul id="capabilities"></ul></details></section>
    <details class="card"><summary>开发诊断与来源</summary><p id="session"></p><p id="last-error"></p><p>模型文字与空间判断均为未独立核实的助手陈述；有引用也不保证语义正确。历史查询只查本次会话，不接入冻结评测库。</p><a href="/api/events" target="_blank" rel="noopener">查看本会话审计（含私人内容，请勿分享）</a></details>
   </div>
  </div>

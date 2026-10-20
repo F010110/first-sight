@@ -8,6 +8,7 @@ import {FileJournal} from '../assistant/journal.js';
 import {assistantCapabilities} from '../assistant/capabilities.js';
 import {QwenPlanner} from '../assistant/qwen-planner.js';
 import {SpatialCapability} from '../assistant/spatial-capability.js';
+import {CampusSource} from '../assistant/campus-source.js';
 
 /** Parse JPEG dimensions, without trusting browser-provided MIME/dimensions. */
 export function jpegSize(bytes:Buffer){
@@ -39,20 +40,36 @@ async function body(req:IncomingMessage){
 }
 export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:string,port:number){
  const web=resolve('web/desktop');
- const images=new Map<string,{path:string;id:string;direction:string}>();
+ const images=new Map<string,{path:string;id:string;direction:string;mime?:string;sha256?:string}>();
  let importing=false;
  const episode=resolve(process.env.FIRST_SIGHT_SIM_EPISODE??'run/sim/hardware-vga-nominal160-v2');
  let replayRunning=false,replayBusy=false,replayIndex=0,replayError:string|null=null;
  let replayImages:Array<{direction:string;url:string}>=[];
  let frameNames:string[]=[];
- const replayState=()=>({running:replayRunning,index:replayIndex,total:frameNames.length,error:replayError,images:replayImages,source:'simulator-recording',intervalMs:2000,loop:false,note:'录制模拟轨迹按2秒播放；不是实时交互仿真，不是原始曝光时间。'});
+ let campus:CampusSource|null=null,inputKind:'optics'|'campus'|null=null;
+ let campusOriginHost=0,pauseAt=0;
+ const replayState=()=>({running:replayRunning,index:replayIndex,total:campus?.length??frameNames.length,error:replayError,images:replayImages,source:campus?'campus-original-timeline':'simulator-recording',intervalMs:2000,loop:false,nextFrameInMs:campus&&replayIndex<campus.length?Math.max(0,campus.time(replayIndex)-campus.time(0)-(Date.now()-campusOriginHost)):null,note:campus?'原校园三视图PNG；保留源时间差和记录空缺，画面输入不等待VLM。':'光学小样本回放，繁忙时等待；非真实性能测试。'});
  const tick=async()=>{
+  await runtime.expireWatches();
   if(!replayRunning||replayBusy)return;
-  if(runtime.view().capture!=='recording'){replayRunning=false;return;}
+  if(runtime.view().capture!=='recording'){pauseAt=Date.now();replayRunning=false;return;}
   // Backpressure, not unbounded frame accumulation or silent skipping.
-  if(runtime.view().processing)return;
+  if(!campus&&runtime.view().processing)return;
+  if(campus&&Date.now()-campusOriginHost<campus.time(replayIndex)-campus.time(0))return;
   replayBusy=true;
   try{
+   if(campus){
+    const row=await campus.read(replayIndex),id=randomUUID(),directory=join(root,'originals',id);await mkdir(directory,{recursive:true});
+    const views=[];
+    for(const view of row.views){const path=join(directory,view.direction+'.png');await writeFile(path,view.bytes,{flag:'wx'});views.push({direction:view.direction,path,sha256:view.sha256,mime:view.mime});}
+    const atMs=campusOriginHost+row.atMs-campus.time(0);
+    await journal.append('campus-frame',{id,atMs,sourceObservationId:row.id,sourceAtMs:row.sourceAtMs,scheduleAtMs:row.atMs,episodeNumber:row.episodeNumber,manifestSha256:campus.manifestSha256,views});
+    if(!replayRunning||runtime.view().capture!=='recording')return;
+    await runtime.observe({id,atMs,sourceAtMs:row.sourceAtMs,recordingId:runtime.view().sessionId,frames:views.map(v=>v.path)},'simulator-replay');
+    replayImages=views.map(v=>{const key=id+'-'+v.direction;images.set(key,{path:v.path,id,direction:v.direction,mime:v.mime});return {direction:v.direction,url:'/image/'+key};});
+    replayIndex++;if(replayIndex>=campus.length)replayRunning=false;
+    return;
+   }
    const name=frameNames[replayIndex];if(!name){replayRunning=false;return;}
    const id=randomUUID(),directory=join(root,'originals',id);await mkdir(directory,{recursive:true});
    const views=[];
@@ -82,6 +99,29 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
    if(req.headers.origin&&req.headers.origin!==`http://${host}`)return json(403,{error:'Cross-origin requests rejected'});
    const url=new URL(req.url??'/','http://'+host);
    if(req.method==='GET'&&url.pathname==='/api/state')return json(200,runtime.view());
+   if(req.method==='GET'&&url.pathname==='/api/recordings'){
+    const runsRoot=resolve('run/campus-assistant-pilot');let entries:string[]=[];
+    try{entries=await readdir(runsRoot);}catch{}
+    const completed=[];
+    for(const name of entries.filter(n=>/^[\w.-]+$/.test(n)).sort().reverse())try{const report=JSON.parse(await readFile(join(runsRoot,name,'report.json'),'utf8'));completed.push({id:name,completedScript:report.completedScript,grade:report.grade});}catch{}
+    return json(200,completed);
+   }
+   if(req.method==='GET'&&url.pathname==='/api/recording'){
+    const name=url.searchParams.get('run')??'';if(!/^[\w.-]+$/.test(name)||name==='.'||name==='..')throw Error('Invalid recorded run');
+    const directory=resolve('run/campus-assistant-pilot',name);
+    const report=JSON.parse(await readFile(join(directory,'report.json'),'utf8'));
+    const events=(await readFile(join(directory,'events.jsonl'),'utf8')).trim().split('\n').filter(Boolean).map(line=>JSON.parse(line));
+    const timeline=[];
+    for(const event of events){
+     if(!['campus-frame','task-created','message-delivered','vlm-language','watch-created','watch-check','watch-notified','watch-failed','watch-expired','control','task-settled'].includes(event.kind))continue;
+     if(event.kind==='campus-frame'){
+      const frame=event.value;
+      const views=frame.views.map((v:{path:string;direction:string;sha256:string})=>{const key='recorded-'+name+'-'+frame.id+'-'+v.direction;images.set(key,{path:v.path,id:frame.id,direction:v.direction,mime:'image/png',sha256:v.sha256});return {direction:v.direction,url:'/image/'+key};});
+      timeline.push({atMs:event.atMs,kind:event.kind,value:{id:frame.id,sourceAtMs:frame.sourceAtMs,scheduleAtMs:frame.scheduleAtMs,episodeNumber:frame.episodeNumber,views}});
+     }else timeline.push(event);
+    }
+    return json(200,{id:name,report,timeline,note:'已完成运行的原始交付顺序回放；不会重新调用模型。含失败，不保证语义正确。'});
+   }
    if(req.method==='GET'&&url.pathname==='/api/simulator')return json(200,replayState());
    if(req.method==='GET'&&url.pathname==='/api/vlm'){
     let rows:unknown[]=[];try{rows=(await readFile(join(root,'events.jsonl'),'utf8')).trim().split('\n').filter(Boolean).map(line=>JSON.parse(line)).filter(e=>e.kind==='vlm-language').slice(-20);}catch{}
@@ -91,11 +131,20 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
     const input=await body(req);
     if(input.action==='start'){
      if(importing||replayBusy)throw Error('图像输入正在处理，请稍后重试');
+     const kind=input.source==='campus'?'campus':'optics';
+     if(inputKind&&inputKind!==kind)throw Error('不能在同一会话混换轨迹，请新建服务会话');
+     if(replayRunning)return json(200,replayState());
+     if(kind==='campus'){
+      campus??=await CampusSource.load(resolve(process.env.FIRST_SIGHT_CAMPUS_REPLAY??'run/inspect-repair-full90-v1/model-replay/observations.jsonl'));
+      if(replayIndex>=campus.length)throw Error('校园轨迹已结束，请新建会话');
+      if(!campusOriginHost)campusOriginHost=Date.now();else if(pauseAt)campusOriginHost+=Date.now()-pauseAt;
+      pauseAt=0;inputKind='campus';await runtime.control('capture.start');replayError=null;replayRunning=true;void tick();return json(200,replayState());
+     }
      frameNames=(await readdir(join(episode,'frames'))).filter(n=>/^\d+\.jpg$/.test(n)).sort();
      if(!frameNames.length)throw Error('No simulator frames');
      if(replayIndex>=frameNames.length)throw Error('本轨迹播放完毕，请重启服务创建新会话，避免重复轨迹伪造连续记忆。');
-     await runtime.control('capture.start');replayError=null;replayRunning=true;void tick();
-    }else if(input.action==='pause'){replayRunning=false;await runtime.control('capture.pause');}
+     inputKind='optics';await runtime.control('capture.start');replayError=null;replayRunning=true;void tick();
+    }else if(input.action==='pause'){if(replayRunning)pauseAt=Date.now();replayRunning=false;await runtime.control('capture.pause');}
     else throw Error('Invalid simulator action');
     return json(200,replayState());
    }
@@ -105,7 +154,8 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
    }
    if(req.method==='GET'&&url.pathname.startsWith('/image/')){
     const item=images.get(url.pathname.slice(7));if(!item)return json(404,{error:'Unknown image'});
-    res.writeHead(200,{'Content-Type':'image/jpeg'});res.end(await readFile(item.path));return;
+    const bytes=await readFile(item.path);if(item.sha256&&createHash('sha256').update(bytes).digest('hex')!==item.sha256)throw Error('Recorded image hash mismatch');
+    res.writeHead(200,{'Content-Type':item.mime??'image/jpeg'});res.end(bytes);return;
    }
    if(req.method==='POST'&&url.pathname==='/api/control'){
     const input=await body(req);if(typeof input.action!=='string'||input.value!==undefined&&typeof input.value!=='string')throw Error('Invalid control');
@@ -147,6 +197,7 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
     }finally{importing=false;}
    }
    const files:Record<string,{name:string;type:string}>={'/':{name:'index.html',type:'text/html; charset=utf-8'},'/app.js':{name:'app.js',type:'text/javascript; charset=utf-8'},'/style.css':{name:'style.css',type:'text/css; charset=utf-8'}};
+   files['/recording.js']={name:'recording.js',type:'text/javascript; charset=utf-8'};
    const file=files[url.pathname];if(req.method==='GET'&&file){res.writeHead(200,{'Content-Type':file.type});res.end(await readFile(join(web,file.name)));return;}
    json(404,{error:'Not found'});
   }catch(error){if(!res.headersSent)json(400,{error:String(error).replace(/^Error: /,'')});else res.end();}
