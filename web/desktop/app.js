@@ -1,62 +1,61 @@
+import {projectRecording} from './view-model.js';
 const $=id=>document.getElementById(id);
-let state=null,lastMessages='',initialized=false,polling=false;
-const sources={user:'你',conversation:'非视觉对话',visual:'输入画面 · 非真实现场直播',historical:'本会话历史记录',system:'系统状态'};
-const statuses={queued:'等待中',running:'处理中',completed:'已完成',cancelled:'已取消',failed:'未完成'};
-function status(text){$('status').textContent=text;}
+let mode='recording',recording=null,index=0,timer=null,liveRunning=false,polling=false,selection=0;
+let imageKey='',questionKey='',answerKey='';
+const say=text=>{$('status').textContent=text;};
+async function get(path){const response=await fetch(path);const value=await response.json();if(!response.ok)throw Error(value.error??'连接失败');return value;}
 async function post(path,value){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});const data=await response.json();if(!response.ok)throw Error(data.error??'请求失败');return data;}
-function render(view){
- state=view;$('connection').textContent='已连接 · 仅本机';
- $('model-status').textContent=view.modelEnabled?'真实模型已授权：普通对话与视觉能力分别留存调用记录。':'真实模型未启用：控制、图片保存和界面可验证；问答不会生成模拟答案。';
- $('capture-state').textContent='观察：'+({stopped:'已停止',paused:'已暂停',recording:'允许画面输入，非实时摄像头',error:'故障'}[view.capture]);
- $('observation-state').textContent=view.latestObservation?`最近导入：${new Date(view.latestObservation.atMs).toLocaleTimeString()} · ${view.latestObservation.views}视图 · 拍摄时间未知`:'还没有导入图像。';
- $('processing').textContent=view.processing?`${view.processing}项工作排队／处理 · 可随时取消`:'空闲';
- $('mode').value=view.mode;$('import-button').disabled=view.capture!=='recording';
- $('session').textContent='会话：'+view.sessionId+'。服务重启新建会话，不自动恢复旧Context。';
- $('last-error').textContent=view.lastError?'最近错误：'+view.lastError:'';
- $('send').disabled=false;
- const key=JSON.stringify(view.messages);
- if(key!==lastMessages){
-  lastMessages=key;const box=$('messages');box.replaceChildren();
-  if(!view.messages.length){const p=document.createElement('p');p.className='muted';p.textContent='先开始交流，或开始观察后导入图片。控制操作不需要模型。';box.append(p);}
-  for(const message of view.messages){
-   const item=document.createElement('article');item.className='message '+message.role;
-   const label=document.createElement('small');label.textContent=`${sources[message.source]} · ${new Date(message.atMs).toLocaleTimeString()}`;
-   const text=document.createElement('div');text.textContent=message.text;item.append(label,text);
-   if(message.sourceIds.length){const source=document.createElement('div');source.className='source';source.textContent='引用观察：'+message.sourceIds.join('、');item.append(source);}
-   box.append(item);
-  }box.scrollTop=box.scrollHeight;
- }
- $('tasks').replaceChildren();
- for(const task of [...view.tasks].reverse().slice(0,6)){const item=document.createElement('div');item.className='task';item.textContent=`${statuses[task.status]}：${task.text}`;const small=document.createElement('small');small.textContent=task.capability+(task.error?' · '+task.error:'');item.append(small);$('tasks').append(item);}
- if(!view.tasks.length)$('tasks').textContent='暂无任务。';
- $('watches').replaceChildren();
- for(const watch of view.watches??[]){const item=document.createElement('div');item.className='task';item.textContent=`${watch.kind==='find'?'寻找':'关注'}：${watch.condition} · ${watch.status} · 已提醒${watch.notificationCount}次`;
-  for(const [action,label] of [['watch.cancel','取消'],...(watch.kind==='find'&&watch.status==='candidate'?[['watch.confirm','确认找到了']]:[])]){if(!['active','candidate'].includes(watch.status))continue;const button=document.createElement('button');button.textContent=label;button.addEventListener('click',async()=>{try{render(await post('/api/control',{action,value:watch.id}));}catch(error){status(error.message);}});item.append(button);}$('watches').append(item);}
- if(!initialized){
-  for(const capability of view.capabilities){
-   const li=document.createElement('li');li.textContent=capability.title+'：'+(capability.available?'已接入':capability.reason);$('capabilities').append(li);
-   if(['conversation','visual.current','memory.query','task.watch','task.find'].includes(capability.id)){const option=document.createElement('option');option.value=capability.id;option.textContent=capability.title;$('capability').append(option);}
-  }initialized=true;
- }
+function images(views=[]){
+ const ordered=['left','front','right'].flatMap(direction=>views.filter(v=>v.direction===direction));
+ const key=JSON.stringify(ordered);if(key===imageKey)return;imageKey=key;$('views').replaceChildren();
+ if(!ordered.length){const p=document.createElement('p');p.className='empty';p.textContent='等待画面';$('views').append(p);}
+ for(const view of ordered){const figure=document.createElement('figure'),image=document.createElement('img'),caption=document.createElement('figcaption');image.src=view.url;image.alt=({left:'左侧视图',front:'前方视图',right:'右侧视图'})[view.direction]??'当前视图';caption.textContent=image.alt;figure.append(image,caption);$('views').append(figure);}
 }
-let simKey='';
-async function poll(){if(polling)return;polling=true;try{const response=await fetch('/api/state');if(!response.ok)throw Error('服务不可用');render(await response.json());const simResponse=await fetch('/api/simulator');if(simResponse.ok){const sim=await simResponse.json();$('sim-state').textContent=`${sim.running?'播放中':'暂停／结束'} · ${sim.index}/${sim.total}帧${sim.error?' · '+sim.error:''}`;const key=JSON.stringify(sim.images);if(key!==simKey){simKey=key;$('sim-previews').replaceChildren();for(const image of sim.images){const figure=document.createElement('figure'),img=document.createElement('img'),caption=document.createElement('figcaption');img.src=image.url;img.alt='模拟器'+image.direction+'画面';caption.textContent=image.direction;figure.append(img,caption);$('sim-previews').append(figure);}}}}catch(error){$('connection').textContent='连接中断 · 状态可能过期';status(error.message);}finally{polling=false;}}
-for(const [id,action] of [['sim-start','start'],['sim-pause','pause']])$(id).addEventListener('click',async()=>{try{await post('/api/simulator',{action});await poll();status('模拟回放控制已执行。');}catch(error){status(error.message);}});
- $('campus-start').addEventListener('click',async()=>{try{await post('/api/simulator',{action:'start',source:'campus'});await poll();status('原校园样本已接入。');}catch(error){status(error.message);}});
-document.querySelectorAll('[data-control]').forEach(button=>button.addEventListener('click',async()=>{try{render(await post('/api/control',{action:button.dataset.control}));status('控制已执行。');}catch(error){status(error.message);}}));
-$('mode').addEventListener('change',async()=>{try{render(await post('/api/control',{action:'mode.set',value:$('mode').value}));}catch(error){status(error.message);}});
-$('message-form').addEventListener('submit',async event=>{event.preventDefault();try{const text=$('message').value.trim();if(!text)return;const result=await post('/api/messages',{text,capability:$('capability').value});$('message').value='';render(result.state);status(result.taskId?'任务已接收。':'控制已执行。');}catch(error){status(error.message);}});
-async function fileBase64(file){if(file.size>1500000)throw Error('单张图片不能超过1.5MB');return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(Error('文件读取失败'));reader.readAsDataURL(file);});}
-$('images-form').addEventListener('submit',async event=>{
- event.preventDefault();$('import-button').disabled=true;
- try{
-  const views=[];for(const direction of ['front','left','right']){const file=$(direction).files[0];if(file)views.push({direction,base64:await fileBase64(file)});}
-  if(!views.length)throw Error('请选择至少一张实际JPG。');
-  const result=await post('/api/observations',{views});render(result.state);$('previews').replaceChildren();
-  for(const image of result.images){const figure=document.createElement('figure'),img=document.createElement('img'),caption=document.createElement('figcaption');img.src=image.url;img.alt='手动导入的'+image.direction+'视图';caption.textContent=image.direction;figure.append(img,caption);$('previews').append(figure);}
-  status('原图已保存，观察已排队；不代表模型已完成理解。');
- }catch(error){status(error.message);}finally{if(state)$('import-button').disabled=state.capture!=='recording';}
+function messages(id,rows,empty){
+ const key=JSON.stringify(rows);if(id==='questions'&&key===questionKey||id==='answers'&&key===answerKey)return;
+ if(id==='questions')questionKey=key;else answerKey=key;
+ const box=$(id);box.replaceChildren();
+ if(!rows.length){const p=document.createElement('p');p.className='empty';p.textContent=empty;box.append(p);}
+ for(const row of rows){const item=document.createElement('article');item.className='message';const time=document.createElement('small');time.textContent=new Date(row.atMs).toLocaleTimeString();const text=document.createElement('div');text.textContent=row.text;item.append(time,text);box.append(item);}box.scrollTop=box.scrollHeight;
+}
+function stop(){if(timer!==null)clearTimeout(timer);timer=null;$('play').textContent='播放';}
+function renderRecording(){
+ if(!recording)return;
+ const view=projectRecording(recording.timeline,index);images(view.frame?.views??[]);messages('questions',view.questions,'暂无问题');messages('answers',view.answers,'等待助手回答');
+ $('position').value=String(index);$('progress').textContent=`${index+1} / ${recording.timeline.length} · 校园回放`;
+ say(index===recording.timeline.length-1?'回放结束': '回放 · 语音内容以文字显示');
+}
+function advance(){
+ if(!recording||index>=recording.timeline.length-1){stop();return;}
+ const delay=Math.max(0,recording.timeline[index+1].atMs-recording.timeline[index].atMs);
+ timer=setTimeout(()=>{index++;renderRecording();advance();},delay);
+}
+async function selectSource(){
+ const previousMode=mode;
+ const version=++selection;stop();recording=null;images();messages('questions',[],'暂无问题');messages('answers',[],'等待助手回答');
+ const id=$('source').value;mode=id==='live'?'live':'recording';
+ if(previousMode==='live'&&mode==='recording'&&liveRunning){try{await post('/api/simulator',{action:'pause'});liveRunning=false;}catch(error){mode='live';$('source').value='live';say('未能暂停当前输入：'+error.message);return;}if(version!==selection)return;}
+ $('question').disabled=mode!=='live';$('send').disabled=mode!=='live';$('question').placeholder=mode==='live'?'输入你想问的问题…':'回放中显示当时的用户问题';$('position').disabled=mode==='live';
+ if(mode==='live'){await poll();return;}
+ say('正在载入回放…');
+ try{const value=await get('/api/recording?run='+encodeURIComponent(id));if(version!==selection)return;recording=value;index=0;$('position').max=String(Math.max(0,value.timeline.length-1));renderRecording();}catch(error){if(version===selection)say(error.message);}
+}
+async function poll(){
+ if(mode!=='live'||polling)return;polling=true;const version=selection;
+ try{const [state,sim]=await Promise.all([get('/api/state'),get('/api/simulator')]);if(mode!=='live'||version!==selection)return;
+  liveRunning=sim.running;images(sim.images);messages('questions',state.messages.filter(m=>m.role==='user'),'暂无问题');messages('answers',state.messages.filter(m=>m.role==='assistant'),'等待助手回答');
+  $('play').textContent=sim.running?'暂停':'播放';$('progress').textContent=`${sim.index} / ${sim.total} · 校园录制输入`;
+  say(sim.error?'画面输入已停止':state.processing?'助手正在处理…':!state.modelEnabled?'当前会话未启用模型；可观看已有回放':'已连接');
+ }catch(error){if(version===selection)say(error.message);}finally{polling=false;}
+}
+$('source').addEventListener('change',()=>void selectSource());
+$('play').addEventListener('click',async()=>{
+ if(mode==='recording'){if(timer!==null){stop();return;}if(!recording)return;if(index>=recording.timeline.length-1){index=0;renderRecording();}$('play').textContent='暂停';advance();return;}
+ try{await post('/api/simulator',liveRunning?{action:'pause'}:{action:'start',source:'campus'});await poll();}catch(error){say(error.message);}
 });
-void poll();setInterval(()=>void poll(),1000);
-async function pollLanguage(){try{const response=await fetch('/api/vlm');if(!response.ok)return;const rows=await response.json();$('vlm-output').textContent=rows.length?rows.map(row=>{const output=row.value.output;return [new Date(row.atMs).toLocaleTimeString(),...(output.assessments??[]).map(a=>`${a.observationId}：${a.reason}`),output.next?.answer??`下一步：${output.next?.kind??'未知'}`].join('\n');}).join('\n\n'):'尚无VLM返回（未启用模型时不会生成假输出）。';}catch{}}
-void pollLanguage();setInterval(()=>void pollLanguage(),2000);
+$('position').addEventListener('input',()=>{stop();index=Number($('position').value);renderRecording();});
+$('question-form').addEventListener('submit',async event=>{event.preventDefault();if(mode!=='live')return;const text=$('question').value.trim();if(!text)return;$('send').disabled=true;try{await post('/api/messages',{text,capability:'auto'});$('question').value='';await poll();}catch(error){say(error.message);}finally{$('send').disabled=mode!=='live';}});
+async function init(){
+ try{const runs=await get('/api/recordings');for(const [i,run] of runs.entries()){const option=document.createElement('option');option.value=run.id;option.textContent=i===0?'最新校园试跑':`校园试跑 ${runs.length-i}`;$('source').append(option);}if(runs.length)$('source').value=runs[0].id;else $('source').value='live';await selectSource();}catch(error){say(error.message);}
+}
+void init();setInterval(()=>void poll(),1000);
