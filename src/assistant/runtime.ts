@@ -97,13 +97,13 @@ export class AssistantRuntime {
   }).catch(()=>{});
   return task.id;
  }
- async observe(observation:SpatialObservation){
+ async observe(observation:SpatialObservation,source:'manual-import'|'simulator-replay'='manual-import'){
   if(this.state.capture!=='recording')throw Error('Observation is not authorized: start capture first');
   if(this.idleTasks>=120)throw Error('Observation backlog full');
   if(this.state.latestObservation&&observation.atMs<=this.state.latestObservation.atMs)throw Error('Observation time must increase');
-  this.state.latestObservation={id:observation.id,atMs:observation.atMs,views:observation.frames.length,source:'manual-import',captureTimeKnown:false};
+  this.state.latestObservation={id:observation.id,atMs:observation.atMs,views:observation.frames.length,source,captureTimeKnown:false};
   const epoch=this.captureEpoch;
-  await this.journal.append('observation-received',{observation,source:'manual-import',captureTimeKnown:false});
+  await this.journal.append('observation-received',{observation,source,captureTimeKnown:false});
   void this.queue(async()=>{
    if(epoch!==this.captureEpoch||this.state.capture!=='recording'){await this.journal.append('observation-inference-skipped',{id:observation.id,reason:'capture-permission-changed'});return;}
    try{await this.observations.observe(observation);await this.journal.append('observation-processed',{id:observation.id});}

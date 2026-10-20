@@ -1,5 +1,5 @@
 import {createServer,type IncomingMessage} from 'node:http';
-import {mkdir,readFile,writeFile} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,readdir} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
@@ -41,7 +41,37 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
  const web=resolve('web/desktop');
  const images=new Map<string,{path:string;id:string;direction:string}>();
  let importing=false;
- return createServer(async(req,res)=>{
+ const episode=resolve(process.env.FIRST_SIGHT_SIM_EPISODE??'run/sim/hardware-vga-nominal160-v2');
+ let replayRunning=false,replayBusy=false,replayIndex=0,replayError:string|null=null;
+ let replayImages:Array<{direction:string;url:string}>=[];
+ let frameNames:string[]=[];
+ const replayState=()=>({running:replayRunning,index:replayIndex,total:frameNames.length,error:replayError,images:replayImages,source:'simulator-recording',intervalMs:2000,loop:false,note:'录制模拟轨迹按2秒播放；不是实时交互仿真，不是原始曝光时间。'});
+ const tick=async()=>{
+  if(!replayRunning||replayBusy)return;
+  if(runtime.view().capture!=='recording'){replayRunning=false;return;}
+  // Backpressure, not unbounded frame accumulation or silent skipping.
+  if(runtime.view().processing)return;
+  replayBusy=true;
+  try{
+   const name=frameNames[replayIndex];if(!name){replayRunning=false;return;}
+   const id=randomUUID(),directory=join(root,'originals',id);await mkdir(directory,{recursive:true});
+   const views=[];
+   for(const [direction,folder] of [['front','frames'],['left','left'],['right','right']]){
+    let bytes:Buffer;
+    try{bytes=await readFile(join(episode,folder!,name));}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT'&&direction!=='front')continue;throw error;}
+    const dimensions=jpegSize(bytes),path=join(directory,direction+'.jpg');await writeFile(path,bytes,{flag:'wx'});
+    views.push({direction:direction!,path,sha256:createHash('sha256').update(bytes).digest('hex'),...dimensions});
+   }
+   const atMs=Date.now();
+   await journal.append('simulator-frame',{id,atMs,sourceEpisode:episode,sourceFrame:name,sourceIndex:replayIndex,clock:'host-replay-time-not-exposure',views});
+   if(!replayRunning||runtime.view().capture!=='recording')return;
+   await runtime.observe({id,atMs,recordingId:runtime.view().sessionId,sourceAtMs:atMs,frames:views.map(v=>v.path)},'simulator-replay');
+   replayImages=views.map(v=>{const key=id+'-'+v.direction;images.set(key,{path:v.path,id,direction:v.direction});return {direction:v.direction,url:'/image/'+key};});
+   replayIndex++;if(replayIndex>=frameNames.length)replayRunning=false;
+  }catch(error){replayError=String(error);replayRunning=false;await journal.append('replay-failed',{error:String(error)});}finally{replayBusy=false;}
+ };
+ const timer=setInterval(()=>void tick(),2000);timer.unref();
+ const server=createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');
   res.setHeader('Cross-Origin-Resource-Policy','same-origin');
   res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self' blob:; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");
@@ -52,6 +82,23 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
    if(req.headers.origin&&req.headers.origin!==`http://${host}`)return json(403,{error:'Cross-origin requests rejected'});
    const url=new URL(req.url??'/','http://'+host);
    if(req.method==='GET'&&url.pathname==='/api/state')return json(200,runtime.view());
+   if(req.method==='GET'&&url.pathname==='/api/simulator')return json(200,replayState());
+   if(req.method==='GET'&&url.pathname==='/api/vlm'){
+    let rows:unknown[]=[];try{rows=(await readFile(join(root,'events.jsonl'),'utf8')).trim().split('\n').filter(Boolean).map(line=>JSON.parse(line)).filter(e=>e.kind==='vlm-language').slice(-20);}catch{}
+    return json(200,rows);
+   }
+   if(req.method==='POST'&&url.pathname==='/api/simulator'){
+    const input=await body(req);
+    if(input.action==='start'){
+     if(importing||replayBusy)throw Error('图像输入正在处理，请稍后重试');
+     frameNames=(await readdir(join(episode,'frames'))).filter(n=>/^\d+\.jpg$/.test(n)).sort();
+     if(!frameNames.length)throw Error('No simulator frames');
+     if(replayIndex>=frameNames.length)throw Error('本轨迹播放完毕，请重启服务创建新会话，避免重复轨迹伪造连续记忆。');
+     await runtime.control('capture.start');replayError=null;replayRunning=true;void tick();
+    }else if(input.action==='pause'){replayRunning=false;await runtime.control('capture.pause');}
+    else throw Error('Invalid simulator action');
+    return json(200,replayState());
+   }
    if(req.method==='GET'&&url.pathname==='/api/events'){
     // Audit remains a developer view, not a trusted semantic memory source.
     try{res.writeHead(200,{'Content-Type':'application/x-ndjson'});res.end(await readFile(join(root,'events.jsonl')));}catch{json(404,{error:'No audit yet'});}return;
@@ -69,6 +116,7 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
     const taskId=await runtime.submit(input.text,input.capability??'auto');return json(202,{taskId,state:runtime.view()});
    }
    if(req.method==='POST'&&url.pathname==='/api/observations'){
+    if(replayRunning||replayBusy)throw Error('请先暂停模拟回放再导入图片');
     if(importing)throw Error('Another import is in progress');importing=true;
     try{
      if(runtime.view().capture!=='recording')throw Error('请先开始观察。');
@@ -103,6 +151,8 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
    json(404,{error:'Not found'});
   }catch(error){if(!res.headersSent)json(400,{error:String(error).replace(/^Error: /,'')});else res.end();}
  });
+ server.once('close',()=>clearInterval(timer));
+ return server;
 }
 
 async function main(){
@@ -111,7 +161,7 @@ async function main(){
  if(enabled&&(!process.env.QWEN_API_KEY||!process.env.QWEN_BASE_URL))throw Error('Missing Qwen configuration');
  const port=Number(process.env.FIRST_SIGHT_DESKTOP_PORT??8880);if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid desktop port');
  const root=resolve('run/assistant-desktop',new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));await mkdir(root,{recursive:true});
- const journal=new FileJournal(root),memory=await SpatialCapability.create(join(root,'spatial'),enabled);
+ const journal=new FileJournal(root),memory=await SpatialCapability.create(join(root,'spatial'),enabled,value=>journal.append('vlm-language',value));
  const runtime=new AssistantRuntime(new QwenPlanner(join(root,'dialogue-requests'),enabled),memory,journal,assistantCapabilities(memory,enabled),enabled);
  await journal.append('session-created',{state:runtime.view(),root,restartPolicy:'New session, no automatic Context restore',modelEnabled:enabled,spatialBudgetUSD:1,dialogueMaxCalls:64});
  const server=desktopServer(runtime,journal,root,port);

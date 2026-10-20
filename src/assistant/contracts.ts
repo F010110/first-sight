@@ -22,6 +22,6 @@ export interface Journal {append(kind:string,value:unknown):Promise<void>}
 export interface AssistantView {
  sessionId:string;capture:CaptureState;mode:Mode;outputPaused:boolean;modelEnabled:boolean;
  messages:Message[];tasks:Task[];capabilities:Array<{id:string;title:string;available:boolean;reason?:string}>;
- latestObservation:{id:string;atMs:number;views:number;source:'manual-import';captureTimeKnown:false}|null;
+ latestObservation:{id:string;atMs:number;views:number;source:'manual-import'|'simulator-replay';captureTimeKnown:false}|null;
  processing:number;lastError:string|null;
 }

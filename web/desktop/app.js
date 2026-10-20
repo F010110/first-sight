@@ -1,13 +1,13 @@
 const $=id=>document.getElementById(id);
 let state=null,lastMessages='',initialized=false,polling=false;
-const sources={user:'你',conversation:'非视觉对话',visual:'导入图片 · 非实时现场',historical:'本会话历史记录',system:'系统状态'};
+const sources={user:'你',conversation:'非视觉对话',visual:'输入画面 · 非真实现场直播',historical:'本会话历史记录',system:'系统状态'};
 const statuses={queued:'等待中',running:'处理中',completed:'已完成',cancelled:'已取消',failed:'未完成'};
 function status(text){$('status').textContent=text;}
 async function post(path,value){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});const data=await response.json();if(!response.ok)throw Error(data.error??'请求失败');return data;}
 function render(view){
  state=view;$('connection').textContent='已连接 · 仅本机';
  $('model-status').textContent=view.modelEnabled?'真实模型已授权：普通对话与视觉能力分别留存调用记录。':'真实模型未启用：控制、图片保存和界面可验证；问答不会生成模拟答案。';
- $('capture-state').textContent='观察：'+({stopped:'已停止',paused:'已暂停',recording:'允许导入，非实时摄像头',error:'故障'}[view.capture]);
+ $('capture-state').textContent='观察：'+({stopped:'已停止',paused:'已暂停',recording:'允许画面输入，非实时摄像头',error:'故障'}[view.capture]);
  $('observation-state').textContent=view.latestObservation?`最近导入：${new Date(view.latestObservation.atMs).toLocaleTimeString()} · ${view.latestObservation.views}视图 · 拍摄时间未知`:'还没有导入图像。';
  $('processing').textContent=view.processing?`${view.processing}项工作排队／处理 · 可随时取消`:'空闲';
  $('mode').value=view.mode;$('import-button').disabled=view.capture!=='recording';
@@ -36,7 +36,9 @@ function render(view){
   }initialized=true;
  }
 }
-async function poll(){if(polling)return;polling=true;try{const response=await fetch('/api/state');if(!response.ok)throw Error('服务不可用');render(await response.json());}catch(error){$('connection').textContent='连接中断 · 状态可能过期';status(error.message);}finally{polling=false;}}
+let simKey='';
+async function poll(){if(polling)return;polling=true;try{const response=await fetch('/api/state');if(!response.ok)throw Error('服务不可用');render(await response.json());const simResponse=await fetch('/api/simulator');if(simResponse.ok){const sim=await simResponse.json();$('sim-state').textContent=`${sim.running?'播放中':'暂停／结束'} · ${sim.index}/${sim.total}帧${sim.error?' · '+sim.error:''}`;const key=JSON.stringify(sim.images);if(key!==simKey){simKey=key;$('sim-previews').replaceChildren();for(const image of sim.images){const figure=document.createElement('figure'),img=document.createElement('img'),caption=document.createElement('figcaption');img.src=image.url;img.alt='模拟器'+image.direction+'画面';caption.textContent=image.direction;figure.append(img,caption);$('sim-previews').append(figure);}}}}catch(error){$('connection').textContent='连接中断 · 状态可能过期';status(error.message);}finally{polling=false;}}
+for(const [id,action] of [['sim-start','start'],['sim-pause','pause']])$(id).addEventListener('click',async()=>{try{await post('/api/simulator',{action});await poll();status('模拟回放控制已执行。');}catch(error){status(error.message);}});
 document.querySelectorAll('[data-control]').forEach(button=>button.addEventListener('click',async()=>{try{render(await post('/api/control',{action:button.dataset.control}));status('控制已执行。');}catch(error){status(error.message);}}));
 $('mode').addEventListener('change',async()=>{try{render(await post('/api/control',{action:'mode.set',value:$('mode').value}));}catch(error){status(error.message);}});
 $('message-form').addEventListener('submit',async event=>{event.preventDefault();try{const text=$('message').value.trim();if(!text)return;const result=await post('/api/messages',{text,capability:$('capability').value});$('message').value='';render(result.state);status(result.taskId?'任务已接收。':'控制已执行。');}catch(error){status(error.message);}});
@@ -52,3 +54,5 @@ $('images-form').addEventListener('submit',async event=>{
  }catch(error){status(error.message);}finally{if(state)$('import-button').disabled=state.capture!=='recording';}
 });
 void poll();setInterval(()=>void poll(),1000);
+async function pollLanguage(){try{const response=await fetch('/api/vlm');if(!response.ok)return;const rows=await response.json();$('vlm-output').textContent=rows.length?rows.map(row=>{const output=row.value.output;return [new Date(row.atMs).toLocaleTimeString(),...(output.assessments??[]).map(a=>`${a.observationId}：${a.reason}`),output.next?.answer??`下一步：${output.next?.kind??'未知'}`].join('\n');}).join('\n\n'):'尚无VLM返回（未启用模型时不会生成假输出）。';}catch{}}
+void pollLanguage();setInterval(()=>void pollLanguage(),2000);

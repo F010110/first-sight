@@ -15,9 +15,9 @@ export class SpatialCapability implements ObservationService {
  private started=-Infinity;
  private skipPending=false;
  private failure:string|null=null;
- constructor(private readonly root:string,private readonly enabled:boolean){
+ constructor(private readonly root:string,private readonly enabled:boolean,onLanguage?:(value:unknown)=>Promise<void>){
   this.memory=new SpatialContextMemory(join(root,'memory.sqlite'));
-  const model=spatialContextVlm(join(root,'requests'),256,1,async(atMs,value)=>{await this.memory.writeOutput(atMs,value);try{const r=JSON.parse((value as {rawResponse:string}).rawResponse);JSON.parse(r.choices[0].message.content);}catch{this.loop.context.recordOutput(atMs,value);}});
+  const model=spatialContextVlm(join(root,'requests'),256,1,async(atMs,value)=>{await this.memory.writeOutput(atMs,value);try{const r=JSON.parse((value as {rawResponse:string}).rawResponse);const output=JSON.parse(r.choices[0].message.content);await onLanguage?.({atMs,output,status:'raw-model-output-not-validated'});}catch{this.loop.context.recordOutput(atMs,value);}});
   this.loop=new SpatialContextLoop(this.memory,model,16);
  }
  async observe(observation:SpatialObservation){
@@ -44,7 +44,7 @@ export class SpatialCapability implements ObservationService {
   // Flush old pending observations in order; never replace actual inspect with summaries.
   while(this.pending.length>4)await this.window(this.pending.splice(0,4));
   const window=this.pending.length?this.pending.splice(0,4):[this.latest];
-  const prefix=historical?'历史查询：仅依据本会话实际原图记录回答；这些记录不是当前现场。':'图片问答：仅描述此批手动导入图片，不声称正在实时看现场。';
+  const prefix=historical?'历史查询：仅依据本会话实际原图记录回答；这些记录不是当前现场。':'图片问答：仅描述此批输入图片（可能是模拟器轨迹回放或手动导入），不声称正在实时看真实现场。';
   const question=`${prefix} 导入时间为主机时间，不是已验证拍摄时间。用户：${text}`;
   return (await this.window(window,question))!;
  }
@@ -62,5 +62,5 @@ export class SpatialCapability implements ObservationService {
  }
  discardPending(){this.skipPending=true;}
  close(){this.memory.close();}
- static async create(root:string,enabled:boolean){await mkdir(root,{recursive:true});return new SpatialCapability(root,enabled);}
+ static async create(root:string,enabled:boolean,onLanguage?:(value:unknown)=>Promise<void>){await mkdir(root,{recursive:true});return new SpatialCapability(root,enabled,onLanguage);}
 }

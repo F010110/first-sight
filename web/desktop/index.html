@@ -3,9 +3,10 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>First Sight · 生活助手工作台</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
 <body><header><div><p class="eyebrow">FIRST SIGHT · 桌面原型</p><h1>生活助手工作台</h1><p>空间记忆是一项能力，不是整个助手。</p></div><span id="connection" role="status">正在连接…</span></header>
 <main>
- <section class="notice" aria-label="原型边界"><strong>浏览器文字输出，不需要扬声器。</strong> 硬件／模拟器暂缓。本页只使用你手动导入的图片，不是实时摄像头，不提供安全导航。<p id="model-status"></p></section>
+ <section class="notice" aria-label="原型边界"><strong>浏览器文字输出，不需要扬声器。</strong> 支持模拟器录制轨迹播放与手动导图；不是真实摄像头，不提供安全导航。<p id="model-status"></p></section>
  <div class="layout">
   <aside>
+   <section class="card"><h2>模拟器画面</h2><p>640×480三视图，近似160°对角广角（未标定）。按2秒播放录制轨迹，处理繁忙时等待，不循环冒充新经历。</p><div class="buttons"><button id="sim-start">开始／继续模拟回放</button><button id="sim-pause">暂停回放</button></div><p id="sim-state" role="status"></p><div id="sim-previews" class="previews"></div></section>
    <section class="card"><h2>状态与可靠控制</h2><p id="capture-state" role="status"></p><p id="observation-state"></p>
     <div class="buttons"><button data-control="capture.start">开始观察</button><button data-control="capture.pause">暂停观察</button><button data-control="capture.stop">停止观察</button></div>
     <label for="mode">普通提示模式</label><select id="mode"><option value="daily">日常 · 克制提示</option><option value="explore">探索</option><option value="focus">专注</option><option value="quiet">勿扰 · 仍回应提问</option></select>
@@ -22,6 +23,7 @@
     <form id="message-form"><label for="capability">处理方式</label><select id="capability"><option value="auto">由Agent选择能力</option></select><label for="message">输入问题或指令</label><textarea id="message" rows="3" maxlength="2000" placeholder="普通交流不需要图片。也可选择图片问答或本会话历史查询。"></textarea><button type="submit" id="send">发送</button></form>
     <p id="status" role="status" aria-live="polite"></p>
    </section>
+   <section class="card"><h2>VLM调用后的文字输出</h2><p class="muted">以下为原始模型判断与语言，尚未经过协议／事实核验，不等于助手已交付答案。正式回答见上方对话。</p><pre id="vlm-output">尚无VLM返回。</pre></section>
    <section class="card"><h2>任务与能力边界</h2><div id="tasks"></div><details><summary>已接入与预留能力</summary><ul id="capabilities"></ul></details></section>
    <details class="card"><summary>开发诊断与来源</summary><p id="session"></p><p id="last-error"></p><p>模型文字与空间判断均为未独立核实的助手陈述；有引用也不保证语义正确。历史查询只查本次会话，不接入冻结评测库。</p><a href="/api/events" target="_blank" rel="noopener">查看本会话审计（含私人内容，请勿分享）</a></details>
   </div>
