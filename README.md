@@ -1,5 +1,7 @@
 # First Sight · 第一视角空间记忆
 
+产品目标是面向视障人士的生活助手；空间记忆是当前已验证的核心能力，不代表完整产品已验收。[产品设计审阅](docs/product/design-gap-review-2026-10-20.md) · [硬件／模拟器暂缓说明](docs/maintenance/hardware-simulation-pause-2026-10-20.md)。
+
 **正式版本：v1.2.0**。持续进行窗口级空间判断，独立短期Context与SQLite长期记忆配合，通过检索并查看原始图像回答问题。
 
 ## 当前结果与范围

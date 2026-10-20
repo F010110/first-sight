@@ -4,6 +4,8 @@
 
 ## 当前入口
 
+- [生活助手产品设计缺口审阅](product/design-gap-review-2026-10-20.md)
+- [硬件与模拟器暂缓保存点](maintenance/hardware-simulation-pause-2026-10-20.md)
 - [发布说明、成绩与已知问题](releases/v1.2.0.md)
 - [完整90题实测](application/inspect-repair-full90-results.md)
 - [持续空间Context架构](application/spatial-context-refactor.md)
