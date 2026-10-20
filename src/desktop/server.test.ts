@@ -26,6 +26,20 @@ test('simulator replay delivers three actual image views and preserves source pr
  }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));await runtime.close();await rm(root,{recursive:true,force:true});}
 });
 
+test('continuous display supports native video range seeking independently of model cadence',async()=>{
+ const root=await mkdtemp(resolve('cam/local/video-http-test-')),previous=process.env.FIRST_SIGHT_CAMPUS_VIDEO;
+ process.env.FIRST_SIGHT_CAMPUS_VIDEO=root;
+ await writeFile(join(root,'episode-01.mp4'),'ABCDEFGHIJ');await writeFile(join(root,'complete.json'),JSON.stringify({fps:10,episodes:[{episodeNumber:1,src:'episode-01.mp4',durationSeconds:1}]}));
+ const journal=new FileJournal(join(root,'audit'));const runtime=new AssistantRuntime({async plan(){throw Error('unused');}},{async observe(){},async question(){throw Error('unused');},discardPending(){},close(){}},journal,[],false);
+ const port=18989,server=desktopServer(runtime,journal,root,port);await new Promise<void>(resolve=>server.listen(port,'127.0.0.1',resolve));
+ try{
+  const base=`http://127.0.0.1:${port}`,videos=await (await fetch(base+'/api/videos')).json() as {fps:number;memoryReady:boolean};assert.equal(videos.fps,10);assert.equal(videos.memoryReady,false);
+  const range=await fetch(base+'/video/episode-01.mp4',{headers:{Range:'bytes=2-5'}});assert.equal(range.status,206);assert.equal(range.headers.get('content-range'),'bytes 2-5/10');assert.equal(await range.text(),'CDEF');
+  assert.equal((await fetch(base+'/video/episode-01.mp4',{headers:{Range:'bytes=20-30'}})).status,416);
+  assert.equal((await fetch(base+'/api/scene',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({episodeNumber:1,sourceSeconds:0})})).status,400);
+ }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));await runtime.close();if(previous===undefined)delete process.env.FIRST_SIGHT_CAMPUS_VIDEO;else process.env.FIRST_SIGHT_CAMPUS_VIDEO=previous;await rm(root,{recursive:true,force:true});}
+});
+
 test('campus HTTP input serves original PNG; recorded output can be viewed without inference',async()=>{
  const root=await mkdtemp(resolve('cam/local/desktop-campus-test-'));
  const journal=new FileJournal(root);

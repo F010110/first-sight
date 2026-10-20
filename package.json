@@ -33,6 +33,8 @@
     "trial:web": "npm run build && node --use-env-proxy dist/current/trial-server.js",
     "assistant:web": "npm run build && node --use-env-proxy dist/current/desktop/server.js",
     "assistant:pilot": "npm run build && node --use-env-proxy dist/current/desktop/run-campus-pilot.js",
+    "assistant:prepare-memory": "npm run build && node --use-env-proxy dist/current/desktop/prepare-campus-memory.js",
+    "assistant:questions": "npm run build && node --use-env-proxy dist/current/desktop/run-campus-questions.js",
     "trial:qr": "npm run build && node --use-env-proxy dist/current/start-mobile-trial.js",
     "motion:replay": "npm run build && node dist/current/motion-replay.js",
     "motion:plot": "npm run build && node dist/current/plot-trajectory.js",

@@ -49,3 +49,7 @@ test('new question invalidates an old answer even while delivery audit is awaiti
  await runtime.submit('旧问题');await entered;await runtime.submit('新问题');release();await runtime.idle();
  assert.equal(runtime.view().messages.some(m=>m.role==='assistant'&&m.text==='回答旧问题'),false);assert.equal(runtime.view().tasks[0]?.status,'cancelled');assert.equal(runtime.view().messages.at(-1)?.text,'回答新问题');await runtime.close();
 });
+test('rewinding a prepared scene can clear dialogue without touching spatial persistence',async()=>{
+ const {runtime}=setup();await runtime.submit('较晚时刻的问题');await runtime.idle();assert.ok(runtime.view().messages.length);
+ await runtime.control('conversation.reset');assert.equal(runtime.view().messages.length,0);await runtime.close();
+});

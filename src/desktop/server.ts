@@ -1,5 +1,6 @@
 import {createServer,type IncomingMessage} from 'node:http';
-import {mkdir,readFile,writeFile,readdir} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,readdir,stat} from 'node:fs/promises';
+import {createReadStream} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
@@ -7,8 +8,10 @@ import {AssistantRuntime} from '../assistant/runtime.js';
 import {FileJournal} from '../assistant/journal.js';
 import {assistantCapabilities} from '../assistant/capabilities.js';
 import {QwenPlanner} from '../assistant/qwen-planner.js';
-import {SpatialCapability} from '../assistant/spatial-capability.js';
 import {CampusSource} from '../assistant/campus-source.js';
+import {PreparedMemory} from '../assistant/prepared-memory.js';
+import {QuestionAgent,QuestionMemoryService} from '../assistant/question-agent.js';
+import type {ObservationService} from '../assistant/contracts.js';
 
 /** Parse JPEG dimensions, without trusting browser-provided MIME/dimensions. */
 export function jpegSize(bytes:Buffer){
@@ -38,7 +41,7 @@ async function body(req:IncomingMessage){
  for await(const chunk of req){size+=chunk.length;if(size>7000000)throw Error('Request body exceeds limit');chunks.push(chunk);}
  return JSON.parse(Buffer.concat(chunks).toString());
 }
-export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:string,port:number){
+export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:string,port:number,preparedMemoryReady=false){
  const web=resolve('web/desktop');
  const images=new Map<string,{path:string;id:string;direction:string;mime?:string;sha256?:string}>();
  let importing=false;
@@ -47,6 +50,9 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
  let replayImages:Array<{direction:string;url:string}>=[];
  let frameNames:string[]=[];
  let campus:CampusSource|null=null,inputKind:'optics'|'campus'|null=null;
+ const videoRoot=resolve(process.env.FIRST_SIGHT_CAMPUS_VIDEO??'run/campus-continuous-native10-v1');
+ const videoManifest=async()=>{try{return JSON.parse(await readFile(join(videoRoot,'complete.json'),'utf8'));}catch{try{return JSON.parse(await readFile(join(videoRoot,'progress.json'),'utf8'));}catch{return {episodes:[],fps:10};}}};
+ let sceneSource:CampusSource|null=null,lastSceneId='',lastSceneSchedule=-Infinity;
  let campusOriginHost=0,pauseAt=0;
  const replayState=()=>({running:replayRunning,index:replayIndex,total:campus?.length??frameNames.length,error:replayError,images:replayImages,source:campus?'campus-original-timeline':'simulator-recording',intervalMs:2000,loop:false,nextFrameInMs:campus&&replayIndex<campus.length?Math.max(0,campus.time(replayIndex)-campus.time(0)-(Date.now()-campusOriginHost)):null,note:campus?'原校园三视图PNG；保留源时间差和记录空缺，画面输入不等待VLM。':'光学小样本回放，繁忙时等待；非真实性能测试。'});
  const tick=async()=>{
@@ -59,7 +65,7 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
   replayBusy=true;
   try{
    if(campus){
-    const row=await campus.read(replayIndex),id=randomUUID(),directory=join(root,'originals',id);await mkdir(directory,{recursive:true});
+    const row=await campus.read(replayIndex),id=row.id,directory=join(root,'originals',randomUUID());await mkdir(directory,{recursive:true});
     const views=[];
     for(const view of row.views){const path=join(directory,view.direction+'.png');await writeFile(path,view.bytes,{flag:'wx'});views.push({direction:view.direction,path,sha256:view.sha256,mime:view.mime});}
     const atMs=campusOriginHost+row.atMs-campus.time(0);
@@ -99,6 +105,34 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
    if(req.headers.origin&&req.headers.origin!==`http://${host}`)return json(403,{error:'Cross-origin requests rejected'});
    const url=new URL(req.url??'/','http://'+host);
    if(req.method==='GET'&&url.pathname==='/api/state')return json(200,runtime.view());
+   if(req.method==='GET'&&url.pathname==='/api/videos'){
+    const manifest=await videoManifest();return json(200,{fps:manifest.fps,memoryReady:preparedMemoryReady,episodes:manifest.episodes.map((episode:Record<string,unknown>)=>({...episode,src:'/video/'+episode.src}))});
+   }
+   if(req.method==='GET'&&url.pathname.startsWith('/video/')){
+    const name=url.pathname.slice(7),manifest=await videoManifest();
+    if(!/^episode-\d+\.mp4$/.test(name)||!manifest.episodes.some((episode:{src:string})=>episode.src===name))return json(404,{error:'Video not ready'});
+    const path=join(videoRoot,name),size=(await stat(path)).size;
+    res.setHeader('Accept-Ranges','bytes');res.setHeader('Content-Type','video/mp4');
+    const range=req.headers.range;
+    if(range){const match=/^bytes=(\d+)-(\d*)$/.exec(range);if(!match){res.writeHead(416,{'Content-Range':`bytes */${size}`});res.end();return;}
+     const start=Number(match[1]),end=match[2]?Math.min(Number(match[2]),size-1):size-1;if(start>=size||end<start){res.writeHead(416,{'Content-Range':`bytes */${size}`});res.end();return;}
+     res.writeHead(206,{'Content-Range':`bytes ${start}-${end}/${size}`,'Content-Length':end-start+1});createReadStream(path,{start,end}).on('error',()=>res.destroy()).pipe(res);return;
+    }
+    res.writeHead(200,{'Content-Length':size});createReadStream(path).on('error',()=>res.destroy()).pipe(res);return;
+   }
+   if(req.method==='POST'&&url.pathname==='/api/scene'){
+    if(!preparedMemoryReady)throw Error('独立空间记忆尚未准备好；视频可看，问答需等待建模完成后重启服务。');
+    const input=await body(req);if(!Number.isInteger(input.episodeNumber)||!Number.isFinite(input.sourceSeconds)||input.sourceSeconds<0)throw Error('Invalid scene time');
+    sceneSource??=await CampusSource.load(resolve(process.env.FIRST_SIGHT_CAMPUS_REPLAY??'run/inspect-repair-full90-v1/model-replay/observations.jsonl'));
+    const row=await sceneSource.read(sceneSource.indexAt(input.episodeNumber,input.sourceSeconds*1000));
+    if(row.atMs<lastSceneSchedule){await runtime.control('conversation.reset');lastSceneId='';}
+    if(row.id!==lastSceneId||input.force===true){
+     await runtime.control('capture.start');
+     await runtime.observe({id:row.id,atMs:Math.max(Date.now(),(runtime.view().latestObservation?.atMs??0)+1),sourceAtMs:row.sourceAtMs,recordingId:runtime.view().sessionId,frames:row.views.map(view=>view.path)},'simulator-replay');lastSceneId=row.id;lastSceneSchedule=row.atMs;
+     await journal.append('question-scene-selected',{id:row.id,scheduleAtMs:row.atMs,episodeNumber:row.episodeNumber,sourceAtMs:row.sourceAtMs,displayTimeSeconds:input.sourceSeconds});
+    }
+    return json(200,{id:row.id,sourceAtMs:row.sourceAtMs,spatialModelCalls:0});
+   }
    if(req.method==='GET'&&url.pathname==='/api/recordings'){
     const runsRoot=resolve('run/campus-assistant-pilot');let entries:string[]=[];
     try{entries=await readdir(runsRoot);}catch{}
@@ -213,11 +247,17 @@ async function main(){
  if(enabled&&(!process.env.QWEN_API_KEY||!process.env.QWEN_BASE_URL))throw Error('Missing Qwen configuration');
  const port=Number(process.env.FIRST_SIGHT_DESKTOP_PORT??8880);if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid desktop port');
  const root=resolve('run/assistant-desktop',new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));await mkdir(root,{recursive:true});
- const journal=new FileJournal(root),memory=await SpatialCapability.create(join(root,'spatial'),enabled,value=>journal.append('vlm-language',value));
- const runtime=new AssistantRuntime(new QwenPlanner(join(root,'dialogue-requests'),enabled),memory,journal,assistantCapabilities(memory,enabled),enabled);
- await journal.append('session-created',{state:runtime.view(),root,restartPolicy:'New session, no automatic Context restore',modelEnabled:enabled,spatialBudgetUSD:1,dialogueMaxCalls:64});
- const server=desktopServer(runtime,journal,root,port);
- server.listen(port,'127.0.0.1',()=>console.log(`First Sight 桌面助手：http://127.0.0.1:${port}\n模型：${enabled?'已授权付费（对话64请求上限；空间256请求／估算USD1上限）':'未启用；不生成假回答'}\n本地记录：${root}`));
+ const journal=new FileJournal(root);
+ let preparedRoot=process.env.FIRST_SIGHT_PREPARED_MEMORY;
+ if(!preparedRoot){try{for(const name of (await readdir(resolve('run/campus-spatial-memory'))).sort().reverse()){const candidate=resolve('run/campus-spatial-memory',name);try{await readFile(join(candidate,'complete.json'));preparedRoot=candidate;break;}catch{}}}catch{}}
+ const prepared=preparedRoot?await PreparedMemory.open(resolve(preparedRoot)):null;
+ const unavailable=()=>{throw Error('请先运行独立空间建模，完成后重启服务；问答不会自动重新建模。');};
+ const memory:ObservationService=prepared?new QuestionMemoryService(prepared,new QuestionAgent(prepared,join(root,'question-requests'),enabled)):{async observe(){unavailable();},async question(){return unavailable();},discardPending(){},close(){}};
+ const capabilities=assistantCapabilities(memory,enabled).map(capability=>!prepared&&['visual.current','memory.query','task.watch','task.find'].includes(capability.id)?{...capability,available:false,reason:'独立空间记忆尚未准备好，问答不触发空间建模。'}:capability);
+ const runtime=new AssistantRuntime(new QwenPlanner(join(root,'dialogue-requests'),enabled),memory,journal,capabilities,enabled);
+ await journal.append('session-created',{state:runtime.view(),root,preparedRoot:preparedRoot??null,modelEnabled:enabled,spatialModelCalls:0,questionBudgetUSD:.25,dialogueMaxCalls:64});
+ const server=desktopServer(runtime,journal,root,port,!!prepared);
+ server.listen(port,'127.0.0.1',()=>console.log(`First Sight 桌面助手：http://127.0.0.1:${port}\n模型：${enabled?'仅问答模型已授权；本进程不运行空间建模':'未启用；可看连续视频和已有回放'}\n独立空间记忆：${preparedRoot??'尚未准备好'}\n本地记录：${root}`));
  const shutdown=()=>{server.close();void runtime.close().then(()=>journal.snapshot(runtime.view())).then(()=>process.exit(0));};
  process.once('SIGINT',shutdown);process.once('SIGTERM',shutdown);
 }

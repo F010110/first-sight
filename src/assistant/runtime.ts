@@ -43,9 +43,10 @@ export class AssistantRuntime {
    this.state.capture=action==='capture.pause'?'paused':'stopped';this.captureEpoch++;
    this.observations.discardPending();
    for(const task of this.state.tasks)if(['queued','running'].includes(task.status)&&this.registry.get(task.capability)?.requiresFreshObservation)task.status='cancelled';
-  }else if(action==='tasks.cancel'||action==='output.interrupt'){
+   }else if(action==='tasks.cancel'||action==='output.interrupt'||action==='conversation.reset'){
    this.epoch++;for(const task of this.state.tasks)if(['queued','running'].includes(task.status))task.status='cancelled';
-   if(action==='tasks.cancel')for(const watch of this.state.watches)if(['active','candidate'].includes(watch.status))watch.status='cancelled';
+   if(action==='tasks.cancel'||action==='conversation.reset')for(const watch of this.state.watches)if(['active','candidate'].includes(watch.status))watch.status='cancelled';
+   if(action==='conversation.reset')this.state.messages=[];
    if(action==='output.interrupt')this.state.outputPaused=true;
   }else if(action==='watch.cancel'||action==='watch.confirm'){
    const watch=this.state.watches.find(w=>w.id===value);if(!watch)throw Error('Unknown watch');

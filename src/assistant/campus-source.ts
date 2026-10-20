@@ -8,6 +8,10 @@ export class CampusSource {
  private constructor(private readonly rows:CampusFrame[],readonly manifestSha256:string){}
  get length(){return this.rows.length;}
  time(index:number){const row=this.rows[index];if(!row)throw Error('Campus frame out of range');return row.atMs;}
+ indexAt(episodeNumber:number,sourceAtMs:number){
+  const found=this.rows.map((row,index)=>({row,index})).filter(({row})=>row.episodeNumber===episodeNumber&&row.sourceAtMs<=sourceAtMs).at(-1);
+  if(!found)throw Error('No model observation at this video time');return found.index;
+ }
  async read(index:number){
   const row=this.rows[index];if(!row)throw Error('Campus frame out of range');
   const views=[];

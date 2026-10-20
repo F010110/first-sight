@@ -1,0 +1,71 @@
+# 连续观看、空间建模与用户问答分离
+
+## 三条独立路径
+
+```text
+原生10fps校园RGB ──→ 三视图连续视频 ──→ 浏览器观看
+                         （仅展示，不送模型）
+
+原每2秒三视图 ──→ 空间Agent ──→ 独立SQLite + 按窗口Context快照
+                                      ↓ 只读、按时刻截断
+当前低频观察 + 用户问题 ──→ 用户问题Agent ──→ 网页语音文字
+```
+
+用户要求已明确改变原实验的“每个VLM调用同时做空间判断”：**新问答Agent不再承担空间建模。** 原`SpatialContextLoop`、旧90题、历史试跑和其冻结规则不改写。旧`SpatialCapability`与`assistant:pilot`保留为旧耦合实验，不再是桌面默认后端。
+
+## 观看视频
+
+本地原始TartanGround校园RGB为10Hz，并不是只有0.5fps截图。`sim/school/build_campus_continuous_video.py`使用完整原生前／左／右图生成三视图H.264视频，而非重复截图、光流插帧或假造广角。保持episode分开，不合成空缺期间行走。只将图像缩放排布，不修改旧图或给模型新增证据。
+
+输出`run/campus-continuous-native10-v1/`。每段完成后写`progress.json`供网页观看，十段全部成功才写`complete.json`；失败写`stopped.json`并保留已完成视频及ffmpeg stderr。不能把progress称为全量完成。
+
+源provenance仅在离线视频构建中用于对应原轨迹与校验低频图来源；pose、房间或评分不写入公开视频清单、不交付Agent。保留来源授权说明。浏览器通过HTTP Range播放／跳转，不用JS每2秒刷新图片。空间采样仍0.5fps。
+
+生成示例（需要Pillow、imageio-ffmpeg；本机依赖放在批准临时目录的独立venv中）：
+
+```powershell
+python -m sim.school.build_campus_continuous_video --output run/campus-continuous-native10-NEW
+```
+
+自定义输出时设置`FIRST_SIGHT_CAMPUS_VIDEO`。轨迹是已有原生模拟记录，不是新场景几何重渲染，也未完成真实镜头标定。
+
+## 只做一次的空间Agent
+
+```powershell
+npm.cmd run assistant:prepare-memory -- --confirm-paid
+```
+
+`src/desktop/prepare-campus-memory.ts`从空记忆按原851观察运行，窗口最多4个观察，在episode边界刷新尾部。没有用户问题。空间Agent仍决定归属、Context与长期记忆写入。每次输出新目录`run/campus-spatial-memory/`，不覆写旧库。
+
+保存：
+- `memory.sqlite`：空间Agent写入的观察、归属、原始输出；
+- `contexts.jsonl`：每个窗口结束时实际Context和可用时刻；
+- `observations.json`：原图hash和每个判断可用时间；
+- `requests/`、`frozen.json`：原始模型调用、预算与代码／数据hash；
+- `complete.json`：成功且全部处理后的文件hash绑定；失败只有`stopped.json`，问答不能加载半成品。
+
+初始全量建模预算512请求、估算USD1。预算不足或失败不自动重新跑；保留现场。预计算Context的可用时间按合成样本窗口结束时间定义，不冒充实测模型返回延迟。后续若要求真实时延模型，应另行运行并记录实际完成时刻。
+
+## 可反复单独运行的用户问题Agent
+
+```powershell
+npm.cmd run assistant:questions -- --confirm-paid
+```
+
+默认使用最新完整空间运行包，也可设置`FIRST_SIGHT_PREPARED_MEMORY`指定。该命令不导入或调用空间模型，缺少完整空间包就失败，不自动补建。每次问答写独立日志目录，最终比较空间SQLite的SHA256，确认未改变。
+
+`PreparedMemory`以SQLite只读连接打开空间包，校验绑定文件hash；根据用户提问所在观察的源时间选择已可用的Context。不能直接把最终Context或未来空间摘要交给过去问题。当前观察尚未完成空间窗口时，允许看当前原图，但不继承旧地点身份；过期短期条目按60秒清理。
+
+`QuestionAgent`只具备search／inspect／answer动作，没有空间assessment、修改地点或写入记忆的工具。检索用现有`SpatialRetriever`并限制时间；被未来窗口判断影响的条目隐藏其派生摘要。历史答案必须实际inspect原图，返回的像素再对生产者hash验证。问答输出／聊天仅写本轮交互日志，不写回空间库，也不污染后续空间Context。
+
+问答VLM固定`qwen3.8-flash`、thinking关闭；每问最多8轮检索动作，每运行128次请求／估算USD0.25上限。对话路由调用另外记录，不包含在此金额；不得把空间调用为0说成总费用为0。超时／未知计费预留保留，不静默重试改答案。
+
+## 网页
+
+仍只显示当前视图、用户问题、语音文字。默认优先选择已生成的连续视频；原试跑回放仍可选择。播放10fps视频不会触发空间模型，也不把10fps画面送问答模型。提问及目标检查只选择此刻最近的0.5fps原观察，Context随该观察源时间截断。
+
+`npm.cmd run assistant:web -- --confirm-paid`授权的仅是问答／路由；无参数启动仍可看视频与旧回放。桌面默认不创建空间模型。如果启动时空间包还未完成，视频可看但校园问答不可用，完成后重启服务加载；不会自动在用户提问时重建。
+
+当前短板：实时观看时积压仍使用有界队列；30秒回答当前性门禁沿用原型规则；寻址复杂指代、跨episode推断与输出事实正确性需要继续独立审核。网页布局／真实读屏尚未验证，视频完整编码、完整空间运行、问答实测状态以实际收据为准，不用单元测试代替。
+
+向前跳转只选择该时刻可用记忆；向后拖动后，下一次输入同步会清空当前问答上下文并取消未完成任务，防止较晚的对话答案带回过去。原交互审计保留，空间库不变。
