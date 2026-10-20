@@ -33,11 +33,12 @@ test('prepared Context and retrieval are causal; question-only run never modifie
   let calls=0;
   const request:typeof fetch=async(_url,init)=>{
    const content=JSON.parse(String(init?.body)).messages[0].content;assert.equal(JSON.stringify(content).includes('FUTURE_SECRET'),false);
-   const actions=[{kind:'search',query:'fixture'},{kind:'inspect',ids:['past']},{kind:'answer',answer:'过去的记录',sourceIds:['past'],abstained:false}];
+   if(calls===1)assert.ok(JSON.parse(content[0].text).feedback.includes('不要重复相同搜索'));
+   const actions=[{kind:'search',query:'not-in-index'},{kind:'search',query:''},{kind:'inspect',ids:['past']},{kind:'answer',answer:'过去的记录',sourceIds:['past'],abstained:false}];
    return new Response(JSON.stringify({usage:{prompt_tokens:100,completion_tokens:10},choices:[{message:{content:JSON.stringify(actions[calls++])}}]}));
   };
   const agent=new QuestionAgent(memory,join(root,'qa'),true,request);const answer=await agent.answer(rows[1]!, '之前有什么？',true);
-  assert.equal(answer.text,'过去的记录');assert.equal(calls,3);memory.close();memory=undefined;
+  assert.equal(answer.text,'过去的记录');assert.equal(calls,4);memory.close();memory=undefined;
   assert.equal(hash(await readFile(join(root,'memory.sqlite'))),before);
  }finally{if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;if(base===undefined)delete process.env.QWEN_BASE_URL;else process.env.QWEN_BASE_URL=base;memory?.close();await rm(root,{recursive:true,force:true});}
 });
