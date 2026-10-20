@@ -19,6 +19,8 @@
 
 输出`run/campus-continuous-native10-v1/`。每段完成后写`progress.json`供网页观看，十段全部成功才写`complete.json`；失败写`stopped.json`并保留已完成视频及ffmpeg stderr。不能把progress称为全量完成。
 
+该版本视频现已全量完成：10段、16707个实际连续帧、1670.7秒（约27分51秒），原生10fps。`validation.json`记录全部视频hash匹配及ffmpeg全帧解码成功，解码帧数逐段与清单一致。生成与视频验证零模型调用；这不表示独立空间建模或问答已完成。
+
 源provenance仅在离线视频构建中用于对应原轨迹与校验低频图来源；pose、房间或评分不写入公开视频清单、不交付Agent。保留来源授权说明。浏览器通过HTTP Range播放／跳转，不用JS每2秒刷新图片。空间采样仍0.5fps。
 
 生成示例（需要Pillow、imageio-ffmpeg；本机依赖放在批准临时目录的独立venv中）：
