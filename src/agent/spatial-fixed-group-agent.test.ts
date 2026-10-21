@@ -19,3 +19,13 @@ test('optional independent perception receives no history and precedes scope and
  });
  await agent.observe({id:'a',atMs:1});await agent.observe({id:'b',atMs:2});assert.deepEqual(events,['perceive:a','scope:a','perceive:b','check:b']);
 });
+test('comparative disambiguation needs distinct instance support, never recency or two positive groups',async()=>{
+ let reject=false;
+ const agent=new FixedGroupSpatialAgent({
+  async createScope(c){return {coherent:true,scope:{name:c.id,definition:'fixed visible region',boundaryRules:['exclude other side'],sourceIds:[c.id]}};},
+  async checkPage(i){const different=i.current.id==='b';return {groupId:i.groupId,version:i.version,pageIndex:i.pageIndex,currentId:i.current.id,scopeMatch:different?'no':'yes',reason:'independent comparison',memberChecks:i.memberIds.map(id=>({id,relation:different?'conflict':'compatible',evidence:'specific layout'})),sourceIds:[i.current.id,...i.memberIds]};},
+  async disambiguate(i){assert.equal(i.groups.length,2);return {selectedGroupId:i.groups[1]!.id,groupChecks:i.groups.map((g,n)=>({groupId:g.id,support:n===1||reject?'instance-supported':'shared-appearance-only',evidence:n===1?'same distinctive lockers and bench arrangement':'shared tile color alone'})),sourceIds:[i.current.id,...i.groups.flatMap(g=>g.members.map(m=>m.id))]};}
+ });
+ await agent.observe({id:'a',atMs:1});const second=await agent.observe({id:'b',atMs:2});const third=await agent.observe({id:'c',atMs:3});assert.equal(third.placeId,second.placeId);assert.equal(agent.snapshot()[0]!.members.length,1);
+ reject=true;await assert.rejects(agent.observe({id:'d',atMs:4}),/arbitrary preference/);assert.equal(agent.snapshot()[1]!.members.length,2);
+});
