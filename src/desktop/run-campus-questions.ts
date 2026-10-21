@@ -18,14 +18,21 @@ if(!memoryRoot)throw Error('No complete spatial producer artifact; this command 
 const memory=await PreparedMemory.open(resolve(memoryRoot));
 const source=await CampusSource.load('run/inspect-repair-full90-v1/model-replay/observations.jsonl');
 const root=resolve('run/campus-assistant-pilot',new Date().toISOString().replace(/[:.]/g,'-')+'-questions-'+randomUUID().slice(0,8));await mkdir(root,{recursive:true});
-const full90=process.argv.includes('--full90');
-const budget=full90?{maxCalls:720,maxUSD:2}:{maxCalls:128,maxUSD:.25};
+const original90=process.argv.includes('--original90'),full90=process.argv.includes('--full90')||original90;
+const budget=full90?{maxCalls:1440,maxUSD:2}:{maxCalls:128,maxUSD:.25};
 const journal=new FileJournal(root),agent=new QuestionAgent(memory,join(root,'question-requests'),true,fetch,budget),service=new QuestionMemoryService(memory,agent);
 const runtime=new AssistantRuntime(new QwenPlanner(join(root,'dialogue-requests'),true),service,journal,assistantCapabilities(service,true),true);
 const script:Array<{id?:string;tier?:string;index:number;text:string;capability:string}>=full90?JSON.parse(await readFile('run/campus-assistant-questions90-v1/tasks.json','utf8')):[{index:3,text:'我看不清附近，请简短说说当前环境。',capability:'visual.current'},{index:7,text:'左侧有什么？如果不能确定请说明。',capability:'visual.current'},{index:15,text:'此前的记录里见到过植物吗？请查看过去原图，不用当前画面代替。',capability:'memory.query'}];
 if(full90&&(script.length!==90||['current','short','long'].some(tier=>script.filter(step=>step.tier===tier).length!==30)))throw Error('Invalid 90-task tier counts');
+if(original90){
+ const rows=(await readFile('run/inspect-repair-full90-v1/model-replay/observations.jsonl','utf8')).trim().split('\n').map(line=>JSON.parse(line));
+ const questions=JSON.parse(await readFile('run/inspect-repair-full90-v1/model-questions.json','utf8')) as Array<{id:string;question:string;currentObservationId:string;queryAtMs:number}>;
+ script.splice(0,script.length,...questions.map((q,i)=>({id:q.id,text:q.question,index:rows.findIndex(row=>row.id===q.currentObservationId),tier:i<30?'current':i<60?'short':'long',capability:i<30?'visual.current':'memory.query'})).sort((a,b)=>a.index-b.index||a.id.localeCompare(b.id)));
+}
+const dataset=original90?'original90-regression':full90?'assistant-questions90-v1':'pilot3';
 const before=createHash('sha256').update(await readFile(join(memoryRoot,'memory.sqlite'))).digest('hex');
-await writeFile(join(root,'frozen.json'),JSON.stringify({mode:'question-only',dataset:full90?'assistant-questions90-v1':'pilot3',memoryRoot:resolve(memoryRoot),memorySha256:before,script,spatialModelCalls:0,questionBudgetUSD:budget.maxUSD,sourceManifestSha256:source.manifestSha256},null,2));console.log(root);
+const codeHashes=Object.fromEntries(await Promise.all(['src/assistant/question-agent.ts','src/assistant/prepared-memory.ts','src/desktop/run-campus-questions.ts','src/desktop/grade-campus-questions.ts'].map(async path=>[path,createHash('sha256').update(await readFile(path)).digest('hex')])));
+await writeFile(join(root,'frozen.json'),JSON.stringify({mode:'question-only',dataset,codeHashes,memoryRoot:resolve(memoryRoot),memorySha256:before,script,spatialModelCalls:0,questionBudgetUSD:budget.maxUSD,sourceManifestSha256:source.manifestSha256},null,2));console.log(root);
 let failure:unknown;
 const settledTasks:Array<ReturnType<typeof runtime.view>['tasks'][number]>=[];
 try{
@@ -42,7 +49,7 @@ try{
 finally{
  await runtime.close();await journal.snapshot(runtime.view());
  const after=createHash('sha256').update(await readFile(join(memoryRoot,'memory.sqlite'))).digest('hex');
-  await writeFile(join(root,'report.json'),JSON.stringify({completedScript:!failure,failure,mode:'question-only',dataset:full90?'assistant-questions90-v1':'pilot3',spatialModelCalls:0,memoryUnchanged:before===after,memorySha256Before:before,memorySha256After:after,tasks:settledTasks,grade:'not-independently-graded'},null,2));
+  await writeFile(join(root,'report.json'),JSON.stringify({completedScript:!failure,failure,mode:'question-only',dataset,spatialModelCalls:0,memoryUnchanged:before===after,memorySha256Before:before,memorySha256After:after,tasks:settledTasks,grade:'not-independently-graded'},null,2));
  if(before!==after)throw Error('Prepared memory changed during question-only run');
 }
 console.log(JSON.stringify({root,spatialModelCalls:0,tasks:runtime.view().tasks.map(t=>({capability:t.capability,status:t.status}))}));
