@@ -9,6 +9,9 @@ import {parseSpatialPerception} from '../agent/spatial-separated-protocol.js';
 // Public replay input only: never load evaluation labels or expected group membership.
 const inputPath=process.argv[2];
 if(!inputPath||!process.argv.includes('--confirm-paid'))throw Error('Usage: run-spatial-fixed-evaluation PUBLIC-input.json --confirm-paid; max 128 calls, estimated USD0.50');
+const callFlag=process.argv.find(arg=>arg.startsWith('--max-calls='));
+const maxCalls=callFlag?Number(callFlag.slice('--max-calls='.length)):128;
+if(!Number.isInteger(maxCalls)||maxCalls<1||maxCalls>256)throw Error('Experimental call limit must be an integer from 1 to 256; cost cap remains USD0.50');
 const inputRaw=await readFile(inputPath),input=JSON.parse(inputRaw.toString());
 if(Object.keys(input).some(k=>!['schema','observations'].includes(k))||!Array.isArray(input.observations)||!input.observations.length)throw Error('Public input must contain only schema/observations, never labels');
 type Row={id:string;scene:string;atMs:number;views:Array<{direction:string;path:string;sha256:string}>};
@@ -20,10 +23,10 @@ const scaleInstruction=' 本轮区域粒度为一个具体连续物理空间，�
 for(const r of rows){if(Object.keys(r).some(k=>!['id','scene','atMs','views'].includes(k))||!r.id||seen.has(r.id)||!r.scene||!Number.isFinite(r.atMs)||r.atMs<=(last.get(r.scene)??-Infinity)||!Array.isArray(r.views)||r.views.length!==3||new Set(r.views.map(v=>v.direction)).size!==3||r.views.some(v=>!['front','left','right'].includes(v.direction)||!/^[a-f0-9]{64}$/.test(v.sha256)))throw Error('Invalid causal public replay row');seen.add(r.id);last.set(r.scene,r.atMs);}
 const root=resolve('run/spatial-fixed-evaluation',new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));await mkdir(root,{recursive:true});console.log(root);
 const sourceFiles=['src/desktop/run-spatial-fixed-evaluation.ts','src/agent/spatial-fixed-group-agent.ts','src/agent/spatial-place-contract.ts','src/agent/spatial-json-vlm.ts','src/agent/spatial-ground-first.ts','src/agent/spatial-separated-protocol.ts','src/agent/spatial-fixed-prompts.ts'];
-await writeFile(join(root,'frozen.json'),JSON.stringify({schema:'spatial-fixed-online-v1',inputSha256:createHash('sha256').update(inputRaw).digest('hex'),sourceHashes:Object.fromEntries(await Promise.all(sourceFiles.map(async p=>[p,createHash('sha256').update(await readFile(p)).digest('hex')]))),model:'qwen3.8-flash',enableThinking:false,maxCalls:128,maxEstimatedUSD:.5,scope:'Empty memory per scene, no seed labels, every candidate group and all member originals checked. No paid automatic resume or splice.'},null,2));
+await writeFile(join(root,'frozen.json'),JSON.stringify({schema:'spatial-fixed-online-v1',inputSha256:createHash('sha256').update(inputRaw).digest('hex'),sourceHashes:Object.fromEntries(await Promise.all(sourceFiles.map(async p=>[p,createHash('sha256').update(await readFile(p)).digest('hex')]))),model:'qwen3.8-flash',enableThinking:false,maxCalls,maxEstimatedUSD:.5,scope:'Empty memory per scene, no seed labels, every candidate group and all member originals checked. No paid automatic resume or splice.'},null,2));
 await writeFile(join(root,'strategy.json'),JSON.stringify({groundFirst,comparative,regionScale,scope:'Explicit experimental opt-in; not default frontend memory'}));
 await writeFile(join(root,'public-input.json'),inputRaw);
-const byId=new Map(rows.map(r=>[r.id,r])),request=spatialJsonVlm(join(root,'requests'),128,.5);
+const byId=new Map(rows.map(r=>[r.id,r])),request=spatialJsonVlm(join(root,'requests'),maxCalls,.5);
 const images=(ids:string[],current:Row):SpatialJsonImage[]=>ids.flatMap(id=>{const r=byId.get(id);if(!r||r.scene!==current.scene||r.atMs>current.atMs||id!==current.id&&r.atMs>=current.atMs)throw Error('Cross-scene/future image blocked');return r.views.map(v=>({id,direction:v.direction,path:v.path,sha256:v.sha256}));});
 const agents=new Map<string,FixedGroupSpatialAgent>();let error:string|null=null;const predictions:Array<{id:string;placeId:string|null;status:'completed'|'failed'|'pending'}>=rows.map(r=>({id:r.id,placeId:null,status:'pending'}));
 for(const [index,row] of rows.entries()){
