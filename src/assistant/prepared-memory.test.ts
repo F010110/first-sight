@@ -36,7 +36,7 @@ test('prepared Context and retrieval are causal; question-only run never modifie
   const request:typeof fetch=async(_url,init)=>{
    const content=JSON.parse(String(init?.body)).messages[0].content;assert.equal(JSON.stringify(content).includes('FUTURE_SECRET'),false);
    if(calls===1)assert.ok(JSON.parse(content[0].text).feedback.includes('不要重复相同搜索'));
-   const actions=[{kind:'search',query:'',afterMs:11,beforeMs:12},{kind:'search',query:'',afterMs:9,beforeMs:11},{kind:'inspect',ids:['past']},{kind:'answer',answer:'过去的记录',sourceIds:['past'],abstained:false}];
+   const actions=[{kind:'search',query:'',afterMs:11,beforeMs:12},{kind:'search',query:'',afterMs:null,beforeMs:11},{kind:'inspect',ids:['past']},{kind:'answer',answer:'过去的记录',sourceIds:['past'],abstained:false}];
    return new Response(JSON.stringify({usage:{prompt_tokens:100,completion_tokens:10},choices:[{message:{content:JSON.stringify(actions[calls++])}}]}));
   };
   const agent=new QuestionAgent(memory,join(root,'qa'),true,request);const answer=await agent.answer(rows[1]!, '之前有什么？',true);
@@ -76,4 +76,18 @@ test('baseline parity: all original90 public source requirements survive the rea
   const newTasks=JSON.parse(await readFile('run/campus-assistant-questions90-v1/tasks.json','utf8'));
   for(const task of newTasks){const current=memory.select(rows[task.index].id).observation;const required=memory.requirements(task.text,current);assert.equal(required.unresolved,false,task.id);if(task.tier!=='current')assert.equal(required.requiredIds.length,1,task.id);}
  }finally{memory.close();}
+});
+test('baseline refusal metadata can recover without invented historical inspection',async()=>{
+ const {root,rows}=await fixture();const memory=await PreparedMemory.open(root),key=process.env.QWEN_API_KEY,base=process.env.QWEN_BASE_URL;
+ process.env.QWEN_API_KEY='test';process.env.QWEN_BASE_URL='http://synthetic.invalid';
+ try{
+  let calls=0;const request:typeof fetch=async(_url,init)=>{
+   const prompt=JSON.parse(JSON.parse(String(init?.body)).messages[0].content[0].text);
+   if(calls===1)assert.ok(prompt.feedback.includes('abstained改为true'));
+   const value={kind:'answer',answer:'无法确认未记录时段的情况。',sourceIds:[],abstained:calls++>0};
+   return new Response(JSON.stringify({usage:{prompt_tokens:100,completion_tokens:10},choices:[{message:{content:JSON.stringify(value)}}]}));
+  };
+  const result=await new QuestionAgent(memory,join(root,'refusal'),true,request).answer(rows[1]!,'未记录时段发生了什么？',true);
+  assert.equal(result.abstained,true);assert.deepEqual(result.sourceIds,[]);assert.equal(calls,2);
+ }finally{memory.close();if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;if(base===undefined)delete process.env.QWEN_BASE_URL;else process.env.QWEN_BASE_URL=base;await rm(root,{recursive:true,force:true});}
 });
