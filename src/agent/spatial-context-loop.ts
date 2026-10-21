@@ -25,7 +25,7 @@ export type SpatialLoopModel=(input:{context:SpatialContextView;observations:Spa
 export class SpatialContextLoop {
  readonly context=new SpatialWorkingContext();
  private busy=false;
- constructor(private readonly memory:SpatialLoopMemory,private readonly model:SpatialLoopModel,private readonly maxCalls=6){
+  constructor(private readonly memory:SpatialLoopMemory,private readonly model:SpatialLoopModel,private readonly maxCalls=6,private readonly referenceIds?:(context:SpatialContextView,observations:SpatialObservation[])=>string[]){
   if(!Number.isInteger(maxCalls)||maxCalls<1||maxCalls>32)throw Error('Invalid inference budget');
  }
  async run(observation:SpatialObservation,question:string|null=null){
@@ -42,7 +42,21 @@ export class SpatialContextLoop {
    let candidates:ContextEvidence[]=[];const allowed=new Set<string>(),inspected=new Set<string>(observations.map(o=>o.id));const evidenceImages:Array<{id:string;mimeType:string;data:string}>=[];
    let feedback:string|null=null;
    for(const entry of [...this.context.view().recent,...this.context.view().anchors])if(entry.atMs<observation.atMs)for(const id of entry.sourceIds)allowed.add(id);
-   for(const entry of this.context.view().retrieved)if(entry.atMs<observation.atMs)allowed.add(entry.id);
+    for(const entry of this.context.view().retrieved)if(entry.atMs<observation.atMs)allowed.add(entry.id);
+    if(this.referenceIds){
+     const ids=this.referenceIds(this.context.view(),observations);
+     if(ids.length>4||new Set(ids).size!==ids.length||ids.some(id=>!allowed.has(id)))throw Error('Invalid automatic spatial reference IDs');
+     if(ids.length){
+      const references=await this.memory.inspect(ids,observation.atMs);
+      if(references.length!==ids.length||new Set(references.map(e=>e.id)).size!==ids.length||references.some(e=>!ids.includes(e.id)||e.atMs>=observations[0]!.atMs||!e.images?.length)||references.reduce((n,e)=>n+e.images!.length,0)>12)throw Error('Invalid automatic spatial reference evidence');
+      for(const reference of references){
+       allowed.add(reference.id);inspected.add(reference.id);
+       const {images,...metadata}=reference;this.context.retrieve(metadata,inspected);
+       for(const image of images!)evidenceImages.push({id:reference.id,...image});
+      }
+      await this.memory.writeOutput?.(observation.atMs,{status:'automatic-spatial-reference-images',ids:references.map(e=>e.id)});
+     }
+    }
    for(let call=0;call<this.maxCalls;call++){
     const decision=await this.model({context:this.context.view(),observations:structuredClone(observations),question,candidates:structuredClone(candidates),inspectedIds:[...inspected],evidenceImages:structuredClone(evidenceImages),remainingCalls:this.maxCalls-call,historicalEvidenceRequired:requirements.historicalEvidenceRequired??false,requiredEvidenceIds:requirements.requiredEvidenceIds??[],feedback});
     // Preserve even rejected structured outputs as model statements, not facts.

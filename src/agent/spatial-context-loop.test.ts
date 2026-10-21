@@ -2,6 +2,16 @@ import {test} from 'node:test';import assert from 'node:assert/strict';
 import {SpatialContextLoop,type SpatialLoopMemory,type SpatialLoopDecision,type SpatialLoopModel} from './spatial-context-loop.js';
 const current={id:'current',atMs:10,frames:[]};
 const assessment={observationId:'current',atMs:10,placeId:'new',reason:'visible current layout',sourceIds:['current']};
+test('opt-in spatial comparison delivers causal original references before inference',async()=>{
+ const old={observationId:'old',atMs:1,placeId:'p',reason:'old layout',sourceIds:['old']};let observed=false;
+ const memory:SpatialLoopMemory={async writeObservation(){},async writeAssessment(){},async search(){return []},async inspect(ids){assert.deepEqual(ids,['old']);return [{id:'old',atMs:1,placeId:'p',reason:'old layout',images:[{mimeType:'image/png',data:'original'}]}];}};
+ const loop=new SpatialContextLoop(memory,async input=>{observed=true;assert.ok(input.inspectedIds.includes('old'));assert.equal(input.evidenceImages[0]?.data,'original');assert.equal(input.context.retrieved[0]?.id,'old');assert.equal('images' in input.context.retrieved[0]!,false);return {assessment:{...assessment,placeId:'p',sourceIds:['current','old']},next:{kind:'finish'}};},2,()=>['old']);
+ loop.context.observe({id:'old',atMs:1,frames:[]});loop.context.commit(old);
+ assert.equal((await loop.run(current)).status,'observed');assert.equal(observed,true);
+ memory.inspect=async()=>[{id:'old',atMs:10,placeId:'p',reason:'future',images:[{mimeType:'image/png',data:'future'}]}];
+ const invalid=new SpatialContextLoop(memory,async()=>{throw Error('must not infer');},2,()=>['old']);invalid.context.observe({id:'old',atMs:1,frames:[]});invalid.context.commit(old);
+ await assert.rejects(invalid.run(current),/automatic spatial reference evidence/);
+});
 test('every inference writes a spatial assessment; search/inspect feed the next context',async()=>{
  const writes:string[]=[],views:any[]=[];const old={id:'old',atMs:1,placeId:'p',reason:'historical layout'};
  const memory:SpatialLoopMemory={async writeObservation(){writes.push('observation')},async writeAssessment(){writes.push('assessment')},async search(){return [old]},async inspect(){return [old]}};

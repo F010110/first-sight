@@ -4,11 +4,12 @@ import {boundedNetworkRetry} from './bounded-network-retry.js';
 import {wallTime,type MemoryClock} from './memory-clock.js';
 
 /** Dedicated experimental unified protocol; the old scored prompt stays frozen. */
-export function spatialContextVlm(root:string,maxCalls=12,maxEstimatedUSD=.25,onRaw?:(atMs:number,value:unknown)=>Promise<void>,clock?:MemoryClock):SpatialLoopModel{
+export function spatialContextVlm(root:string,maxCalls=12,maxEstimatedUSD=.25,onRaw?:(atMs:number,value:unknown)=>Promise<void>,clock?:MemoryClock,maxOutputTokens=1200):SpatialLoopModel{
+ if(!Number.isInteger(maxOutputTokens)||maxOutputTokens<1200||maxOutputTokens>6000)throw Error('Invalid spatial output budget');
   let calls=0,cost=0,unknownCallsReserved=0;
  return async input=>{
   if(calls>=maxCalls)throw Error('Unified VLM total request budget exhausted');
-  const reservation=(128000*.1356+1200*.4584)/1e6;if(cost+reservation>maxEstimatedUSD)throw Error('Unified VLM cost budget exhausted');
+   const reservation=(128000*.1356+maxOutputTokens*.4584)/1e6;if(cost+reservation>maxEstimatedUSD)throw Error('Unified VLM cost budget exhausted');
   const current=input.context.current;if(!current)throw Error('No current view');
   if(!input.observations.length||input.observations.length>4||input.observations.some(o=>!o.frames.length||o.frames.length>3)||input.evidenceImages.length>12)throw Error('Unified model image budget exceeded');
   const key=process.env.QWEN_API_KEY,base=process.env.QWEN_BASE_URL;if(!key||!base)throw Error('Missing Qwen configuration');
@@ -38,11 +39,11 @@ assessments必须按窗口顺序恰好覆盖所有观察，每项sourceIds必须
   // Reserve before sending; even an interrupted request remains in the audit.
    const ledger=()=>writeFile(join(root,'usage.json'),JSON.stringify({calls,estimatedUSD:cost,unknownCallsReserved,maxEstimatedUSD,estimate:'Public list price plus unknown-call reservations, not invoice'}));
   try{
-    const payload=JSON.stringify({model:'qwen3.8-flash',enable_thinking:false,temperature:0,max_tokens:1200,response_format:{type:'json_object'},messages:[{role:'user',content}]});
+     const payload=JSON.stringify({model:'qwen3.8-flash',enable_thinking:false,temperature:0,max_tokens:maxOutputTokens,response_format:{type:'json_object'},messages:[{role:'user',content}]});
     const {response,text}=await boundedNetworkRetry(async attempt=>{
      if(calls>=maxCalls||cost+reservation>maxEstimatedUSD)throw Error('Unified VLM transport retry budget exhausted');
      calls++;cost+=reservation;unknownCallsReserved++;
-     await writeFile(join(directory,`reservation-${attempt}.json`),JSON.stringify({attempt,reservedInputTokens:128000,maxOutputTokens:1200,model:'qwen3.8-flash',enableThinking:false,estimatedUSD:cost,maxEstimatedUSD}));await ledger();
+      await writeFile(join(directory,`reservation-${attempt}.json`),JSON.stringify({attempt,reservedInputTokens:128000,maxOutputTokens,model:'qwen3.8-flash',enableThinking:false,estimatedUSD:cost,maxEstimatedUSD}));await ledger();
      const response=await fetch(base.replace(/\/$/,'')+'/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:payload,signal:AbortSignal.timeout(120000)});
      return {response,text:await response.text()};
     },async(error,attempt,retrying)=>{await writeFile(join(directory,`transport-failure-${attempt}.json`),JSON.stringify({error:String(error),cause:String((error as Error).cause),retrying}));await ledger();});
