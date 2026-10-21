@@ -4,6 +4,8 @@
 
 ## 当前主线：生活助手产品设计
 
+最新用户决定：放弃模板新90题，保留历史数据与结果、不再继续重跑评分；原90题仅作功能／鲁棒性回归，不作产品主分。产品改为[6个真实交互情境草案](docs/product/spatial-assistant-realistic-stories-v1.md)：路径回忆、相对时间、地标先后、当前与过去对比、澄清追问、断拍边界。待原图证据审核及确认，不凑数量、不立即付费运行。
+
 当前验收优先级：[恢复基线机制并取得最终评分](docs/product/baseline-restoration-and-final-scoring.md)。来源绑定、16轮纠错、有限网络重试已恢复，248项TypeScript测试及3项前端测试通过；原90题独立回归与新题参考生成正在运行。原90题逐题效用下降／harm上升将阻断验收，不能被总分上升抵消。最终分数尚未出具。
 
 最新优先级：原生10fps观看视频与0.5fps模型输入解耦；空间Agent独立生成一次可复用的Context／SQLite，问答Agent只读调用，重复问答不重新建模。见[分离架构](docs/product/separate-memory-and-question-runs.md)。全量视频编码与独立空间运行已启动，完成状态以各自complete／stopped收据为准。
