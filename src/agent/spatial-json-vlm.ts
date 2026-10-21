@@ -3,7 +3,7 @@ import {join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {boundedNetworkRetry} from './bounded-network-retry.js';
 export interface SpatialJsonImage {id:string;direction:string;path:string;sha256:string}
-export interface SpatialJsonRequest {phase:'perception'|'identity';prompt:string;data:unknown;images:SpatialJsonImage[]}
+export interface SpatialJsonRequest {phase:'perception'|'identity';prompt:string;data:unknown;images:SpatialJsonImage[];metadata?:{referenceBindings:Array<{alias:string;originalId:string;kind:'source'|'group'}>}}
 /** Separate stateless request adapter. Metadata receipts never embed Base64. */
 export function spatialJsonVlm(root:string,maxCalls=96,maxEstimatedUSD=.4){
  let calls=0,cost=0,unknownCallsReserved=0;
