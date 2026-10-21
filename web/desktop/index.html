@@ -8,6 +8,7 @@
   <div class="section-heading"><h1 id="scene-title">当前视图</h1><div class="controls"><label class="sr-only" for="source">选择实时会话或回放</label><select id="source"><option value="live">实时会话</option></select><button id="play" type="button">播放</button></div></div>
   <div id="views" class="views"><p class="empty">等待画面</p></div>
   <video id="continuous-video" hidden playsinline preload="metadata" aria-label="校园原生10帧每秒连续画面，左侧、前方、右侧三视图"></video>
+  <button id="next-question" type="button" hidden>下一问</button>
   <div class="scene-meta"><span>样本时间 <time id="sample-time">--:--:--</time></span><span>位置 <strong id="location-name">尚未判断</strong></span></div>
   <div class="timeline"><label class="sr-only" for="position">回放位置</label><input id="position" type="range" min="0" max="0" value="0" disabled><span id="progress">校园录制画面 · 非真实现场直播</span></div>
  </section>

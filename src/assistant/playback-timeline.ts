@@ -19,16 +19,19 @@ export function alignQuestions(events:Array<{kind:string;atMs:number;value:any}>
 }
 export async function latestQuestionTimeline(root:string){
  let names:string[]=[];try{names=await readdir(root);}catch{}
- for(const name of names.sort().reverse()){
+ const ordered=names.sort().reverse(),eligible:Array<{run:string;questions:TimedQuestion[];dataset:string}>=[];
+ for(const name of ordered){
   if(!/^[\w.-]+$/.test(name))continue;
   try{
    const report=JSON.parse(await readFile(join(root,name,'report.json'),'utf8'));
    if(report.mode!=='question-only'||!report.completedScript)continue;
    const events=(await readFile(join(root,name,'events.jsonl'),'utf8')).trim().split('\n').filter(Boolean).map(line=>JSON.parse(line));
-   return {run:name,questions:alignQuestions(events)};
+   const entry={run:name,questions:alignQuestions(events),dataset:report.dataset??'pilot3'};
+   if(report.dataset==='realistic-stories-v1')return entry;
+   eligible.push(entry);
   }catch{}
  }
- return {run:null,questions:[] as TimedQuestion[]};
+ return eligible[0]??{run:null,questions:[] as TimedQuestion[],dataset:null};
 }
 
 /** Presentation label compressed from the spatial Agent's existing judgment only.

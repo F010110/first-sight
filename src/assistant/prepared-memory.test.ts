@@ -75,6 +75,11 @@ test('baseline parity: all original90 public source requirements survive the rea
   for(const question of questions){const current=memory.select(question.currentObservationId).observation;const required=memory.requirements(question.question,current);assert.deepEqual([...required.requiredIds].sort(),publicRequiredEvidenceIds(question,rows).sort(),question.id);assert.equal(required.unresolved,false,question.id);}
   const newTasks=JSON.parse(await readFile('run/campus-assistant-questions90-v1/tasks.json','utf8'));
   for(const task of newTasks){const current=memory.select(rows[task.index].id).observation;const required=memory.requirements(task.text,current);assert.equal(required.unresolved,false,task.id);if(task.tier!=='current')assert.equal(required.requiredIds.length,1,task.id);}
+  const row=rows.find(row=>row.episodeNumber===4&&row.sourceAtMs===190000);const current=memory.select(row.id).observation;
+  const relative=memory.requirements('两分钟前我在哪儿？',current);assert.equal(relative.unresolved,false);assert.equal(memory.select(relative.requiredIds[0]!).observation.sourceAtMs,70000);
+  assert.equal(memory.requirements('十分钟前我在哪儿？',current).unresolved,true);
+  const sequence=memory.sequence(28800000+135000);assert.equal(sequence.truncated,false);assert.ok(sequence.segments.every(segment=>segment.endMs<=28935000));assert.equal(sequence.segments.length,3);
+  assert.equal(memory.sequence(28800000+1000).segments[0]?.hint,''); // unavailable window judgment cannot leak
  }finally{memory.close();}
 });
 test('baseline refusal metadata can recover without invented historical inspection',async()=>{
