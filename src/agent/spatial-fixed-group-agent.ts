@@ -32,7 +32,7 @@ export class FixedGroupSpatialAgent {
    const matches=reviews.filter(r=>r.evaluation.verdict==='belongs');
    let resolution:unknown=null;
    let resolvedId:string|null=null;
-   if(matches.length>1&&this.model.disambiguate){
+   if(matches.length>=1&&reviews.filter(r=>r.evaluation.verdict!=='different').length>1&&this.model.disambiguate){
     const options=reviews.filter(r=>r.evaluation.verdict!=='different');
     resolution=await this.model.disambiguate({current:structuredClone(current),groups:options.map(r=>r.group.snapshot())});
     const answer=resolution as any;

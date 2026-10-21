@@ -29,3 +29,11 @@ test('comparative disambiguation needs distinct instance support, never recency 
  await agent.observe({id:'a',atMs:1});const second=await agent.observe({id:'b',atMs:2});const third=await agent.observe({id:'c',atMs:3});assert.equal(third.placeId,second.placeId);assert.equal(agent.snapshot()[0]!.members.length,1);
  reject=true;await assert.rejects(agent.observe({id:'d',atMs:4}),/arbitrary preference/);assert.equal(agent.snapshot()[1]!.members.length,2);
 });
+test('one supported candidate plus one uncertain competitor also receives comparative review',async()=>{
+ let reviews=0;const agent=new FixedGroupSpatialAgent({
+  async createScope(c){return {coherent:true,scope:{name:c.id,definition:'fixed',boundaryRules:['boundary'],sourceIds:[c.id]}};},
+  async checkPage(i){const no=i.current.id==='b',uncertain=i.current.id==='return'&&i.scope.name==='a';return {groupId:i.groupId,version:i.version,pageIndex:i.pageIndex,currentId:i.current.id,scopeMatch:no?'no':uncertain?'uncertain':'yes',reason:'visible comparison',memberChecks:i.memberIds.map(id=>({id,relation:no?'conflict':uncertain?'unobservable':'compatible',evidence:'specific layout comparison'})),sourceIds:[i.current.id,...i.memberIds]};},
+  async disambiguate(i){reviews++;return {selectedGroupId:i.groups[1]!.id,groupChecks:i.groups.map((g,n)=>({groupId:g.id,support:n?'instance-supported':'shared-appearance-only',evidence:'joint original comparison'})),sourceIds:[i.current.id,...i.groups.flatMap(g=>g.members.map(m=>m.id))]};}
+ });
+ await agent.observe({id:'a',atMs:1});const b=await agent.observe({id:'b',atMs:2});const r=await agent.observe({id:'return',atMs:3});assert.equal(reviews,1);assert.equal(r.placeId,b.placeId);
+});

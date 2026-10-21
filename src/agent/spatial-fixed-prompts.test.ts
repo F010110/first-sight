@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {fixedScopeCreationPrompt} from './spatial-fixed-prompts.js';
+test('scope creation has no copyable fake JSON values or placeholder source IDs',()=>{const p=fixedScopeCreationPrompt('actual-observation');assert.ok(p.includes('["actual-observation"]'));assert.ok(!p.includes('所有SEED准确ID'));assert.ok(!p.includes('"definition":'));assert.ok(p.includes('coherent=false'));assert.throws(()=>fixedScopeCreationPrompt(' '),/Missing/);});

@@ -1,0 +1,6 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {evaluateSpatialRepeats} from './spatial-repeat-evaluation.js';import type {SpatialEvalLabel} from './spatial-acceptance.js';
+const labels:SpatialEvalLabel[]=['a','b','c'].map(id=>({id,scene:'s',split:'development',kind:'core',region:id==='c'?'other':'same',reviewer:'fixture',reason:'test only'}));
+const predictions=(prefix:string)=>labels.map(l=>({id:l.id,placeId:prefix+l.region,status:'completed' as const}));
+test('repeat stability ignores arbitrary UUID renaming',()=>{const r=evaluateSpatialRepeats(labels,[],[{runId:'1',predictions:predictions('x')},{runId:'2',predictions:predictions('y')}]);assert.equal(r.pairInstability,0);assert.equal(r.metrics.balancedAccuracy.min,1);assert.equal(r.allAcceptanceGatesPassed,false);});
+test('worst run and missing results cannot be cherry picked away',()=>{const r=evaluateSpatialRepeats(labels,[],[{runId:'1',predictions:predictions('x')},{runId:'2',predictions:[]}]);assert.equal(r.metrics.coverage.min,0);assert.equal(r.metrics.balancedAccuracy.min,0);assert.equal(r.pairInstability,1);assert.equal(r.reports.length,2);assert.throws(()=>evaluateSpatialRepeats(labels,[],[{runId:'same',predictions:[]},{runId:'same',predictions:[]}]),/distinct/);});
