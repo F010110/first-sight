@@ -8,6 +8,8 @@ static uint32_t cameraSequence=0, cameraStarted=0;
 static bool cameraServing=false;
 static void portalCameraSetup(){
   if(!portalConnect()){Serial.println("CAMERA_NETWORK_FAILED");WiFi.mode(WIFI_OFF);return;}
+  WiFi.setSleep(false); // Single-variable latency experiment; retain VGA/JPEG settings.
+  Serial.println("CAMERA_WIFI_SLEEP_DISABLED");
   Serial.println("CAMERA_TOKEN_READY");Serial.setTimeout(60000);cameraToken=Serial.readStringUntil('\n');cameraToken.trim();
   if(cameraToken.length()!=64){Serial.println("CAMERA_TOKEN_INVALID");WiFi.mode(WIFI_OFF);return;}
   for(size_t i=0;i<cameraToken.length();i++)if(!isxdigit(cameraToken[i])){WiFi.mode(WIFI_OFF);return;}

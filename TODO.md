@@ -4,6 +4,9 @@
 
 ## 当前主线：生活助手产品设计
 
+- [x] **单摄Wi-Fi实时输入follow已实测接通**：第二轮`run/hardware/portal-single-20261022-v2-nosleep`关闭ESP32 Wi-Fi省电，30/30有效帧；消费者同步`--validate-only --follow`，结果`...-live-validated`为30观察／8原规则窗口。0模型调用，不伪造左右视图，未接方法2在线推理／SQLite／网页真实入口。平均请求到收图1584.77ms、最慢4793ms，平均采样间隔3034.48ms、跳15时隙，仍未达稳定2秒；不能挑后半段快帧宣传达标，不能从一对照归因省电。当前板camera-portal固件服务180秒后radio off，USB只启动配置及供电，照片走Wi-Fi；无电脑防火墙修改。
+- [ ] **单摄后续**：分阶段测连接／抓拍／首字节／传输延迟并固定画面复测，建立长时采集与断线／认证过期策略。若要空间识别，需明确接入当前方法2而非直接沿用历史付费硬件runner；确认预算后再做模型／Context SQLite闭环，随后网页真实输入。说明`cam/docs/portal-single-camera-stream.md`。
+
 - [x] **单摄portal Wi-Fi图片已传通，第一轮未达2秒稳定采样**：独立camera-portal固件＋portal_stream.py，30张真实640×480 JPEG通过wire SHA／解码／boot／序号校验，目录`run/hardware/portal-single-20261022-v1`；平均间隔3103ms、平均请求到接收2200ms、最慢4636ms，跳18采样时隙。电脑主动拉图，无防火墙修改；USB只配置／供电，不传图片。旧输入／窗口runner `--validate-only`已接受30张，目录同名`-validated`，0模型调用。不是方法2付费在线／Context SQLite／桌面真实入口已接通。说明`cam/docs/portal-single-camera-stream.md`。下一步控制变量关闭ESP32 Wi-Fi省电复测，并实测实时follow输入；服务180秒后radio off，不能当持久在线相机。
 
 - [x] **开发板portal认证已实测成功**：用户已明确接受HTTP明文提交风险。COM3仅应用区刷写／哈希验证，凭据从忽略JSON经USB临时传入，固件限定10.3.8.216/index→同源/login、CookieJar＋URL编码、最多1次POST；不写账户到固件／NVS或日志。实测AUTH_POST_HTTP=200，随后apple检测HTTP200且INTERNET_CHECK_SUCCESS=1；证据`cam/local/campus-portal-login-20261022.log`。结束radio off；这是HTTP联网，不是加密或相机传图验收。后续入口`cam/portal_login_probe.py --confirm-http-credentials`，日志改用独立时间戳不覆盖。
