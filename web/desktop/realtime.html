@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>First Sight · 实时生活助手</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/realtime.css"><script type="module" src="/realtime.js"></script></head>
+<body><header><a class="brand" href="/">First Sight<span>实时生活助手</span></a><span id="live-status" role="status" aria-live="polite">正在连接本地服务…</span></header><main>
+<nav class="workspace-nav"><a href="http://127.0.0.1:8883">← 返回实验回放</a><span>实时 / 真实 / 单摄</span></nav>
+<section class="panel"><h1>真实相机 · 实时空间记忆</h1><p>单摄前方640×480；左右视图缺失。每会话最多60张、约2分钟。不是避障或安全通行系统。</p>
+<label><input id="enable-model" type="checkbox"> 启用方法2空间记忆与独立问答</label>
+<label><input id="confirm-budget" type="checkbox"> 确认本次模型预算上限估算USD0.75（空间0.50＋问答0.25），未知请求保守占额，非实际账单</label>
+<p>启动会使用本机已配置的校园账号，通过已确认的HTTP流程认证；图片与令牌亦未加密。USB用于供电和临时配置。</p>
+<div class="controls"><button id="live-start" type="button">开始新会话</button><button id="live-stop" type="button" class="secondary" disabled>停止采集</button></div><p id="live-error" role="alert"></p></section>
+<section class="scene"><h2>实时画面</h2><div class="views"><figure><img id="live-image" hidden alt="真实前方相机画面；左右视图缺失"><figcaption id="image-time">等待原图</figcaption></figure></div>
+<div class="scene-meta"><span>当前地点 <strong id="live-location">待确认</strong></span><span id="input-health">未采集</span></div><p id="last-location">尚无空间记忆</p><p id="live-progress"></p></section>
+<div class="dialogue"><section class="panel"><h2>用户问题</h2><p>当前问题基于提问时画面；历史问题由只读Agent检索原图。回答可能延迟，不保证送达时场景未变化。</p><form id="live-question-form"><label for="live-question">想问什么？</label><textarea id="live-question" maxlength="2000" rows="3" placeholder="例如：眼前有什么？刚才见过什么物体？"></textarea><button id="live-ask" type="submit" disabled>发送问题</button></form><div id="live-questions" class="messages" role="log" aria-live="polite"></div></section>
+<section class="panel answer-panel"><h2>助手回答</h2><div id="live-answers" class="messages" role="log" aria-live="polite"></div></section></div>
+<section class="panel"><h2>本次已提交空间记忆</h2><p>名称是模型候选，不是人工真值；历史地点不自动继承为当前地点。</p><div id="live-places"></div></section>
+</main></body></html>
