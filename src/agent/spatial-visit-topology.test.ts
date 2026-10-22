@@ -14,3 +14,9 @@ test('VLM context is causal, bounded to selected groups and retains visit sequen
  const c=g.context(20000,['A']);assert.equal(c.recentVisits.length,6);assert.equal(c.places.length,1);assert.equal(c.places[0]!.relations.length,0);assert.ok(c.recentVisits.some(v=>v.status==='outside-recalled-candidates'));
  assert.throws(()=>g.context(18000,['A']),/Noncausal/);assert.throws(()=>g.observe({...v('later',22000,'A'),name:'renamed'}),/rename/);
 });
+test('sequence and graph contexts differ only in relation tables, not visit history or node evidence',()=>{
+ const g=new SpatialVisitTopology();g.observe(v('a',0,'A'));g.observe(v('b',2000,'B'));
+ const sequence=g.context(4000,['A','B'],false),graph=g.context(4000,['A','B'],true);
+ assert.equal(sequence.places[0]!.relations.length,0);assert.equal(graph.places[0]!.relations.length,2);
+ assert.deepEqual({...graph,places:graph.places.map(p=>({...p,relations:[]}))},sequence);
+});

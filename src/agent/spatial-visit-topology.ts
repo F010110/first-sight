@@ -35,13 +35,13 @@ export class SpatialVisitTopology {
   edge.evidence.push({fromId:from.id,toId:to.id,fromMs:from.atMs,toMs:to.atMs});
  }
  snapshot(){return structuredClone({schema:'spatial-visit-topology-v1',nodes:[...this.nodes.values()],edges:[...this.edges.values()],visits:this.visits,policy:{maxConsecutiveGapMs:this.maxConsecutiveGapMs,temporalWindowMs:this.temporalWindowMs,directTraversability:'not-established',timeProvesMetricProximity:false,assignments:'model-candidates-not-ground-truth',note:'Consecutive recognized samples are transition evidence only. Unknowns and long gaps never establish a direct edge. Full visit sequence retained.'}});}
- context(asOfMs:number,groupIds:string[]){
+ context(asOfMs:number,groupIds:string[],includeRelations=true){
   if(!Number.isFinite(asOfMs)||this.visits.some(v=>v.atMs>=asOfMs)||new Set(groupIds).size!==groupIds.length||groupIds.length>16)throw Error('Noncausal or unbounded topology context');
   const allowed=new Set(groupIds);
   return {
    interpretation:'历史线索，不是当前身份或通行证明。连续转移仅表示相邻采样的地点变化；时间相近不证明物理距离近。图不替代下方访问序列。原图区域冲突优先，不能因有边就判同地或把两个节点合并。未列出的边只是未知，不表示不可达。',
    recentVisits:this.visits.slice(-6).map(v=>({atMs:v.atMs,groupId:v.placeId&&allowed.has(v.placeId)?v.placeId:null,status:!v.placeId?'unknown':allowed.has(v.placeId)?'candidate':'outside-recalled-candidates'})),
-   places:[...this.nodes.values()].filter(n=>allowed.has(n.id)).map(n=>({groupId:n.id,name:n.name,lastVisitedMs:n.lastAtMs,relations:[...this.edges.values()].filter(e=>e.from===n.id&&allowed.has(e.to)).map(e=>({groupId:e.to,kind:e.kind,count:e.count,minGapMs:e.minGapMs,lastObservedMs:e.evidence.at(-1)!.toMs,directTraversability:'unknown'}))})),
+   places:[...this.nodes.values()].filter(n=>allowed.has(n.id)).map(n=>({groupId:n.id,name:n.name,lastVisitedMs:n.lastAtMs,relations:includeRelations?[...this.edges.values()].filter(e=>e.from===n.id&&allowed.has(e.to)).map(e=>({groupId:e.to,kind:e.kind,count:e.count,minGapMs:e.minGapMs,lastObservedMs:e.evidence.at(-1)!.toMs,directTraversability:'unknown'})):[]})),
    omittedEdges:'Only edges between recalled candidates; no graph expansion of recall',
   };
  }
