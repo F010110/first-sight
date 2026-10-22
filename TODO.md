@@ -4,6 +4,10 @@
 
 ## 当前主线：生活助手产品设计
 
+- [ ] **portal恢复推进（最新）**：用户确认电脑portal有网，给出charlie0129/bupt-net-login；已只读审查Bash脚本，未安装／执行。开发板实测apple→meta refresh→HTTP302→`http://10.3.8.216`认证页，仍无Success；设备IP须单独认证，不能在电脑跑脚本冒充板上认证。证据`cam/local/campus-portal-redirect-20261022.log`。当前板为最多4跳、无凭据探测固件，结束radio off；未实拍／传图。实际链与仓库均HTTP，尚未提交已填写密码；先告知明文风险并确认用户选择，或核实可信HTTPS认证端点／使用电脑热点，不关闭TLS验证。不要忘记前述按错误原因定制prompt待办，冻结v2批次未改。
+
+- [ ] **后续重试prompt按具体错误定制**：当前冻结v2仅通用protocolFeedback，用户明确先不改运行中版本。下版逐项反馈缺失字段／期望值不符／成员漏检／非法引用等机器可验证原因（例如缺groupId须复制INPUT.groupId），保留原响应及错误路径；不泄露真值、不引导修改空间结论，测试错误原因确实进入重试请求及次数封顶。不可称当前已提供逐项具体原因。
+
 - [ ] **修复版重复实验v2已启动**：用户要求先诊断修好再跑。v1两个格式失败均是模型遗漏groupId（非256调用耗尽），已新增每页即时协议校验＋最多3次原图重试，不补字段／不放宽冲突；网络新增超时／临时DNS分类及cause链记录，旧第二次fetch失败原因无法还原，不能断言重试次数用完。300测试通过。新目录`run/spatial-repeat-batches/campus-episode6-3methods-3repeats-2026-10-22-v2`，shell `sh_163659b90001ervqBpR43TGXZm`，首轮recall已running；三方法各3遍全新空库，不拼v1成功，v2 cap USD4.24＋v1估算USD0.2567298132＜原USD4.50。显式允许未知请求保持最大预留计费后继续下个独立轮，不清零／不无限重试。状态以本目录status／complete／stopped为准，勿重复启动。诊断与边界见`docs/product/spatial-repeat-failure-recovery-v2.md`。
 
 - [ ] **重复实验已停止，非9轮完成**（后台结束通知已核对status）：批次`campus-episode6-3methods-3repeats-2026-10-22-v1`仅尝试4轮：round-1-sequence完成；round-1-recall／graph因Malformed group page decision失败；round-2-sequence因fetch failed且存在未知计费预留失败，保护性停止，余5轮pending。账本累计估算USD0.2567298132，不能当最终实际账单；未知请求须核对provider计费。不可用1个完整结果宣称方法2重复稳定性胜出，不自动重启／拼接／修JSON；后续先离线审计协议响应和未知计费，再决定是否授权新批次。当前继续硬件主线。
