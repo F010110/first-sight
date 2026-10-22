@@ -1,9 +1,11 @@
 import {projectRecording,projectAtTime,formatSampleTime} from './view-model.js';
+import {createComparisonView} from './comparison-view.js';
 const $=id=>document.getElementById(id);
 let mode='recording',recording=null,index=0,timer=null,liveRunning=false,polling=false,selection=0;
 let imageKey='',questionKey='',answerKey='';
 let videos=[],memoryReady=false,videoEpisode=null;
 let playbackTimeline={questions:[],positions:[]};
+let comparisonData=null,comparisonView=null;
 const video=$('continuous-video');
 let tailTimer=null,tailElapsed=0;
 function stopTail(){if(tailTimer!==null)clearInterval(tailTimer);tailTimer=null;tailElapsed=0;}
@@ -28,7 +30,8 @@ function renderVideoTime(seconds=video.currentTime){
  if(!videoEpisode)return;
  const atMs=videoEpisode.sourceScheduleStartMs+seconds*1000+tailElapsed;
  const view=projectAtTime(playbackTimeline,videoEpisode.episodeNumber,atMs);
- $('sample-time').textContent=formatSampleTime(videoEpisode.sourceScheduleStartMs+seconds*1000);$('location-name').textContent=view.location;
+  $('sample-time').textContent=formatSampleTime(videoEpisode.sourceScheduleStartMs+seconds*1000);$('location-name').textContent=view.location;
+  if(comparisonView){const selected=$('method-view').value;const event=comparisonView.render(videoEpisode.episodeNumber,atMs,selected);$('location-name').textContent=selected==='all'?'见下方三方法对比':event?.name??'尚未有识别结果';}
  messages('questions',view.question?[{id:view.question.id,text:view.question.question,atMs:view.question.atMs,sampleTime:true}]:[],'等待下一个问题');
  messages('answers',view.answer!==null?[{id:view.question.id,text:view.answer,atMs:view.question.answerAtMs,sampleTime:true}]:[],view.question?'用户问题Agent正在回答…':'等待助手回答');
 }
@@ -50,7 +53,7 @@ async function selectSource(){
  const id=$('source').value;mode=id==='live'?'live':id.startsWith('video:')?'video':'recording';
  if(previousMode==='live'&&mode!=='live'&&liveRunning){try{await post('/api/simulator',{action:'pause'});liveRunning=false;}catch(error){mode='live';$('source').value='live';say('未能暂停当前输入：'+error.message);return;}if(version!==selection)return;}
   video.hidden=mode!=='video';$('views').hidden=mode==='video';
-  $('next-question').hidden=mode!=='video';
+   $('next-question').hidden=mode!=='video'||!!comparisonView;
   $('question-form').hidden=mode!=='live';$('sample-time').textContent='--:--:--';$('location-name').textContent='尚未判断';
  const canAsk=mode==='live'||mode==='video'&&memoryReady;
  $('question').disabled=!canAsk;$('send').disabled=!canAsk;$('question').placeholder=mode==='recording'?'回放中显示当时的用户问题':mode==='video'&&!memoryReady?'空间记忆准备中，完成后即可独立问答':'输入你想问的问题…';$('position').disabled=mode==='live';
@@ -69,6 +72,11 @@ async function poll(){
  }catch(error){if(version===selection)say(error.message);}finally{polling=false;}
 }
 $('source').addEventListener('change',()=>void selectSource());
+$('method-view').addEventListener('change',()=>renderVideoTime());
+$('choose-replay').addEventListener('click',()=>{$('replay-kinds').hidden=false;$('kind-title').focus();});
+$('choose-simulation').addEventListener('click',()=>{$('sample-picker').hidden=false;$('sample-title').focus();});
+$('enter-sample').addEventListener('click',async()=>{$('entry').hidden=true;$('workspace').hidden=false;await selectSource();$('scene-title').focus();});
+$('back-to-samples').addEventListener('click',()=>{video.pause();stop();stopTail();$('workspace').hidden=true;$('entry').hidden=false;$('sample-title').focus();});
 $('play').addEventListener('click',async()=>{
   if(mode==='video'){try{if(video.paused)await video.play();else video.pause();}catch(error){say(error.message);}return;}
  if(mode==='recording'){if(timer!==null){stop();return;}if(!recording)return;if(index>=recording.timeline.length-1){index=0;renderRecording();}$('play').textContent='暂停';advance();return;}
@@ -101,6 +109,9 @@ video.addEventListener('ended',()=>{
 });
 $('question-form').addEventListener('submit',async event=>{event.preventDefault();if(!['live','video'].includes(mode))return;const text=$('question').value.trim();if(!text)return;$('send').disabled=true;try{if(mode==='video')await syncScene(true);await post('/api/messages',{text,capability:'auto'});$('question').value='';await poll();}catch(error){say(error.message);}finally{$('send').disabled=mode==='recording'||mode==='video'&&!memoryReady;}});
 async function init(){
-   try{const [runs,display,timed]=await Promise.all([get('/api/recordings'),get('/api/videos'),get('/api/playback-timeline')]);playbackTimeline=timed;videos=display.episodes;memoryReady=display.memoryReady;for(const row of videos){const count=timed.questions.filter(q=>q.episodeNumber===row.episodeNumber).length;const option=document.createElement('option');option.value='video:'+row.episodeNumber;option.textContent=`校园第${row.episodeNumber}段 · ${timed.dataset==='realistic-stories-v1'&&count?`真实情境 ${count}问`:'连续画面'}`;$('source').append(option);}for(const [i,run] of runs.entries()){const option=document.createElement('option');option.value=run.id;option.textContent=i===0?'最新校园试跑':`校园试跑 ${runs.length-i}`;$('source').append(option);}if(videos.length)$('source').value='video:'+(timed.questions[0]?.episodeNumber??videos[0].episodeNumber);else if(runs.length)$('source').value=runs[0].id;else $('source').value='live';await selectSource();}catch(error){say(error.message);}
+    try{const [runs,display,timed,comparison]=await Promise.all([get('/api/recordings'),get('/api/videos'),get('/api/playback-timeline'),fetch('/api/method-comparison').then(async response=>{if(response.status===404)return null;if(!response.ok)throw Error('方法对比加载失败');return response.json();})]);playbackTimeline=timed;videos=display.episodes;memoryReady=display.memoryReady;comparisonData=comparison;
+    if(comparisonData){comparisonView=createComparisonView(comparisonData,$('comparison-cards'));$('method-comparison').hidden=false;for(const method of comparisonData.methods){const option=document.createElement('option');option.value=method.id;option.textContent=method.label;$('method-view').append(option);}for(const seconds of comparisonData.sample.checkpoints??[14,30,32,48,56,62]){const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent=seconds+'秒';button.addEventListener('click',()=>{stopTail();video.currentTime=seconds;renderVideoTime(seconds);});$('comparison-jumps').append(button);}document.querySelector('.dialogue').hidden=true;$('next-question').hidden=true;}
+    for(const row of videos){const count=timed.questions.filter(q=>q.episodeNumber===row.episodeNumber).length;const option=document.createElement('option');option.value='video:'+row.episodeNumber;option.textContent=`校园第${row.episodeNumber}段 · ${timed.dataset==='realistic-stories-v1'&&count?`真实情境 ${count}问`:'连续画面'}`;$('source').append(option);}for(const [i,run] of runs.entries()){const option=document.createElement('option');option.value=run.id;option.textContent=i===0?'最新校园试跑':`校园试跑 ${runs.length-i}`;$('source').append(option);}if(videos.length)$('source').value='video:'+(timed.questions[0]?.episodeNumber??videos[0].episodeNumber);else if(runs.length)$('source').value=runs[0].id;
+    $('sample-description').textContent=comparisonData?'第6段前64秒 · 墙边、球场与建筑外侧通道 · 三种方法同步对比':videos.length?`校园录制 · ${videos.length}段连续回放`:runs.length?'校园历史回放':'尚无可用回放';$('enter-sample').disabled=!videos.length&&!runs.length;say('请选择回放来源与样本');}catch(error){say(error.message);$('sample-description').textContent='加载失败：'+error.message;}
 }
 void init();setInterval(()=>void poll(),1000);

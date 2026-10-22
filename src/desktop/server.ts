@@ -235,6 +235,7 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
    const files:Record<string,{name:string;type:string}>={'/':{name:'index.html',type:'text/html; charset=utf-8'},'/app.js':{name:'app.js',type:'text/javascript; charset=utf-8'},'/style.css':{name:'style.css',type:'text/css; charset=utf-8'}};
    files['/recording.js']={name:'recording.js',type:'text/javascript; charset=utf-8'};
    files['/view-model.js']={name:'view-model.js',type:'text/javascript; charset=utf-8'};
+   files['/comparison-view.js']={name:'comparison-view.js',type:'text/javascript; charset=utf-8'};
    const file=files[url.pathname];if(req.method==='GET'&&file){res.writeHead(200,{'Content-Type':file.type});res.end(await readFile(join(web,file.name)));return;}
    json(404,{error:'Not found'});
   }catch(error){if(!res.headersSent)json(400,{error:String(error).replace(/^Error: /,'')});else res.end();}

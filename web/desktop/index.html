@@ -2,19 +2,29 @@
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>First Sight · 校园助手</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
 <body>
-<header><a class="brand" href="/">First Sight<span>校园生活助手</span></a><span id="status" role="status" aria-live="polite">正在载入…</span></header>
+<header><a class="brand" href="/">First Sight<span>空间生活助手</span></a><span id="status" role="status" aria-live="polite">正在载入…</span></header>
 <main>
+ <section id="entry" class="entry" aria-labelledby="entry-title">
+  <p class="eyebrow">FIRST SIGHT / 空间记忆实验室</p><h1 id="entry-title" tabindex="-1">选择体验方式</h1><p>查看同一画面下，不同空间建模方法如何识别地点。</p>
+  <div class="entry-options"><button id="choose-replay" type="button">回放 <span>查看已保存的样本与模型输出</span></button><button type="button" disabled>实时 <span>尚未接入</span></button></div>
+  <section id="replay-kinds" hidden aria-labelledby="kind-title"><h2 id="kind-title" tabindex="-1">选择回放来源</h2><div class="entry-options"><button id="choose-simulation" type="button">模拟 <span>校园场景样本</span></button><button type="button" disabled>真实 <span>尚未接入</span></button></div><p class="entry-note">校园样本为模拟场景录制，不是真实相机采集。</p></section>
+  <section id="sample-picker" hidden aria-labelledby="sample-title"><h2 id="sample-title" tabindex="-1">选择样本</h2><div class="sample-card"><h3>校园样本</h3><p id="sample-description">正在加载可用回放…</p><button id="enter-sample" type="button" disabled>进入回放</button></div></section>
+ </section>
+ <div id="workspace" hidden>
+ <nav class="workspace-nav" aria-label="回放导航"><button id="back-to-samples" type="button" class="secondary">← 返回样本</button><span>回放 / 模拟 / 校园样本</span></nav>
  <section class="scene" aria-labelledby="scene-title">
-  <div class="section-heading"><h1 id="scene-title">当前视图</h1><div class="controls"><label class="sr-only" for="source">选择实时会话或回放</label><select id="source"><option value="live">实时会话</option></select><button id="play" type="button">播放</button></div></div>
+   <div class="section-heading"><h1 id="scene-title" tabindex="-1">校园样本 · 连续画面</h1><div class="controls"><label class="sr-only" for="source">选择回放片段</label><select id="source"><option value="live" disabled>实时尚未接入</option></select><button id="play" type="button">播放</button></div></div>
   <div id="views" class="views"><p class="empty">等待画面</p></div>
   <video id="continuous-video" hidden playsinline preload="metadata" aria-label="校园原生10帧每秒连续画面，左侧、前方、右侧三视图"></video>
   <button id="next-question" type="button" hidden>下一问</button>
   <div class="scene-meta"><span>样本时间 <time id="sample-time">--:--:--</time></span><span>位置 <strong id="location-name">尚未判断</strong></span></div>
   <div class="timeline"><label class="sr-only" for="position">回放位置</label><input id="position" type="range" min="0" max="0" value="0" disabled><span id="progress">校园录制画面 · 非真实现场直播</span></div>
- </section>
+  </section>
+  <section id="method-comparison" class="comparison" hidden aria-labelledby="comparison-title"><div class="section-heading"><div><h2 id="comparison-title">方法对比</h2><p>同一视频、同一时刻 · 地点编号仅在各方法内有效</p></div><label>显示方式 <select id="method-view"><option value="all">三方法并列</option></select></label></div><div id="comparison-cards" class="comparison-cards"></div><div id="comparison-jumps" class="comparison-jumps" aria-label="重点对比时刻"><span>快速查看</span></div><p class="comparison-note">仅回放原始保存结果，不调用模型。待定会原样显示；名称不同不一定是不同地点。按样本观察时间对齐，不代表实时响应速度。</p></section>
  <div class="dialogue">
   <section class="panel" aria-labelledby="question-title"><h2 id="question-title">用户问题</h2><div id="questions" class="messages" role="log" aria-live="polite"><p class="empty">暂无问题</p></div><form id="question-form"><label class="sr-only" for="question">输入问题</label><textarea id="question" rows="2" maxlength="2000" placeholder="输入你想问的问题…"></textarea><button id="send" type="submit">发送</button></form></section>
   <section class="panel answer-panel" aria-labelledby="answer-title"><h2 id="answer-title">VLM语音输出<span class="subtitle">文字展示</span></h2><div id="answers" class="messages" role="log" aria-live="polite"><p class="empty">等待助手回答</p></div></section>
+  </div>
  </div>
 </main>
 </body></html>
