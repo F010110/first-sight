@@ -12,6 +12,8 @@ const load=async path=>{
 const [baseline,trial]=await Promise.all([load(baselinePath),load(trialPath)]);
 if(baseline.frozen.inputSha256!==trial.frozen.inputSha256)throw Error('Different public inputs');
 for(const key of ['groundFirst','comparative','regionScale','shortReferences'])if(baseline.strategy[key]!==trial.strategy[key])throw Error('Non-recall strategy changed: '+key);
+const changedFactors=['candidateRecall','visitContext'].filter(key=>JSON.stringify(baseline.strategy[key]??null)!==JSON.stringify(trial.strategy[key]??null));
+if(changedFactors.length>1)throw Error('Do not attribute simultaneous recall and history changes to one factor');
 const summarize=run=>({run:run.path,eventsSha256:run.eventsSha256,planned:run.predictions.predictions.length,completed:run.rows.length,failed:run.predictions.predictions.filter(p=>p.status==='failed').length,pending:run.predictions.predictions.filter(p=>p.status==='pending').length,unknown:run.rows.filter(r=>r.placeId===null).length,groups:run.rows.at(-1)?.groups.length??0,groupReviews:run.rows.reduce((n,r)=>n+r.reviews.length,0),memberPages:run.rows.reduce((n,r)=>n+r.reviews.reduce((a,v)=>a+v.answers.length,0),0),omittedGroupReviews:run.rows.reduce((n,r)=>n+(r.selection?.omittedGroups??0),0),usage:run.usage});
 const maps=[baseline,trial].map(run=>new Map(run.rows.map(r=>[r.id,r])));
 const ids=baseline.predictions.predictions.map(p=>p.id);let bothKnown=0,changedPairs=0,unknownAffected=0;
@@ -20,5 +22,5 @@ for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){
  if(relations.includes('unknown')){unknownAffected++;continue;}
  bothKnown++;if(relations[0]!==relations[1])changedPairs++;
 }
-const result={schema:'spatial-recall-run-comparison-v1',baseline:summarize(baseline),trial:summarize(trial),bothKnownPairs:bothKnown,changedBothKnownPairs:changedPairs,unknownAffectedPairs:unknownAffected,note:'Prediction agreement only, not accuracy. UUIDs ignored. One unpaired stochastic trial cannot isolate causality. Failure/pending observations retained; no success splicing. No topology added.'};
+const result={schema:'spatial-recall-run-comparison-v1',changedFactors,contextArms:{baseline:baseline.strategy.visitContext??'none',trial:trial.strategy.visitContext??'none'},baseline:summarize(baseline),trial:summarize(trial),bothKnownPairs:bothKnown,changedBothKnownPairs:changedPairs,unknownAffectedPairs:unknownAffected,note:'Prediction agreement only, not accuracy. UUIDs ignored. One unpaired stochastic trial cannot isolate causality. Failure/pending observations retained; no success splicing. Context is additive; sequence is not replaced by graph.'};
 await writeFile(output,JSON.stringify(result,null,2),{flag:'wx'});console.log(JSON.stringify(result));
