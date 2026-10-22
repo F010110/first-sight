@@ -1,5 +1,15 @@
 # 校园网连接探测
 
+## 最新结果：开发板单次portal认证成功
+
+用户明确接受HTTP明文风险后，新增`cam/portal_login_probe.py --confirm-http-credentials`。主机读取被Git忽略的本地JSON，通过USB向已准备好的开发板临时传递UTF-8十六进制编码凭据（编码不是加密）；不将账号写入源代码／构建镜像或串口日志。固件仅接受重定向到精确`http://10.3.8.216/index`（可带AC参数）后提交到同源`/login`，复用CookieJar，URL编码user/pass，最多POST一次；不执行第三方脚本、不自动无限重连、不写凭据NVS。
+
+实板结果：portal关联成功→AC认证页→AUTH_POST_HTTP=200→重新请求apple检测页POST_LOGIN_HTTP=200、INTERNET_CHECK_SUCCESS=1→PROBE_DONE RADIO_OFF。证据`cam/local/campus-portal-login-20261022.log`；后续脚本生成独立时间戳日志，避免覆盖。认证提交200本身不是成功标准，必须再取得检测页预期Success标记。本次验证是HTTP外网连通，不是TLS安全性证明，也未做长时稳定／掉线恢复／电脑互通或相机传图。
+
+独立campus-probe编译与应用区刷写哈希验证通过；当前板上仍是有界认证探测应用，启动后若需要认证则等待USB凭据，结束关闭无线电，不是相机服务。校园账号不固化在固件，但String清空不代表物理RAM安全擦除。认证流仍受开放Wi-Fi／HTTP窃听与篡改风险，不得描述为加密认证。
+
+下一步将该受限认证流程接入单摄Wi-Fi采集验证，并单独核对电脑与板的地址路由／终端隔离及接收端最小防火墙规则；未完成前不宣称图像链路可用。不得为了三视图给单摄伪造另外两路。
+
 ## 后续：portal真实认证链已确认
 
 用户报告电脑接portal可上网，并提供https://github.com/charlie0129/bupt-net-login。已只读审查README及master脚本，未安装或执行第三方代码。脚本为Bash＋curl：访问captive.apple.com，处理meta refresh／AC重定向，获取带参数认证页cookie，向index替换为login后的地址POST user/pass，再检查Success；不能直接在ESP32运行，也不能由电脑登录成功证明板上IP认证。

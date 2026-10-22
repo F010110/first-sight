@@ -4,6 +4,9 @@
 
 ## 当前主线：生活助手产品设计
 
+- [x] **开发板portal认证已实测成功**：用户已明确接受HTTP明文提交风险。COM3仅应用区刷写／哈希验证，凭据从忽略JSON经USB临时传入，固件限定10.3.8.216/index→同源/login、CookieJar＋URL编码、最多1次POST；不写账户到固件／NVS或日志。实测AUTH_POST_HTTP=200，随后apple检测HTTP200且INTERNET_CHECK_SUCCESS=1；证据`cam/local/campus-portal-login-20261022.log`。结束radio off；这是HTTP联网，不是加密或相机传图验收。后续入口`cam/portal_login_probe.py --confirm-http-credentials`，日志改用独立时间戳不覆盖。
+- [ ] **接下来单摄Wi-Fi传图**：复用已验证portal认证，先确认电脑当前地址／同网及终端隔离，采取最小接收端范围，不放宽整个公共网络防火墙；现板还是campus-probe诊断固件。需明确单摄验证模式，不能把一摄复制成三摄完整观察；暂不调用VLM。长时在线、认证过期／掉线恢复、三摄曝光同步仍未验证。
+
 - [ ] **portal恢复推进（最新）**：用户确认电脑portal有网，给出charlie0129/bupt-net-login；已只读审查Bash脚本，未安装／执行。开发板实测apple→meta refresh→HTTP302→`http://10.3.8.216`认证页，仍无Success；设备IP须单独认证，不能在电脑跑脚本冒充板上认证。证据`cam/local/campus-portal-redirect-20261022.log`。当前板为最多4跳、无凭据探测固件，结束radio off；未实拍／传图。实际链与仓库均HTTP，尚未提交已填写密码；先告知明文风险并确认用户选择，或核实可信HTTPS认证端点／使用电脑热点，不关闭TLS验证。不要忘记前述按错误原因定制prompt待办，冻结v2批次未改。
 
 - [ ] **后续重试prompt按具体错误定制**：当前冻结v2仅通用protocolFeedback，用户明确先不改运行中版本。下版逐项反馈缺失字段／期望值不符／成员漏检／非法引用等机器可验证原因（例如缺groupId须复制INPUT.groupId），保留原响应及错误路径；不泄露真值、不引导修改空间结论，测试错误原因确实进入重试请求及次数封顶。不可称当前已提供逐项具体原因。
