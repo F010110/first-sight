@@ -14,7 +14,7 @@ import serial
 from PIL import Image
 
 
-def validate_frame(data, headers, previous_boot, previous_sequence):
+def validate_frame(data, headers, previous_boot, previous_sequence, expected_quality=None):
     if int(headers.get('Content-Length', '-1')) != len(data):
         raise ValueError('Incomplete camera response length')
     if not 0 < len(data) <= 300000 or hashlib.sha256(data).hexdigest() != headers.get('X-Frame-Sha256'):
@@ -26,6 +26,12 @@ def validate_frame(data, headers, previous_boot, previous_sequence):
     captured = int(headers.get('X-Capture-Ms', '-1'))
     if captured < 0:
         raise ValueError('Missing raw device timestamp')
+    quality = headers.get('X-Jpeg-Quality')
+    if expected_quality is not None:
+        if quality is not None and int(quality) != expected_quality:
+            raise ValueError('Device JPEG quality does not match requested setting')
+        if expected_quality != 12 and quality is None:
+            raise ValueError('Firmware does not confirm JPEG quality')
     with Image.open(io.BytesIO(data)) as image:
         if image.format != 'JPEG' or image.size != (640, 480):
             raise ValueError('Require original VGA JPEG')
@@ -40,8 +46,11 @@ def main():
     p.add_argument('--count', type=int, default=30)
     p.add_argument('--interval', type=float, default=2)
     p.add_argument('--keep-alive', action='store_true', help='Requires camera-portal-keepalive firmware; no silent reconnect')
+    p.add_argument('--jpeg-quality', type=int, choices=[12, 16], help='Default 16 for persistent experimental capture, 12 for legacy firmware')
     p.add_argument('--confirm-http-credentials', action='store_true', required=True)
     args = p.parse_args()
+    if args.jpeg_quality is None:
+        args.jpeg_quality = 16 if args.keep_alive else 12
     if not 1 <= args.count <= 60 or not 1 <= args.interval <= 10 or args.count*args.interval > 140:
         p.error('Bounded capture requires count 1..60, interval 1..10, total <=140s')
     c = json.loads((Path(__file__).parent/'local/campus-credentials.json').read_text(encoding='utf-8-sig'))
@@ -57,6 +66,7 @@ def main():
                 requestedIntervalSeconds=args.interval, requestedFrames=args.count,
                 transport='wifi-single-http', timestampSource='host-request',
                 connectionMode='persistent' if args.keep_alive else 'per-frame',
+                jpegQuality=args.jpeg_quality,
                 exposureTimeKnown=False, sideCamerasAvailable=False,
                 limits='HTTP plaintext; bearer authorization and SHA256 are not encryption. Device clock not host-aligned. No automatic reconnect.')
     (root/'plan.json').write_text(json.dumps(plan, indent=2), encoding='utf8')
@@ -86,6 +96,9 @@ def main():
                     sent = True
                 if line == 'CAMERA_TOKEN_READY':
                     device.write((token+'\n').encode('ascii'))
+                    device.flush()
+                if line == 'CAMERA_JPEG_CONFIG_READY':
+                    device.write((str(args.jpeg_quality)+'\n').encode('ascii'))
                     device.flush()
                 if line.startswith('CAMERA_HTTP_READY IP='):
                     ip = line.split('IP=', 1)[1].split()[0]
@@ -120,13 +133,13 @@ def main():
                     if args.keep_alive and response.will_close:
                         raise ConnectionError('Camera did not accept persistent connection')
                     try:
-                        boot, seq, captured = validate_frame(data, response.headers, boot, seq)
+                        boot, seq, captured = validate_frame(data, response.headers, boot, seq, args.jpeg_quality)
                     except ValueError:
                         # Preserve failed bytes separately; never append an invalid observation.
                         failed = root/'failed-responses'
                         failed.mkdir(exist_ok=True)
                         (failed/f'{index:06d}.bin').write_bytes(data)
-                        metadata = {key:response.headers.get(key) for key in ['Content-Length','Content-Type','X-Frame-Sha256','X-Boot-Id','X-Sequence','X-Capture-Ms','X-Prepare-Us']}
+                        metadata = {key:response.headers.get(key) for key in ['Content-Length','Content-Type','X-Frame-Sha256','X-Boot-Id','X-Sequence','X-Capture-Ms','X-Prepare-Us','X-Jpeg-Quality']}
                         metadata['receivedBytes'] = len(data)
                         metadata['receivedSha256'] = hashlib.sha256(data).hexdigest()
                         (failed/f'{index:06d}.json').write_text(json.dumps(metadata, indent=2), encoding='utf8')
@@ -146,7 +159,7 @@ def main():
                            requestAtMs=request_at, receivedAtMs=round((received-start)*1000), requestWallTimeMs=epoch+request_at,
                            sha256=hashlib.sha256(data).hexdigest(), wireSha256=hashlib.sha256(data).hexdigest(),
                            deviceBootId=boot, deviceSequence=seq, deviceCaptureMs=captured, deviceClockAligned=False,
-                           width=640, height=480, bytes=len(data), requestToReceiveMs=round((received-requested)*1000),
+                           width=640, height=480, jpegQuality=args.jpeg_quality, bytes=len(data), requestToReceiveMs=round((received-requested)*1000),
                            connectMs=round((connected-requested)*1000), headersAfterConnectMs=round((headers_at-connected)*1000),
                            bodyReceiveMs=round((body_at-headers_at)*1000), validationMs=round((received-body_at)*1000), devicePrepareUs=prepare_us)
                 with (root/'observations.jsonl').open('a', encoding='utf8') as output:

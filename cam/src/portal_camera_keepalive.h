@@ -6,6 +6,7 @@ static WiFiClient imageClient;
 static String imageToken,imageBoot;
 static uint32_t imageSequence=0,imageStarted=0;
 static bool imageServing=false;
+static int imageQuality=12;
 static bool readHeaderLine(String& line,uint32_t start){
   while(imageClient.connected()&&millis()-start<2000){
     if(imageClient.available()){char c=imageClient.read();if(c=='\n')return true;if(line.length()>=1024)return false;line+=c;}
@@ -29,6 +30,12 @@ static bool writeAll(const uint8_t* data,size_t size){
 static void portalCameraSetup(){
   if(!portalConnect()){Serial.println("CAMERA_NETWORK_FAILED");WiFi.mode(WIFI_OFF);return;}
   WiFi.setSleep(false);Serial.println("CAMERA_WIFI_SLEEP_DISABLED");
+  Serial.println("CAMERA_JPEG_CONFIG_READY");Serial.setTimeout(60000);
+  String quality=Serial.readStringUntil('\n');quality.trim();
+  if(quality!="12"&&quality!="16"){Serial.println("CAMERA_JPEG_CONFIG_INVALID");WiFi.mode(WIFI_OFF);return;}
+  imageQuality=quality.toInt();
+  if(esp_camera_sensor_get()->set_quality(esp_camera_sensor_get(),imageQuality)!=0){Serial.println("CAMERA_JPEG_CONFIG_FAILED");WiFi.mode(WIFI_OFF);return;}
+  Serial.printf("CAMERA_JPEG_QUALITY=%d\n",imageQuality);
   Serial.println("CAMERA_TOKEN_READY");Serial.setTimeout(60000);imageToken=Serial.readStringUntil('\n');imageToken.trim();
   if(imageToken.length()!=64){WiFi.mode(WIFI_OFF);return;}
   for(size_t i=0;i<imageToken.length();i++)if(!isxdigit(imageToken[i])){WiFi.mode(WIFI_OFF);return;}
@@ -60,7 +67,7 @@ static void portalCameraLoop(){
   uint8_t digest[32];char hex[65];
   if(mbedtls_sha256_ret(frame->buf,frame->len,digest,0)!=0){esp_camera_fb_return(frame);imageClient.stop();return;}
   for(int i=0;i<32;i++)snprintf(hex+i*2,3,"%02x",digest[i]);hex[64]=0;
-  String headers="HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nConnection: keep-alive\r\nCache-Control: no-store\r\nContent-Length: "+String(frame->len)+"\r\nX-Frame-Sha256: "+hex+"\r\nX-Boot-Id: "+imageBoot+"\r\nX-Sequence: "+String(imageSequence++)+"\r\nX-Capture-Ms: "+String(uint32_t(frame->timestamp.tv_sec*1000ULL+frame->timestamp.tv_usec/1000))+"\r\nX-Prepare-Us: "+String(uint32_t(micros()-prepare))+"\r\n\r\n";
+  String headers="HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nConnection: keep-alive\r\nCache-Control: no-store\r\nContent-Length: "+String(frame->len)+"\r\nX-Frame-Sha256: "+hex+"\r\nX-Boot-Id: "+imageBoot+"\r\nX-Sequence: "+String(imageSequence++)+"\r\nX-Jpeg-Quality: "+String(imageQuality)+"\r\nX-Capture-Ms: "+String(uint32_t(frame->timestamp.tv_sec*1000ULL+frame->timestamp.tv_usec/1000))+"\r\nX-Prepare-Us: "+String(uint32_t(micros()-prepare))+"\r\n\r\n";
   bool ok=writeAll((const uint8_t*)headers.c_str(),headers.length())&&writeAll(frame->buf,frame->len);
   esp_camera_fb_return(frame);if(!ok)imageClient.stop();
 }

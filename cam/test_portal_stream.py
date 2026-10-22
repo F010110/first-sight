@@ -12,6 +12,11 @@ class PortalStreamTest(unittest.TestCase):
         data = buffer.getvalue()
         headers = {'Content-Length':str(len(data)), 'X-Frame-Sha256': hashlib.sha256(data).hexdigest(), 'X-Boot-Id': 'boot', 'X-Sequence': '0', 'X-Capture-Ms': '100'}
         self.assertEqual(validate_frame(data, headers, None, -1), ('boot', 0, 100))
+        with self.assertRaisesRegex(ValueError, 'confirm JPEG quality'):
+            validate_frame(data, headers, None, -1, 16)
+        self.assertEqual(validate_frame(data, dict(headers, **{'X-Jpeg-Quality':'16'}), None, -1, 16), ('boot', 0, 100))
+        with self.assertRaisesRegex(ValueError, 'does not match'):
+            validate_frame(data, dict(headers, **{'X-Jpeg-Quality':'12'}), None, -1, 16)
         for bad in [{'Content-Length':str(len(data)+1)}, {'X-Frame-Sha256': 'bad'}, {'X-Boot-Id': ''}, {'X-Sequence': '2'}, {'X-Capture-Ms': '-1'}]:
             with self.assertRaises(ValueError):
                 validate_frame(data, dict(headers, **bad), None, -1)
