@@ -39,3 +39,11 @@ test('Wi-Fi paid use is blocked without explicit unverified exposure-sync acknow
   assert.notEqual(result.code,0);assert.match(result.stderr,/requires --allow-unverified-sync/);
  }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('live freshness policy cannot silently enable paid legacy-model inference',async()=>{
+ const result=await new Promise<{code:number|null;stderr:string}>((resolve,reject)=>{
+  const child=spawn(process.execPath,[new URL('./run-camera.js',import.meta.url).pathname.replace(/^\/(\w:)/,'$1'),'unused','unused','--confirm-paid','--follow','--live-policy'],{stdio:'pipe'});
+  let stderr='';child.stderr.on('data',chunk=>stderr+=chunk);child.on('error',reject);child.on('close',code=>resolve({code,stderr}));
+ });
+ assert.notEqual(result.code,0);assert.match(result.stderr,/model current-state publishing is not connected/);
+});

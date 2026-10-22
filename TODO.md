@@ -4,6 +4,10 @@
 
 ## 当前主线：生活助手产品设计
 
+- [x] **JPEG参数及输入侧抗抖动已实现／实测**：相机原生JPEG，640×480不变，启动经USB选择参数12／16并通过响应头确认；persistent开发默认16、显式12可回退。两档各2轮（12→16→16→12）每轮12张，48/48完整；r2相近画面16平均20.72KB vs12为24.79KB（约少16.4%），但16复测仍最慢4196ms，不能称稳定。gzip离线仅省1.45%；未做设备WebP/AVIF测试，不称绝对最优压缩。原图与收据`run/hardware/portal-quality-20261022-*`；小字／空间识别准确性未验收。
+- [x] **当前输入通道防积压／过期保护**：LiveFramePolicy容量1、2500ms新鲜度／gap，stale或替换打断连续性；归档不删、不补旧图。hardware runner显式`--validate-only --follow --live-policy`写决策和current-input-status，会话结束待确认。q16实采两轮当前交付12/12、10/12（2 stale），r2-q12 9/12（3 stale），原图每轮均12保留。305项TS及Python校验测试通过。说明`cam/docs/jpeg-quality-and-live-freshness.md`。
+- [ ] **仍需完成模型侧抗抖动接线**：mayPublishCurrent异步输出复查仅已有实现与单测，尚未接入方法2的模型／Context SQLite提交及网页当前地点；目前禁止live-policy配付费旧模型，不能误称端到端已解决。后续让历史分析与当前发布分离、保证调用中延迟／更新帧到来不会污染当前结果；断线恢复须明确会话，不复制旧图，不跨缺口强建边。当前硬件仍180秒有界验证，长期采集及重认证未验收。
+
 - [ ] **Wi-Fi提速实验：未稳定达标，勿只引用最快轮**。新增分阶段时延，设备准备约301ms；v3慢帧主要卡body，TCP连接通常几到几十ms。现WebServer已NODELAY；独立keepalive v4 20/20但平均2911ms，无稳定改善；1460字节＋2ms paced v5 20/20平均542ms、仍跳1时隙；同固件v6计划30仅20通过，第21次完整性失败，实时消费者也stopped，不能拼前缀当成功。v6失败原始body在新归档补丁前未保留，无法认定具体是截断还是hash；未来新增Content-Length校验及failed-responses单独原始归档。当前板camera-portal-paced，180秒后radio off；源代码保留旧目标，实验选项未当默认稳定方案。下一步固定画面＋近距离2.4GHz热点对照，用户准备网络前不自动切网／干扰后台实验。细节`cam/docs/portal-transfer-speed-experiments.md`，0模型调用。
 
 - [x] **单摄Wi-Fi实时输入follow已实测接通**：第二轮`run/hardware/portal-single-20261022-v2-nosleep`关闭ESP32 Wi-Fi省电，30/30有效帧；消费者同步`--validate-only --follow`，结果`...-live-validated`为30观察／8原规则窗口。0模型调用，不伪造左右视图，未接方法2在线推理／SQLite／网页真实入口。平均请求到收图1584.77ms、最慢4793ms，平均采样间隔3034.48ms、跳15时隙，仍未达稳定2秒；不能挑后半段快帧宣传达标，不能从一对照归因省电。当前板camera-portal固件服务180秒后radio off，USB只启动配置及供电，照片走Wi-Fi；无电脑防火墙修改。
