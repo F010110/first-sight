@@ -4,6 +4,8 @@
 
 ## 当前主线：生活助手产品设计
 
+- [ ] **Wi-Fi提速实验：未稳定达标，勿只引用最快轮**。新增分阶段时延，设备准备约301ms；v3慢帧主要卡body，TCP连接通常几到几十ms。现WebServer已NODELAY；独立keepalive v4 20/20但平均2911ms，无稳定改善；1460字节＋2ms paced v5 20/20平均542ms、仍跳1时隙；同固件v6计划30仅20通过，第21次完整性失败，实时消费者也stopped，不能拼前缀当成功。v6失败原始body在新归档补丁前未保留，无法认定具体是截断还是hash；未来新增Content-Length校验及failed-responses单独原始归档。当前板camera-portal-paced，180秒后radio off；源代码保留旧目标，实验选项未当默认稳定方案。下一步固定画面＋近距离2.4GHz热点对照，用户准备网络前不自动切网／干扰后台实验。细节`cam/docs/portal-transfer-speed-experiments.md`，0模型调用。
+
 - [x] **单摄Wi-Fi实时输入follow已实测接通**：第二轮`run/hardware/portal-single-20261022-v2-nosleep`关闭ESP32 Wi-Fi省电，30/30有效帧；消费者同步`--validate-only --follow`，结果`...-live-validated`为30观察／8原规则窗口。0模型调用，不伪造左右视图，未接方法2在线推理／SQLite／网页真实入口。平均请求到收图1584.77ms、最慢4793ms，平均采样间隔3034.48ms、跳15时隙，仍未达稳定2秒；不能挑后半段快帧宣传达标，不能从一对照归因省电。当前板camera-portal固件服务180秒后radio off，USB只启动配置及供电，照片走Wi-Fi；无电脑防火墙修改。
 - [ ] **单摄后续**：分阶段测连接／抓拍／首字节／传输延迟并固定画面复测，建立长时采集与断线／认证过期策略。若要空间识别，需明确接入当前方法2而非直接沿用历史付费硬件runner；确认预算后再做模型／Context SQLite闭环，随后网页真实输入。说明`cam/docs/portal-single-camera-stream.md`。
 

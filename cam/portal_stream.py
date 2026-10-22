@@ -1,6 +1,7 @@
 """Bounded single-camera Wi-Fi pull. USB carries setup secrets only, never images."""
 import argparse
 import hashlib
+import http.client
 import io
 import ipaddress
 import json
@@ -8,13 +9,14 @@ from pathlib import Path
 import secrets
 import statistics
 import time
-import urllib.request
 import uuid
 import serial
 from PIL import Image
 
 
 def validate_frame(data, headers, previous_boot, previous_sequence):
+    if int(headers.get('Content-Length', '-1')) != len(data):
+        raise ValueError('Incomplete camera response length')
     if not 0 < len(data) <= 300000 or hashlib.sha256(data).hexdigest() != headers.get('X-Frame-Sha256'):
         raise ValueError('Wi-Fi image wire checksum/size failure')
     boot = headers.get('X-Boot-Id', '')
@@ -37,6 +39,7 @@ def main():
     p.add_argument('--port', default='COM3')
     p.add_argument('--count', type=int, default=30)
     p.add_argument('--interval', type=float, default=2)
+    p.add_argument('--keep-alive', action='store_true', help='Requires camera-portal-keepalive firmware; no silent reconnect')
     p.add_argument('--confirm-http-credentials', action='store_true', required=True)
     args = p.parse_args()
     if not 1 <= args.count <= 60 or not 1 <= args.interval <= 10 or args.count*args.interval > 140:
@@ -53,10 +56,12 @@ def main():
     plan = dict(schemaVersion=1, recordingId=recording, cameraId='esp32-s3-front-1',
                 requestedIntervalSeconds=args.interval, requestedFrames=args.count,
                 transport='wifi-single-http', timestampSource='host-request',
+                connectionMode='persistent' if args.keep_alive else 'per-frame',
                 exposureTimeKnown=False, sideCamerasAvailable=False,
                 limits='HTTP plaintext; bearer authorization and SHA256 are not encryption. Device clock not host-aligned. No automatic reconnect.')
     (root/'plan.json').write_text(json.dumps(plan, indent=2), encoding='utf8')
     rows, log = [], []
+    persistent = None
     try:
         token = secrets.token_hex(32)
         ip = None
@@ -91,7 +96,6 @@ def main():
             if not ip:
                 raise TimeoutError('Camera HTTP endpoint not ready')
             # Explicitly bypass system proxies: private camera images must stay on LAN.
-            client = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             epoch, start = time.time_ns()//1000000, time.monotonic()
             due = start
             boot, seq, missed = None, -1, 0
@@ -99,12 +103,40 @@ def main():
                 time.sleep(max(0, due-time.monotonic()))
                 requested = time.monotonic()
                 request_at = round((requested-start)*1000)
-                request = urllib.request.Request(f'http://{ip}/v1/frame', headers={'Authorization': 'Bearer '+token})
-                with client.open(request, timeout=8) as response:
+                client = persistent if persistent is not None else http.client.HTTPConnection(ip, timeout=8)
+                try:
+                    if client.sock is None:
+                        if persistent is not None:
+                            raise ConnectionError('Persistent camera socket lost; no silent reconnect')
+                        client.connect()
+                    connected = time.monotonic()
+                    client.request('GET', '/v1/frame', headers={'Authorization': 'Bearer '+token, 'Connection': 'keep-alive' if args.keep_alive else 'close'})
+                    response = client.getresponse()
+                    headers_at = time.monotonic()
                     if response.status != 200 or response.headers.get_content_type() != 'image/jpeg':
                         raise ValueError('Unexpected camera response')
                     data = response.read(300001)
-                    boot, seq, captured = validate_frame(data, response.headers, boot, seq)
+                    body_at = time.monotonic()
+                    if args.keep_alive and response.will_close:
+                        raise ConnectionError('Camera did not accept persistent connection')
+                    try:
+                        boot, seq, captured = validate_frame(data, response.headers, boot, seq)
+                    except ValueError:
+                        # Preserve failed bytes separately; never append an invalid observation.
+                        failed = root/'failed-responses'
+                        failed.mkdir(exist_ok=True)
+                        (failed/f'{index:06d}.bin').write_bytes(data)
+                        metadata = {key:response.headers.get(key) for key in ['Content-Length','Content-Type','X-Frame-Sha256','X-Boot-Id','X-Sequence','X-Capture-Ms','X-Prepare-Us']}
+                        metadata['receivedBytes'] = len(data)
+                        metadata['receivedSha256'] = hashlib.sha256(data).hexdigest()
+                        (failed/f'{index:06d}.json').write_text(json.dumps(metadata, indent=2), encoding='utf8')
+                        raise
+                    prepare_us = int(response.headers.get('X-Prepare-Us', '-1'))
+                finally:
+                    if not args.keep_alive:
+                        client.close()
+                if args.keep_alive:
+                    persistent = client
                 received = time.monotonic()
                 frame = root/'frames'/f'{index:06d}.jpg'
                 frame.write_bytes(data)
@@ -114,11 +146,13 @@ def main():
                            requestAtMs=request_at, receivedAtMs=round((received-start)*1000), requestWallTimeMs=epoch+request_at,
                            sha256=hashlib.sha256(data).hexdigest(), wireSha256=hashlib.sha256(data).hexdigest(),
                            deviceBootId=boot, deviceSequence=seq, deviceCaptureMs=captured, deviceClockAligned=False,
-                           width=640, height=480, bytes=len(data), requestToReceiveMs=round((received-requested)*1000))
+                           width=640, height=480, bytes=len(data), requestToReceiveMs=round((received-requested)*1000),
+                           connectMs=round((connected-requested)*1000), headersAfterConnectMs=round((headers_at-connected)*1000),
+                           bodyReceiveMs=round((body_at-headers_at)*1000), validationMs=round((received-body_at)*1000), devicePrepareUs=prepare_us)
                 with (root/'observations.jsonl').open('a', encoding='utf8') as output:
                     output.write(json.dumps(row)+'\n')
                 rows.append(row)
-                print(json.dumps(dict(sequence=index, bytes=len(data), latencyMs=row['requestToReceiveMs'])), flush=True)
+                print(json.dumps({k:row[k] for k in ['sequence','bytes','requestToReceiveMs','connectMs','headersAfterConnectMs','bodyReceiveMs','devicePrepareUs']}), flush=True)
                 due += args.interval
                 if received > due:
                     skip = int((received-due)//args.interval)+1
@@ -132,11 +166,16 @@ def main():
                           meetsRequestedCadence=len(rows)>1 and missed==0, modelCalls=0)
             (root/'complete.json').write_text(json.dumps(result, indent=2), encoding='utf8')
             print(json.dumps(result), flush=True)
+            if persistent is not None:
+                persistent.close()
     except BaseException as error:
         # Do not dump response objects or request headers that could contain secrets.
         (root/'startup.log').write_text('\n'.join(log), encoding='utf8')
         (root/'stopped.json').write_text(json.dumps(dict(errorType=type(error).__name__, frames=len(rows))), encoding='utf8')
         raise
+    finally:
+        if persistent is not None:
+            persistent.close()
 
 
 if __name__ == '__main__':

@@ -10,9 +10,9 @@ class PortalStreamTest(unittest.TestCase):
         buffer = io.BytesIO()
         Image.new('RGB', (640, 480)).save(buffer, format='JPEG')
         data = buffer.getvalue()
-        headers = {'X-Frame-Sha256': hashlib.sha256(data).hexdigest(), 'X-Boot-Id': 'boot', 'X-Sequence': '0', 'X-Capture-Ms': '100'}
+        headers = {'Content-Length':str(len(data)), 'X-Frame-Sha256': hashlib.sha256(data).hexdigest(), 'X-Boot-Id': 'boot', 'X-Sequence': '0', 'X-Capture-Ms': '100'}
         self.assertEqual(validate_frame(data, headers, None, -1), ('boot', 0, 100))
-        for bad in [{'X-Frame-Sha256': 'bad'}, {'X-Boot-Id': ''}, {'X-Sequence': '2'}, {'X-Capture-Ms': '-1'}]:
+        for bad in [{'Content-Length':str(len(data)+1)}, {'X-Frame-Sha256': 'bad'}, {'X-Boot-Id': ''}, {'X-Sequence': '2'}, {'X-Capture-Ms': '-1'}]:
             with self.assertRaises(ValueError):
                 validate_frame(data, dict(headers, **bad), None, -1)
         with self.assertRaises(ValueError):

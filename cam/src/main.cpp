@@ -1,7 +1,11 @@
 #include <Arduino.h>
 #include "esp_camera.h"
 #ifdef FIRST_SIGHT_PORTAL
+#ifdef FIRST_SIGHT_KEEPALIVE
+#include "portal_camera_keepalive.h"
+#else
 #include "portal_camera.h"
+#endif
 #endif
 #ifdef FIRST_SIGHT_WIFI
 #include "wifi_transport.h"
