@@ -31,7 +31,7 @@ export function spatialJsonVlm(root:string,maxCalls=96,maxEstimatedUSD=.4){
     await writeFile(join(directory,`reservation-${attempt}.json`),JSON.stringify({attempt,model:'qwen3.8-flash',enableThinking:false,reservedInputTokens:128000,maxOutputTokens,reservation}));await ledger();
     const response=await fetch(base.replace(/\/$/,'')+'/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:payload,signal:AbortSignal.timeout(120000)});
     return {response,text:await response.text()};
-   },async(error,attempt,retrying)=>{await writeFile(join(directory,`transport-failure-${attempt}.json`),JSON.stringify({error:String(error),retrying}));});
+   },async(error,attempt,retrying)=>{const causes=[];let current=error;for(let depth=0;depth<6&&current&&typeof current==='object';depth++){const e=current as {name?:string;code?:string;cause?:unknown};causes.push({name:e.name,code:e.code});current=e.cause;}await writeFile(join(directory,`transport-failure-${attempt}.json`),JSON.stringify({error:String(error),causes,retrying}));});
    await writeFile(join(directory,'response.txt'),text);
    if(!response.ok)throw Error(`Separated VLM HTTP ${response.status}`);
    const body=JSON.parse(text),usage=body.usage;

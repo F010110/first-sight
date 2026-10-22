@@ -4,6 +4,8 @@
 
 ## 当前主线：生活助手产品设计
 
+- [ ] **修复版重复实验v2已启动**：用户要求先诊断修好再跑。v1两个格式失败均是模型遗漏groupId（非256调用耗尽），已新增每页即时协议校验＋最多3次原图重试，不补字段／不放宽冲突；网络新增超时／临时DNS分类及cause链记录，旧第二次fetch失败原因无法还原，不能断言重试次数用完。300测试通过。新目录`run/spatial-repeat-batches/campus-episode6-3methods-3repeats-2026-10-22-v2`，shell `sh_163659b90001ervqBpR43TGXZm`，首轮recall已running；三方法各3遍全新空库，不拼v1成功，v2 cap USD4.24＋v1估算USD0.2567298132＜原USD4.50。显式允许未知请求保持最大预留计费后继续下个独立轮，不清零／不无限重试。状态以本目录status／complete／stopped为准，勿重复启动。诊断与边界见`docs/product/spatial-repeat-failure-recovery-v2.md`。
+
 - [ ] **重复实验已停止，非9轮完成**（后台结束通知已核对status）：批次`campus-episode6-3methods-3repeats-2026-10-22-v1`仅尝试4轮：round-1-sequence完成；round-1-recall／graph因Malformed group page decision失败；round-2-sequence因fetch failed且存在未知计费预留失败，保护性停止，余5轮pending。账本累计估算USD0.2567298132，不能当最终实际账单；未知请求须核对provider计费。不可用1个完整结果宣称方法2重复稳定性胜出，不自动重启／拼接／修JSON；后续先离线审计协议响应和未知计费，再决定是否授权新批次。当前继续硬件主线。
 
 - [ ] **mobile优先核对更新**：用户已填写本地校园账号密码，仅核查非空、不输出。板上三遍2.4GHz实扫均仅见portal（1／6／11）不见mobile，电脑当前mobile为频道48／5GHz企业认证；本位置未找到可供ESP32-S3连接的mobile，不代表全校园无2.4GHz。当前板上是只扫描三遍后radio off的诊断固件，无关联／账号提交／传图。证据`cam/local/campus-mobile-scan-20261022.log`；优先询问校网mobile的2.4GHz覆盖及EAP／CA资料，或选择电脑热点中转，不能盲填普通Wi-Fi密码冒充企业认证，也不要自动退回portal提交账号。

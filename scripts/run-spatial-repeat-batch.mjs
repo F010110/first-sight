@@ -2,6 +2,9 @@
 import {spawn} from 'node:child_process';import {createWriteStream} from 'node:fs';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';import {resolve,dirname,join} from 'node:path';import {createHash} from 'node:crypto';
 const [destination,inputPath,featuresPath,confirm]=process.argv.slice(2);
+const batchCap=Number(process.env.SPATIAL_BATCH_MAX_USD??4.5);
+const allowReservedUnknown=process.env.SPATIAL_BATCH_ALLOW_RESERVED_UNKNOWN==='1';
+if(!Number.isFinite(batchCap)||batchCap<.5||batchCap>4.5)throw Error('Invalid batch cost cap');
 if(!destination||!inputPath||!featuresPath||confirm!=='--confirm-paid')throw Error('Usage: run-spatial-repeat-batch NEW-batch-directory PUBLIC-input.json FEATURES.json --confirm-paid');
 if(!process.env.QWEN_API_KEY||!process.env.QWEN_BASE_URL)throw Error('Missing Qwen configuration; no batch started');
 const root=resolve(destination),input=resolve(inputPath),features=resolve(featuresPath),sha=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -13,11 +16,11 @@ const paths=[...files,...files.map(p=>p.replace(/^src\//,'dist/current/').replac
 const hashes=Object.fromEntries(await Promise.all(paths.map(async path=>[path,sha(await readFile(path))])));
 await mkdir(dirname(root),{recursive:true});await mkdir(root);
 const trials=[['recall','sequence','graph'],['sequence','graph','recall'],['graph','recall','sequence']].flatMap((order,index)=>order.map(method=>({id:`round-${index+1}-${method}`,round:index+1,method,status:'pending',runRoot:null,estimatedUSD:null})));
-const plan={schema:'spatial-repeat-batch-v1',createdAt:new Date().toISOString(),input,features,inputSha256:sha(inputRaw),observations:JSON.parse(inputRaw).observations.length,plannedTrials:9,repeatsPerMethod:3,maxCallsPerTrial:256,maxEstimatedUSDPerTrial:.5,maxBatchEstimatedUSD:4.5,methodOrder:'Rotated across rounds; serial, no overlapping paid trials',hashes,policy:'New empty memory every trial. Preserve all failures. No automatic resume, no success splicing, no frontend replacement. Current 64-second segment only, NOT all-campus evaluation.'};
+const plan={schema:'spatial-repeat-batch-v1',createdAt:new Date().toISOString(),input,features,inputSha256:sha(inputRaw),observations:JSON.parse(inputRaw).observations.length,plannedTrials:9,repeatsPerMethod:3,maxCallsPerTrial:256,maxEstimatedUSDPerTrial:.5,maxBatchEstimatedUSD:batchCap,allowReservedUnknown,methodOrder:'Rotated across rounds; serial, no overlapping paid trials',hashes,policy:'New empty memory every trial. Preserve all failures. No automatic resume, no success splicing, no frontend replacement. Current 64-second segment only, NOT all-campus evaluation.'};
 await writeFile(join(root,'plan.json'),JSON.stringify(plan,null,2),{flag:'wx'});
 let billed=0,stopped=null;
 const save=()=>writeFile(join(root,'status.json'),JSON.stringify({updatedAt:new Date().toISOString(),estimatedUSD:billed,stopped,trials},null,2));
-await save();console.log(JSON.stringify({batchRoot:root,plan:'9 new trials / 3 methods / 3 repetitions',maxEstimatedUSD:4.5}));
+await save();console.log(JSON.stringify({batchRoot:root,plan:'9 new trials / 3 methods / 3 repetitions',maxEstimatedUSD:batchCap}));
 try{
  for(const trial of trials){
   for(const [path,hash] of Object.entries(hashes))if(sha(await readFile(path))!==hash)throw Error('Frozen input/code changed: '+path);
@@ -39,7 +42,8 @@ try{
   trial.status=exitCode===0&&!result.error&&result.completed===result.total?'completed':'failed';
   trial.error=result.error??(exitCode?'Child exit '+exitCode:null);
   await save();console.log(JSON.stringify({trial:trial.id,event:trial.status,runRoot:trial.runRoot,estimatedUSD:billed}));
-  if(usage.unknownCallsReserved>0)throw Error('Unknown billing reservation: stop batch for review');
+  trial.unknownCallsReserved=usage.unknownCallsReserved;await save();
+  if(usage.unknownCallsReserved>0&&!allowReservedUnknown)throw Error('Unknown billing reservation: stop batch for review');
   if(billed>plan.maxBatchEstimatedUSD)throw Error('Batch estimated cost exceeded cap');
  }
  await writeFile(join(root,'complete.json'),JSON.stringify({finishedAt:new Date().toISOString(),estimatedUSD:billed,completed:trials.filter(t=>t.status==='completed').length,failed:trials.filter(t=>t.status==='failed').length,total:trials.length,trials},null,2),{flag:'wx'});

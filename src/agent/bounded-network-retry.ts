@@ -2,8 +2,9 @@
 export function transientNetworkError(error:unknown):boolean{
  let current:unknown=error;
  for(let depth=0;depth<5&&current&&typeof current==='object';depth++){
-  const e=current as {code?:string;cause?:unknown};
-  if(['UND_ERR_SOCKET','ECONNRESET','ECONNREFUSED','EPIPE','ETIMEDOUT','UND_ERR_CONNECT_TIMEOUT','UND_ERR_HEADERS_TIMEOUT','UND_ERR_BODY_TIMEOUT'].includes(e.code??''))return true;
+   const e=current as {code?:string;cause?:unknown;name?:string};
+   if(e.name==='TimeoutError')return true;
+   if(['EAI_AGAIN','ENETUNREACH','EHOSTUNREACH','UND_ERR_SOCKET','ECONNRESET','ECONNREFUSED','EPIPE','ETIMEDOUT','UND_ERR_CONNECT_TIMEOUT','UND_ERR_HEADERS_TIMEOUT','UND_ERR_BODY_TIMEOUT'].includes(e.code??''))return true;
   current=e.cause;
  }
  return false;

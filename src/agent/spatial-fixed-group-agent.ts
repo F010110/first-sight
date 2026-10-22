@@ -5,10 +5,11 @@ export function fixedGroupPagePrompt(version:number,pageIndex:number){
  return groupMembershipPrompt.replace('"version":1,"pageIndex":0',`"version":${version},"pageIndex":${pageIndex}`)+' version和pageIndex必须逐字复制INPUT数值。不声称围栏两侧无法互通，不推断未见路径。';
 }
 export interface FixedGroupModels {
+  protocolAttempts?:number;
  selectCandidates?(input:{current:GroupMember;groups:ReturnType<FixedScopePlaceGroup['snapshot']>[]}):Promise<{groupIds:string[];[key:string]:unknown}>;
  perceive?(current:GroupMember):Promise<unknown>;
  createScope(current:GroupMember,perception?:unknown):Promise<unknown>;
- checkPage(input:{current:GroupMember;groupId:string;version:number;pageIndex:number;scope:PlaceScope;memberIds:string[];perception?:unknown}):Promise<unknown>;
+  checkPage(input:{current:GroupMember;groupId:string;version:number;pageIndex:number;scope:PlaceScope;memberIds:string[];perception?:unknown;protocolFeedback?:string}):Promise<unknown>;
  disambiguate?(input:{current:GroupMember;groups:ReturnType<FixedScopePlaceGroup['snapshot']>[]}):Promise<unknown>;
 }
 /** Experimental causal online grouping. No temporal same shortcut or mutable name.
@@ -30,7 +31,19 @@ export class FixedGroupSpatialAgent {
    const reviews=[];
    for(const group of candidates){
     const plan=group.plan(current),snapshot=group.snapshot(),answers=[];
-    for(const [pageIndex,page] of plan.pages.entries())answers.push(await this.model.checkPage({current:structuredClone(current),groupId:group.id,version:snapshot.version,pageIndex,scope:snapshot.scope,memberIds:page.map(m=>m.id),...perception===undefined?{}:{perception:structuredClone(perception)}}));
+     for(const [pageIndex,page] of plan.pages.entries()){
+      const attempts=this.model.protocolAttempts??1;
+      if(!Number.isInteger(attempts)||attempts<1||attempts>3)throw Error('Invalid protocol retry bound');
+      let feedback:string|undefined;
+      for(let attempt=0;attempt<attempts;attempt++){
+       const answer=await this.model.checkPage({current:structuredClone(current),groupId:group.id,version:snapshot.version,pageIndex,scope:snapshot.scope,memberIds:page.map(m=>m.id),...perception===undefined?{}:{perception:structuredClone(perception)},...feedback?{protocolFeedback:feedback}:{}});
+       const v=answer as any;
+       const valid=v&&v.groupId===group.id&&v.version===snapshot.version&&v.pageIndex===pageIndex&&v.currentId===current.id&&['yes','no','uncertain'].includes(v.scopeMatch)&&typeof v.reason==='string'&&v.reason.trim()&&Array.isArray(v.memberChecks)&&v.memberChecks.length===page.length&&new Set(v.memberChecks.map((c:any)=>c?.id)).size===page.length&&v.memberChecks.every((c:any)=>c&&page.some(m=>m.id===c.id)&&['compatible','conflict','unobservable'].includes(c.relation)&&typeof c.evidence==='string'&&c.evidence.trim())&&Array.isArray(v.sourceIds)&&[current.id,...page.map(m=>m.id)].every(id=>v.sourceIds.includes(id))&&v.sourceIds.every((id:unknown)=>id===current.id||page.some(m=>m.id===id));
+       if(valid){answers.push(answer);break;}
+       if(attempt+1===attempts)throw Error('Group page protocol invalid after bounded attempts');
+       feedback='上次返回未通过协议校验。请重新检查全部原图并输出完整JSON；groupId/version/pageIndex/currentId必须与INPUT完全一致，每个本页member必须逐项比较及引用。不得为通过校验改变或隐瞒视觉冲突。';
+      }
+     }
     reviews.push({group,plan,answers,evaluation:group.evaluate(plan,answers)});
    }
    const matches=reviews.filter(r=>r.evaluation.verdict==='belongs');
