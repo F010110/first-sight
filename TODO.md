@@ -4,6 +4,8 @@
 
 ## 当前主线：生活助手产品设计
 
+- [ ] **重复实验已停止，非9轮完成**（后台结束通知已核对status）：批次`campus-episode6-3methods-3repeats-2026-10-22-v1`仅尝试4轮：round-1-sequence完成；round-1-recall／graph因Malformed group page decision失败；round-2-sequence因fetch failed且存在未知计费预留失败，保护性停止，余5轮pending。账本累计估算USD0.2567298132，不能当最终实际账单；未知请求须核对provider计费。不可用1个完整结果宣称方法2重复稳定性胜出，不自动重启／拼接／修JSON；后续先离线审计协议响应和未知计费，再决定是否授权新批次。当前继续硬件主线。
+
 - [ ] **mobile优先核对更新**：用户已填写本地校园账号密码，仅核查非空、不输出。板上三遍2.4GHz实扫均仅见portal（1／6／11）不见mobile，电脑当前mobile为频道48／5GHz企业认证；本位置未找到可供ESP32-S3连接的mobile，不代表全校园无2.4GHz。当前板上是只扫描三遍后radio off的诊断固件，无关联／账号提交／传图。证据`cam/local/campus-mobile-scan-20261022.log`；优先询问校网mobile的2.4GHz覆盖及EAP／CA资料，或选择电脑热点中转，不能盲填普通Wi-Fi密码冒充企业认证，也不要自动退回portal提交账号。
 
 - [ ] 校园Wi-Fi单板探测已成功关联BUPT-portal（2026-10-22，COM3，频道1，DHCP成功）；HTTP探测返回200非204，未确认门户认证或电脑互通，未传图／未提交账户。当前运行campus-probe应用，完成后radio off；不是相机固件。账号仅填写`cam/local/campus-credentials.json`，尚无自动登录实现；下一步核实真实认证协议与安全性，再验证端到端传图。记录见`cam/docs/campus-probe.md`，包括完整备份超时、应用读回成功但构建bin比较未执行的限制，不能遗漏恢复验证。
