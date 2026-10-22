@@ -19,7 +19,10 @@ test('hardware adapter delivers one actual view and rejects corrupt or out-of-ar
  try{
   await mkdir(join(root,'frames'));const frame=join(root,'frames','0.jpg'),bytes=Buffer.from([255,216,0,255,217]);await writeFile(frame,bytes);
   const row={id:'r:0',recordingId:'r',atMs:0,sourceAtMs:0,frames:[frame],sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length,sequence:0,receivedAtMs:2500,timestampSource:'host-request',exposureTimeKnown:false,direction:'front'};
-  const observation=await cameraObservation(row,root);assert.deepEqual(observation.frames,[frame]);assert.equal(observation.atMs,0);
+   const observation=await cameraObservation(row,root);assert.deepEqual(observation.frames,[frame]);assert.equal(observation.atMs,0);
+   const wifi={...row,transport:'wifi-single-http',wireSha256:row.sha256,deviceBootId:'boot',deviceSequence:0,deviceCaptureMs:123,deviceClockAligned:false,width:640,height:480};
+   assert.deepEqual((await cameraObservation(wifi,root)).frames,[frame]);
+   for(const bad of [{wireSha256:'wrong'},{deviceSequence:1},{deviceBootId:''},{deviceClockAligned:true},{deviceCaptureMs:-1}])await assert.rejects(cameraObservation({...wifi,...bad},root),/single Wi-Fi/);
   await assert.rejects(cameraObservation({...row,sha256:'bad'},root),/integrity/);
   await assert.rejects(cameraObservation({...row,frames:[join(root,'outside.jpg')]},root),/outside/);
   await assert.rejects(cameraObservation({...row,exposureTimeKnown:true},root),/Invalid/);

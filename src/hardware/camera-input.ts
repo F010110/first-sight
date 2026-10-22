@@ -6,7 +6,8 @@ import type {SpatialObservation} from '../agent/incremental-spatial-memory.js';
 /** Existing serial firmware has no exposure timestamp; do not invent one. */
 export async function cameraObservation(value:unknown,root:string):Promise<SpatialObservation>{
  const row=value as Record<string,unknown>;
- if(row?.transport==='wifi-http')return wifiObservation(row,root);
+  if(row?.transport==='wifi-http')return wifiObservation(row,root);
+  if(row?.transport==='wifi-single-http'&&(row.wireSha256!==row.sha256||typeof row.deviceBootId!=='string'||!row.deviceBootId||row.deviceSequence!==row.sequence||!Number.isInteger(row.deviceCaptureMs)||Number(row.deviceCaptureMs)<0||row.deviceClockAligned!==false||row.width!==640||row.height!==480))throw Error('Invalid single Wi-Fi device receipt');
  if(!row||typeof row.id!=='string'||!row.id||typeof row.recordingId!=='string'||!row.recordingId||
     !Number.isInteger(row.atMs)||Number(row.atMs)<0||row.sourceAtMs!==row.atMs||
     row.timestampSource!=='host-request'||row.exposureTimeKnown!==false||row.direction!=='front'||
