@@ -1,5 +1,8 @@
 #include <Arduino.h>
 #include "esp_camera.h"
+#ifdef FIRST_SIGHT_NETWORK
+#include "network_camera.h"
+#endif
 #ifdef FIRST_SIGHT_PORTAL
 #ifdef FIRST_SIGHT_KEEPALIVE
 #include "portal_camera_keepalive.h"
@@ -37,6 +40,9 @@ void setup() {
   sensor_t *s=esp_camera_sensor_get();
   Serial.printf("SENSOR_PID=0x%04x\n", s->id.PID);
   ready=true;
+#ifdef FIRST_SIGHT_NETWORK
+  networkCameraSetup();
+#endif
   Serial.println("READY: send c to capture");
 #ifdef FIRST_SIGHT_PORTAL
   portalCameraSetup();
@@ -46,6 +52,10 @@ void setup() {
 #endif
 }
 void loop() {
+#ifdef FIRST_SIGHT_NETWORK
+  if(ready)networkCameraLoop();else delay(100);
+  return;
+#endif
 #ifdef FIRST_SIGHT_PORTAL
   if(ready)portalCameraLoop();else delay(100);
   return;

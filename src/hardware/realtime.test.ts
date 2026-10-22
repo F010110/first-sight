@@ -30,6 +30,11 @@ test('stopped or stale input refuses current question without model calls',async
  assert.equal((await answerRealtimeQuestion(snapshot,'眼前有什么',request,false)).abstained,true);
  snapshot.asOfMs=10000;assert.equal((await answerRealtimeQuestion(snapshot,'眼前有什么',request)).abstained,true);assert.equal(calls,0);
 });
+test('question during JPEG preparation uses the latest ready causal image',async()=>{
+ const pending=row('pending',4950);delete pending.pngPath;delete pending.pngSha256;
+ const snapshot={asOfMs:5000,rows:[{original:row('ready',4900),judgment:null,availableAtMs:null},{original:pending,judgment:null,availableAtMs:null}]};
+ const result=await answerRealtimeQuestion(snapshot,'眼前有什么',async input=>{assert.deepEqual(input.images.map(i=>i.id),['ready']);return {kind:'answer',text:'图中可见物体',sourceIds:['ready'],abstained:false};});assert.equal(result.abstained,false);
+});
 test('historical answer requires searched and inspected originals from the fixed snapshot',async()=>{
  const snapshot={asOfMs:5000,rows:[{original:row('old',1000),judgment:null,availableAtMs:null},{original:row('now',4900),judgment:null,availableAtMs:null}]};
  let calls=0;const result=await answerRealtimeQuestion(snapshot,'刚才看见什么',async input=>{

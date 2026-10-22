@@ -1,5 +1,5 @@
 import {DatabaseSync} from 'node:sqlite';
-export interface LiveOriginal {id:string;atMs:number;requestWallTimeMs:number;receivedAtMs:number;jpegPath:string;jpegSha256:string;pngPath?:string;pngSha256?:string;features?:number[][]}
+export interface LiveOriginal {id:string;atMs:number;requestWallTimeMs:number;receivedAtMs:number;jpegPath:string;jpegSha256:string;pngPath?:string;pngSha256?:string;features?:number[][];gapBefore?:boolean}
 /** Separate session DB. QA receives value snapshots, never a producer write handle. */
 export class RealtimeMemory{
  private db:DatabaseSync;

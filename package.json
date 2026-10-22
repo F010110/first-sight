@@ -7,6 +7,7 @@
     "node": ">=22.13"
   },
   "scripts": {
+    "realtime": "npm run build && node dist/current/desktop/realtime-server.js --allow-paid",
     "test:long-term-memory": "npm run build && node --test dist/current/agent/spatial-*.test.js",
     "test:research-snapshot": "python -m tests.python.test_research_snapshot",
     "test:helmet-capture": "npm run build && node --test dist/current/agent/helmet-capture.test.js",

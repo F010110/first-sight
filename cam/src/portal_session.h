@@ -4,6 +4,8 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 static CookieJar cookies;
+// Optional network provisioning source; campus credentials remain in RAM only.
+static bool (*portalCredentialSource)(String&,String&)=nullptr;
 static String boundedBody(HTTPClient& http){
   String body;auto stream=http.getStreamPtr();unsigned long start=millis();
   while(body.length()<8192&&millis()-start<4000&&(http.connected()||stream->available())){
@@ -27,9 +29,9 @@ static bool loginOnce(const String& target){
   // No arbitrary redirect destination may receive secrets. Keep full AC query in RAM only.
   const String prefix="http://10.3.8.216/index";
   if(target!=prefix&&!target.startsWith(prefix+"?")){Serial.println("AUTH_ENDPOINT_REJECTED");return false;}
-  Serial.println("AUTH_READY_USB_SECRETS");Serial.setTimeout(60000);
   String user,password;
-  if(!readSecret(user)||!readSecret(password)){Serial.println("AUTH_INPUT_INVALID");return false;}
+  if(portalCredentialSource){if(!portalCredentialSource(user,password))return false;}
+  else{Serial.println("AUTH_READY_USB_SECRETS");Serial.setTimeout(60000);if(!readSecret(user)||!readSecret(password)){Serial.println("AUTH_INPUT_INVALID");return false;}}
   String endpoint="http://10.3.8.216/login"+target.substring(prefix.length());
   HTTPClient post;post.setCookieJar(&cookies);post.setConnectTimeout(3000);post.setTimeout(5000);
   post.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
@@ -44,11 +46,11 @@ static bool loginOnce(const String& target){
   bool success=status==200&&body.indexOf("<title>success</title>")>=0&&body.indexOf("<body>success</body>")>=0;
   Serial.printf("POST_LOGIN_HTTP=%d INTERNET_CHECK_SUCCESS=%d\n",status,success);return success;
 }
-static bool portalConnect() {
+static bool portalConnect(bool associate=true) {
   bool online=false;
-  WiFi.persistent(false); WiFi.mode(WIFI_STA); WiFi.setAutoReconnect(false);
+  if(associate){WiFi.persistent(false); WiFi.mode(WIFI_STA); WiFi.setAutoReconnect(false);}
   Serial.println("CAMPUS_PROBE_START");
-  WiFi.begin("BUPT-portal");
+  if(associate)WiFi.begin("BUPT-portal");
   unsigned long start=millis();
   while(WiFi.status()!=WL_CONNECTED&&millis()-start<30000)delay(250);
   if(WiFi.status()==WL_CONNECTED){
