@@ -31,5 +31,6 @@ export async function loadSpatialMethodComparison(path:string){
   const usage=JSON.parse(await readFile(join(method.root,'requests/usage.json'),'utf8'));
   methods.push({id:method.id,label:method.label,description:method.description??'',runId:basename(method.root),events,provenance:{inputSha256:hash,eventsSha256:createHash('sha256').update(raw).digest('hex')},summary:{planned:input.observations.length,completed:events.length,unknown:events.filter(e=>e.placeId===null).length,places:new Set(events.map(e=>e.placeId).filter(Boolean)).size,failed:predictions.predictions.filter((p:any)=>p.status==='failed').length,pending:predictions.predictions.filter((p:any)=>p.status==='pending').length,calls:usage.calls,estimatedUSD:usage.estimatedUSD}});
  }
- return {schema:config.schema,sample:config.sample,methods,readOnly:true,note:'离线已保存结果，按观察时间对齐；不是实时推理延迟。地点编号仅在各方法内有效，不能按编号跨方法判同地。不同名称也不一定代表不同区域。'};
+ if(config.defaultMethod!==undefined&&!methods.some(m=>m.id===config.defaultMethod))throw Error('Unknown default comparison method');
+ return {schema:config.schema,sample:config.sample,methods,defaultMethod:config.defaultMethod??(methods.some(m=>m.id==='sequence')?'sequence':'all'),readOnly:true,note:'离线已保存结果，按观察时间对齐；不是实时推理延迟。地点编号仅在各方法内有效，不能按编号跨方法判同地。不同名称也不一定代表不同区域。'};
 }

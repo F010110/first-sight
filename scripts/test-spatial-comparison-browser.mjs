@@ -19,6 +19,8 @@ try{
  await evaluate(`document.getElementById('choose-replay').click();document.getElementById('choose-simulation').click();document.getElementById('enter-sample').click()`);
  await wait(`document.getElementById('continuous-video').readyState>=2`);
  assert.equal(await evaluate(`document.querySelectorAll('.method-card').length`),3);
+ assert.equal(await evaluate(`document.getElementById('method-view').value`),'sequence');
+ await evaluate(`document.getElementById('method-view').value='all';document.getElementById('method-view').dispatchEvent(new Event('change'))`);
  assert.equal(await evaluate(`[...document.querySelectorAll('.method-card h3')].every(e=>e.textContent.includes('方法')&&!e.textContent.includes('?'))`),true,'Method labels must render valid Chinese');
  assert.ok(await evaluate(`document.getElementById('continuous-video').duration>64`));
  await evaluate(`document.getElementById('continuous-video').muted=true;document.getElementById('play').click()`);await wait(`document.getElementById('continuous-video').currentTime>1`);await evaluate(`document.getElementById('continuous-video').pause()`);

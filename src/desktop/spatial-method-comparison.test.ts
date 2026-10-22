@@ -13,8 +13,8 @@ test('comparison binds source inputs and preserves unknowns instead of inheritin
    await writeFile(join(dir,'events.jsonl'),[{id:'a',atMs:100,placeId:'uuid',action:'new',groups},{id:'b',atMs:200,placeId:null,action:'unknown',groups}].map(result=>JSON.stringify({scene:'campus-episode-6',result})).join('\n'));
    await writeFile(join(dir,'predictions.json'),JSON.stringify({predictions:[{status:'completed'},{status:'completed'}]}));await writeFile(join(dir,'requests/usage.json'),JSON.stringify({calls:3,estimatedUSD:.01}));
   }
-  const config=join(root,'config.json');await writeFile(config,JSON.stringify({schema:'spatial-method-comparison-v1',sample:{id:'campus'},methods}));
-  const value=await loadSpatialMethodComparison(config);assert.equal(value.methods.length,2);assert.equal(value.methods[0]!.events[1]!.name,'地点待定');assert.equal(value.methods[0]!.events[1]!.placeKey,null);
+  const config=join(root,'config.json');await writeFile(config,JSON.stringify({schema:'spatial-method-comparison-v1',sample:{id:'campus'},methods,defaultMethod:'recall'}));
+  const value=await loadSpatialMethodComparison(config);assert.equal(value.defaultMethod,'recall');assert.equal(value.methods.length,2);assert.equal(value.methods[0]!.events[1]!.name,'地点待定');assert.equal(value.methods[0]!.events[1]!.placeKey,null);
   await writeFile(join(methods[1]!.root,'public-input.json'),'{}');await assert.rejects(loadSpatialMethodComparison(config),/identical/);
  }finally{await rm(root,{recursive:true,force:true});}
 });
