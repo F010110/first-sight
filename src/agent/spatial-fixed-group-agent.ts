@@ -5,6 +5,7 @@ export function fixedGroupPagePrompt(version:number,pageIndex:number){
  return groupMembershipPrompt.replace('"version":1,"pageIndex":0',`"version":${version},"pageIndex":${pageIndex}`)+' version和pageIndex必须逐字复制INPUT数值。不声称围栏两侧无法互通，不推断未见路径。';
 }
 export interface FixedGroupModels {
+ selectCandidates?(input:{current:GroupMember;groups:ReturnType<FixedScopePlaceGroup['snapshot']>[]}):Promise<{groupIds:string[];[key:string]:unknown}>;
  perceive?(current:GroupMember):Promise<unknown>;
  createScope(current:GroupMember,perception?:unknown):Promise<unknown>;
  checkPage(input:{current:GroupMember;groupId:string;version:number;pageIndex:number;scope:PlaceScope;memberIds:string[];perception?:unknown}):Promise<unknown>;
@@ -23,8 +24,11 @@ export class FixedGroupSpatialAgent {
   try{
    if(!current.id||!Number.isFinite(current.atMs)||current.atMs<=this.lastMs||this.groups.some(g=>g.snapshot().members.some(m=>m.id===current.id)))throw Error('Observations must be unique and advance causally');
    const perception=this.model.perceive?await this.model.perceive(structuredClone(current)):undefined;
+   const selection=this.model.selectCandidates?await this.model.selectCandidates({current:structuredClone(current),groups:this.snapshot()}):null;
+   if(selection&&(!Array.isArray(selection.groupIds)||new Set(selection.groupIds).size!==selection.groupIds.length||selection.groupIds.some(id=>!this.groups.some(g=>g.id===id))||this.groups.length>0&&selection.groupIds.length===0))throw Error('Invalid candidate recall selection');
+   const candidates=selection?this.groups.filter(g=>selection.groupIds.includes(g.id)):this.groups;
    const reviews=[];
-   for(const group of this.groups){
+   for(const group of candidates){
     const plan=group.plan(current),snapshot=group.snapshot(),answers=[];
     for(const [pageIndex,page] of plan.pages.entries())answers.push(await this.model.checkPage({current:structuredClone(current),groupId:group.id,version:snapshot.version,pageIndex,scope:snapshot.scope,memberIds:page.map(m=>m.id),...perception===undefined?{}:{perception:structuredClone(perception)}}));
     reviews.push({group,plan,answers,evaluation:group.evaluate(plan,answers)});
@@ -58,7 +62,7 @@ export class FixedGroupSpatialAgent {
     if(raw.coherent){const scope=parsePlaceScope(raw.scope,[current]);placeId=randomUUID();this.groups.push(new FixedScopePlaceGroup(placeId,scope,[current]));action='new';}
    }
    this.lastMs=current.atMs;
-   return {id:current.id,atMs:current.atMs,placeId,action,perception,resolution,reviews:reviews.map(r=>({groupId:r.group.id,answers:r.answers,evaluation:r.evaluation})),groups:this.snapshot(),status:'completed' as const};
+   return {id:current.id,atMs:current.atMs,placeId,action,perception,resolution,selection,newScopeBasis:action==='new'?(selection?'no-match-in-recalled-candidates-not-global-novelty':'all-existing-groups-different'):null,reviews:reviews.map(r=>({groupId:r.group.id,answers:r.answers,evaluation:r.evaluation})),groups:this.snapshot(),status:'completed' as const};
   }finally{this.busy=false;}
  }
 }

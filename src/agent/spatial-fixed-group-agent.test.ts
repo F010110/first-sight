@@ -1,5 +1,14 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {FixedGroupSpatialAgent,fixedGroupPagePrompt} from './spatial-fixed-group-agent.js';
+test('candidate recall gates VLM context but preserves whole membership checks within selected places',async()=>{
+ let calls=0;const agent=new FixedGroupSpatialAgent({
+  async selectCandidates(i){return {groupIds:i.groups.length?[i.groups[0]!.id]:[]};},
+  async createScope(c){return {coherent:true,scope:{name:'area',definition:'visible region',boundaryRules:['boundary'],sourceIds:[c.id]}};},
+  async checkPage(i){calls++;return {groupId:i.groupId,version:i.version,pageIndex:i.pageIndex,currentId:i.current.id,scopeMatch:'yes',reason:'specific layout',memberChecks:i.memberIds.map(id=>({id,relation:'compatible',evidence:'specific evidence'})),sourceIds:[i.current.id,...i.memberIds]};}
+ });
+ const a=await agent.observe({id:'a',atMs:1});assert.match(a.newScopeBasis!,/not-global/);
+ await agent.observe({id:'b',atMs:2});const c=await agent.observe({id:'c',atMs:3});assert.equal(c.reviews[0]!.evaluation.checkedMemberIds.length,2);assert.equal(calls,2);
+});
 test('page prompt example tracks actual version and page rather than stale constants',()=>{assert.ok(fixedGroupPagePrompt(7,2).includes('"version":7,"pageIndex":2'));assert.ok(!fixedGroupPagePrompt(7,2).includes('"version":1,"pageIndex":0'));assert.throws(()=>fixedGroupPagePrompt(0,0),/Invalid/);});
 test('online groups freeze their scope and compare every member, not just the neighbor',async()=>{
  let checks=0;const agent=new FixedGroupSpatialAgent({async createScope(c){return {coherent:true,scope:{name:'stable',definition:'fixed area',boundaryRules:['exclude other side'],sourceIds:[c.id]}};},async checkPage(i){checks+=i.memberIds.length;return {groupId:i.groupId,version:i.version,pageIndex:i.pageIndex,currentId:i.current.id,scopeMatch:i.current.id==='outside'?'no':'yes',reason:'layout comparison',memberChecks:i.memberIds.map(id=>({id,relation:i.current.id==='outside'?'conflict':'compatible',evidence:'boundary evidence'})),sourceIds:[i.current.id,...i.memberIds]};}});
