@@ -1,15 +1,13 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>First Sight · 实时生活助手</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/realtime.css"><script type="module" src="/realtime.js"></script></head>
-<body><header><a class="brand" href="/">First Sight<span>实时生活助手</span></a><span id="live-status" role="status" aria-live="polite">正在连接本地服务…</span></header><main>
-<nav class="workspace-nav"><a href="http://127.0.0.1:8883">← 返回实验回放</a><span>实时 / 真实 / 单摄</span></nav>
-<section class="panel"><h1>真实相机 · 实时空间记忆</h1><p>相机独立供电，连接Wi-Fi后自动显示画面，无需USB连接电脑。单摄前方640×480，左右视图缺失。</p>
-<div class="controls"><button id="live-start" type="button">启动交互</button><button id="live-stop" type="button" class="secondary" disabled>暂停交互</button></div>
-<p>预览不调用模型。启动交互后持续运行空间记忆Agent；提交问题才调用用户问题Agent。暂停交互不停止画面。</p>
-<p class="budget-note">模型估算预算：每小时空间USD0.50＋问答USD0.25；达到上限等待下个小时窗口。HTTP局域网开发链路，非安全通行提示。</p>
-<p id="live-error" role="alert"></p></section>
-<section class="scene"><h2>实时画面</h2><div class="views"><figure><img id="live-image" hidden alt="真实前方相机画面；左右视图缺失"><figcaption id="image-time">正在等待Wi-Fi相机信号…</figcaption></figure></div>
-<div class="scene-meta"><span>当前地点 <strong id="live-location">待确认</strong></span><span id="input-health">未采集</span></div><p id="last-location">尚无空间记忆</p><p id="live-progress"></p></section>
-<div class="dialogue"><section class="panel"><h2>用户问题</h2><p>当前问题基于提问时画面；历史问题由只读Agent检索原图。回答可能延迟，不保证送达时场景未变化。</p><form id="live-question-form"><label for="live-question">想问什么？</label><textarea id="live-question" maxlength="2000" rows="3" placeholder="例如：眼前有什么？刚才见过什么物体？"></textarea><button id="live-ask" type="submit" disabled>发送问题</button></form><div id="live-questions" class="messages" role="log" aria-live="polite"></div></section>
-<section class="panel answer-panel"><h2>助手回答</h2><div id="live-answers" class="messages" role="log" aria-live="polite"></div></section></div>
-<section class="panel"><h2>本次已提交空间记忆</h2><p>名称是模型候选，不是人工真值；历史地点不自动继承为当前地点。</p><div id="live-places"></div></section>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>First Sight · 实时助手</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/realtime.css"><script type="module" src="/realtime.js"></script></head>
+<body>
+<header><a class="brand" href="/">First Sight<span>实时助手</span></a><div class="system-control"><div><strong>系统启动</strong><small id="system-hint">关闭 · 仅播放画面</small></div><button id="system-toggle" type="button" role="switch" aria-checked="false" aria-label="系统启动"><span class="switch-knob"></span></button><span id="system-label">已关闭</span></div><a class="replay-link" href="http://127.0.0.1:8883">实验回放 ↗</a></header>
+<main>
+<div class="status-bar"><span id="live-status" role="status" aria-live="polite">连接相机中…</span><span id="input-health">等待信号</span></div>
+<p id="live-error" role="alert" hidden></p>
+<div class="live-workspace">
+<section class="camera-panel"><div class="section-heading"><h1>实时画面</h1><span>前方单摄 · 640×480</span></div><div class="camera-view"><img id="live-image" hidden alt="真实前方相机画面"><span id="camera-empty">等待相机信号…</span><span id="image-time">尚无画面</span></div><div class="location-line"><span>当前地点 <strong id="live-location">待确认</strong></span><span id="live-progress"></span></div><p id="last-location">尚无空间记忆</p><section class="memory-panel"><h2>空间记忆 <span>模型判断，非人工真值</span></h2><div id="live-places"></div></section></section>
+<section class="assistant-panel"><div class="section-heading"><h2>问答</h2><span>基于提问时画面</span></div><div id="conversation" role="log" aria-live="polite"><div id="chat-empty">打开顶部“系统启动”开关后，<br>即可分析空间、向助手提问。</div></div><form id="live-question-form"><label class="sr-only" for="live-question">输入问题</label><textarea id="live-question" maxlength="2000" rows="2" placeholder="眼前有什么？刚才经过哪里？"></textarea><button id="live-ask" type="submit" disabled>发送</button></form></section>
+</div>
+<footer>关闭系统不停止画面 · 断流保留最后画面并标记过期 <span>模型估算上限 $0.75/小时 · 非安全通行系统</span></footer>
 </main></body></html>
