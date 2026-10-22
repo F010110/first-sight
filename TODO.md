@@ -4,6 +4,8 @@
 
 ## 当前主线：生活助手产品设计
 
+- [ ] **mobile优先核对更新**：用户已填写本地校园账号密码，仅核查非空、不输出。板上三遍2.4GHz实扫均仅见portal（1／6／11）不见mobile，电脑当前mobile为频道48／5GHz企业认证；本位置未找到可供ESP32-S3连接的mobile，不代表全校园无2.4GHz。当前板上是只扫描三遍后radio off的诊断固件，无关联／账号提交／传图。证据`cam/local/campus-mobile-scan-20261022.log`；优先询问校网mobile的2.4GHz覆盖及EAP／CA资料，或选择电脑热点中转，不能盲填普通Wi-Fi密码冒充企业认证，也不要自动退回portal提交账号。
+
 - [ ] 校园Wi-Fi单板探测已成功关联BUPT-portal（2026-10-22，COM3，频道1，DHCP成功）；HTTP探测返回200非204，未确认门户认证或电脑互通，未传图／未提交账户。当前运行campus-probe应用，完成后radio off；不是相机固件。账号仅填写`cam/local/campus-credentials.json`，尚无自动登录实现；下一步核实真实认证协议与安全性，再验证端到端传图。记录见`cam/docs/campus-probe.md`，包括完整备份超时、应用读回成功但构建bin比较未执行的限制，不能遗漏恢复验证。
 
 - [ ] **后台重复实验已启动，转做硬件时不要遗忘／重复启动**：目录`run/spatial-repeat-batches/campus-episode6-3methods-3repeats-2026-10-22-v1/`，后台shell `sh_163474c36001JzeODDwWf8gYzq`。仅校园第6段前64秒、全部33观察；3方法各3个新空库运行，共9轮，非全校园。顺序轮换为召回→序列→图、序列→图→召回、图→召回→序列；串行执行，最多256请求／轮、估算USD0.50／轮、整批USD4.50，单轮失败保留，不自动续接；未知计费或代码／输入hash改变则停止。已确认首轮`round-1-recall`进入running。查看`plan.json`、`status.json`、各轮log／command，最终以`complete.json`或`stopped.json`为准，不据本TODO文字推断已完成。服务重启后先核对状态、子运行原始请求和计费，**不要直接重跑同名批次或补成功片段**。批次结束再汇总每方法三轮的最差／均值、配对稳定性、unknown、重复组、费用／延迟；旧三轮不冒充新重复，暂不换网页或固定方法2。入口`scripts/run-spatial-repeat-batch.mjs`，当前无需等待，继续硬件接入准备。
