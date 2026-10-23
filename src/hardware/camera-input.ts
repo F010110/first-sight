@@ -5,7 +5,11 @@ import type {SpatialObservation} from '../agent/incremental-spatial-memory.js';
 
 /** Existing serial firmware has no exposure timestamp; do not invent one. */
 export async function cameraObservation(value:unknown,root:string):Promise<SpatialObservation>{
- const row=value as Record<string,unknown>;
+  const row=value as Record<string,unknown>;
+  if(row?.transport==='wifi-push-http'){
+   if(row.timestampSource!=='host-receive-start')throw Error('Invalid push timestamp');
+   return cameraObservation({...row,transport:'wifi-network-http',timestampSource:'host-request'},root);
+  }
   if(row?.transport==='wifi-http')return wifiObservation(row,root);
   if(row?.transport==='wifi-single-http'&&(row.wireSha256!==row.sha256||typeof row.deviceBootId!=='string'||!row.deviceBootId||row.deviceSequence!==row.sequence||!Number.isInteger(row.deviceCaptureMs)||Number(row.deviceCaptureMs)<0||row.deviceClockAligned!==false||row.width!==640||row.height!==480))throw Error('Invalid single Wi-Fi device receipt');
   if(row?.transport==='wifi-network-http'&&(row.wireSha256!==row.sha256||typeof row.deviceBootId!=='string'||!row.deviceBootId||!Number.isInteger(row.deviceSequence)||Number(row.deviceSequence)<0||typeof row.gapBefore!=='boolean'||!Number.isInteger(row.deviceCaptureMs)||Number(row.deviceCaptureMs)<0||row.deviceClockAligned!==false||row.width!==640||row.height!==480))throw Error('Invalid network camera receipt');
