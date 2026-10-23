@@ -5,7 +5,8 @@ const time=at=>new Date(at).toLocaleTimeString();
 function list(id,rows){const box=$(id);box.replaceChildren();for(const row of rows){const item=document.createElement('article');item.className='message';const small=document.createElement('small');small.textContent=row.time;const text=document.createElement('div');text.textContent=row.text;item.append(small,text);box.append(item);}}
 function render(data){
   const s=data.session;
-  $('record-toggle').checked=!!s?.recording;
+   $('record-toggle').setAttribute('aria-checked',String(!!s?.recording));
+   $('record-label').textContent=s?.recording?'已开启':'已关闭';
   $('record-toggle').disabled=!!s?.paid;
   $('record-hint').textContent=s?.paid?'系统已包含记录':s?.recording?'记录中':'仅预览，不保存';
   $('system-toggle').disabled=!data.allowPaid||changing;
@@ -35,6 +36,6 @@ function render(data){
 async function poll(){if(busy)return;busy=true;try{render(await api('/api/live/state'));}catch(error){$('live-status').textContent='本地实时服务未连接';$('live-error').textContent=error.message;$('live-error').hidden=false;$('live-location').textContent='待确认';$('image-time').textContent='连接已断开 · 最后收到的历史画面';$('input-health').textContent='等待接收服务恢复';$('live-ask').disabled=true;$('system-toggle').disabled=true;}finally{busy=false;}}
 async function interaction(start){if(changing)return;changing=true;actionError='';$('system-toggle').disabled=true;try{await api(start?'/api/live/start':'/api/live/stop',{});}catch(e){actionError=e.message;}finally{changing=false;await poll();}}
 $('system-toggle').addEventListener('click',()=>void interaction($('system-toggle').getAttribute('aria-checked')!=='true'));
-$('record-toggle').addEventListener('change',async()=>{try{await api('/api/live/recording',{enabled:$('record-toggle').checked});}catch(error){actionError=error.message;}await poll();});
+ $('record-toggle').addEventListener('click',async()=>{if(changing)return;changing=true;try{await api('/api/live/recording',{enabled:$('record-toggle').getAttribute('aria-checked')!=='true'});}catch(error){actionError=error.message;}finally{changing=false;await poll();}});
 $('live-question-form').addEventListener('submit',async e=>{e.preventDefault();const text=$('live-question').value.trim();if(!text||asking)return;asking=true;actionError='';$('live-ask').disabled=true;try{$('live-question').value='';await api('/api/live/question',{text});}catch(error){actionError=error.message;if(!$('live-question').value)$('live-question').value=text;}finally{asking=false;await poll();}});
 setInterval(()=>void poll(),500);void poll();
