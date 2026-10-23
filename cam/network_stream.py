@@ -82,6 +82,7 @@ def main():
             requested = time.monotonic()
             wall = time.time_ns()//1000000
             data, metadata, client = b'', {}, None
+            stage = 'configuration'
             try:
                 config = json.loads(args.config.read_text(encoding='utf-8-sig'))
                 token = config['token']
@@ -95,9 +96,13 @@ def main():
                     except (OSError, ValueError):
                         host = config.get('host', 'first-sight-cam.local')
                 parsed = urllib_host(host)
-                client = http.client.HTTPConnection(parsed[0], parsed[1], timeout=8)
+                stage = 'connect'
+                client = http.client.HTTPConnection(parsed[0], parsed[1], timeout=3)
+                client.connect()
+                client.sock.settimeout(8)
                 # HTTPConnection deliberately ignores proxy environment variables.
                 if previous_boot is None or failures:
+                    stage = 'status'
                     client.request('GET', '/v1/status', headers={'Authorization':'Bearer '+token})
                     status_response = client.getresponse()
                     if status_response.status != 200:
@@ -107,21 +112,27 @@ def main():
                         raise ValueError('Unknown camera identity')
                     boot = status['bootId']
                     client.close()
-                    client = http.client.HTTPConnection(parsed[0], parsed[1], timeout=8)
+                    client = http.client.HTTPConnection(parsed[0], parsed[1], timeout=3)
+                    stage = 'connect'
+                    client.connect()
+                    client.sock.settimeout(8)
                 requested = time.monotonic()
                 wall = time.time_ns()//1000000
+                stage = 'frame-headers'
                 client.request('GET', '/v1/frame', headers={'Authorization':'Bearer '+token,'Connection':'close'})
                 response = client.getresponse()
-                metadata = {k:response.headers.get(k) for k in ['Content-Length','Content-Type','X-Frame-Sha256','X-Boot-Id','X-Sequence','X-Capture-Ms','X-Jpeg-Quality']}
+                metadata = {k:response.headers.get(k) for k in ['Content-Length','Content-Type','X-Frame-Sha256','X-Boot-Id','X-Sequence','X-Capture-Ms','X-Jpeg-Quality','X-Wifi-Rssi','X-Wifi-Channel']}
                 length = int(response.headers.get('Content-Length', '-1'))
                 if response.status != 200 or not 0 < length <= 300000:
                     raise ValueError('Invalid camera response')
                 # Preserve partial bytes even when the socket times out mid-body.
+                stage = 'frame-body'
                 while len(data) < length:
                     part = response.read1(min(16384, length-len(data)))
                     if not part:
                         break
                     data += part
+                stage = 'validation'
                 seq = int(response.headers.get('X-Sequence', '-1'))
                 if seq < 0:
                     raise ValueError('Invalid device sequence')
@@ -139,6 +150,8 @@ def main():
                            receivedAtMs=round((received-start)*1000),requestWallTimeMs=wall,
                            deviceBootId=boot,deviceSequence=seq,deviceCaptureMs=captured,deviceClockAligned=False,
                            width=640,height=480,jpegQuality=16,gapBefore=gap,requestToReceiveMs=round((received-requested)*1000))
+                row['wifiRssi'] = response.headers.get('X-Wifi-Rssi')
+                row['wifiChannel'] = response.headers.get('X-Wifi-Channel')
                 should_record=request_record and mode['record'] and request_epoch==mode['epoch']
                 if should_record:
                     path.write_bytes(data)
@@ -154,15 +167,15 @@ def main():
                 broken, failures = True, failures+1
                 if request_record and mode['record'] and request_epoch==mode['epoch']:
                     (root/'failed-responses'/f'{attempt:09d}.bin').write_bytes(data)
-                metadata.update(errorType=type(error).__name__,receivedBytes=len(data),receivedSha256=hashlib.sha256(data).hexdigest())
+                metadata.update(errorType=type(error).__name__,stage=stage,atWallMs=time.time_ns()//1000000,receivedBytes=len(data),receivedSha256=hashlib.sha256(data).hexdigest())
                 atomic(root/'failed-responses'/f'{attempt:09d}.json',metadata)
                 atomic(root/'receiver-status.json',dict(state='waiting-for-camera',frames=index,attempts=attempt+1,
-                                                       consecutiveFailures=failures,errorType=type(error).__name__,usbRequired=False))
+                                                       consecutiveFailures=failures,errorType=type(error).__name__,stage=stage,atWallMs=time.time_ns()//1000000,usbRequired=False))
             finally:
                 if client:
                     client.close()
                 attempt += 1
-            due = requested + (min(10, 2+failures) if failures else args.interval)
+            due = max(requested+args.interval,time.monotonic()+min(3,failures)) if failures else requested+args.interval
             while running and time.monotonic() < due:
                 time.sleep(.1)
     finally:

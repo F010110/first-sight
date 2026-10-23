@@ -28,6 +28,12 @@ static void networkCameraSetup(){
  prefs.end();Serial.println("NETWORK_PAIRED");
  netBoot=String(esp_random(),HEX)+String(esp_random(),HEX);
  esp_camera_sensor_get()->set_quality(esp_camera_sensor_get(),16);
+ // Modest low-light profile; preserve automatic adaptation, avoid fixed long exposure.
+ auto sensor=esp_camera_sensor_get();
+ sensor->set_exposure_ctrl(sensor,1);sensor->set_gain_ctrl(sensor,1);
+ sensor->set_aec2(sensor,1);sensor->set_ae_level(sensor,1);
+ sensor->set_gainceiling(sensor,GAINCEILING_16X);
+ sensor->set_brightness(sensor,1);
  WiFi.persistent(false);WiFi.mode(WIFI_STA);WiFi.setAutoReconnect(true);WiFi.setSleep(false);WiFi.setHostname("first-sight-cam");WiFi.begin("BUPT-portal");lastAssociation=millis();
  portalCredentialSource=provideNetworkCredentials;
  const char* headers[]={"Authorization"};netServer.collectHeaders(headers,1);
@@ -38,6 +44,7 @@ static void networkCameraSetup(){
   auto frame=esp_camera_fb_get();if(!frame){netServer.send(503,"text/plain","Camera unavailable");return;}
   uint8_t digest[32];char hex[65];mbedtls_sha256_ret(frame->buf,frame->len,digest,0);for(int i=0;i<32;i++)snprintf(hex+i*2,3,"%02x",digest[i]);hex[64]=0;
   netServer.sendHeader("Cache-Control","no-store");netServer.sendHeader("Connection","close");
+  netServer.sendHeader("X-Wifi-Rssi",String(WiFi.RSSI()));netServer.sendHeader("X-Wifi-Channel",String(WiFi.channel()));
   netServer.sendHeader("X-Frame-Sha256",hex);netServer.sendHeader("X-Boot-Id",netBoot);netServer.sendHeader("X-Sequence",String(netSequence++));netServer.sendHeader("X-Jpeg-Quality","16");
   netServer.sendHeader("X-Capture-Ms",String(uint32_t(frame->timestamp.tv_sec*1000ULL+frame->timestamp.tv_usec/1000)));
   netServer.setContentLength(frame->len);netServer.send(200,"image/jpeg","");
