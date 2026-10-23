@@ -4,7 +4,10 @@ async function api(path,value){const r=await fetch(path,value===undefined?{}:{me
 const time=at=>new Date(at).toLocaleTimeString();
 function list(id,rows){const box=$(id);box.replaceChildren();for(const row of rows){const item=document.createElement('article');item.className='message';const small=document.createElement('small');small.textContent=row.time;const text=document.createElement('div');text.textContent=row.text;item.append(small,text);box.append(item);}}
 function render(data){
- const s=data.session;
+  const s=data.session;
+  $('record-toggle').checked=!!s?.recording;
+  $('record-toggle').disabled=!!s?.paid;
+  $('record-hint').textContent=s?.paid?'系统已包含记录':s?.recording?'记录中':'仅预览，不保存';
   $('system-toggle').disabled=!data.allowPaid||changing;
   $('system-toggle').setAttribute('aria-checked',String(!!s?.paid));
   $('system-label').textContent=s?.paid?'已开启':'已关闭';
@@ -20,7 +23,7 @@ function render(data){
  $('input-health').textContent=s.ageMs===null?'尚无图像 · 自动重连中':`图像年龄 ${(s.ageMs/1000).toFixed(1)}秒 · ${fresh?'信号正常':'信号延迟或中断，自动重连中'}`;
  $('live-location').textContent=s.currentLocation??'待确认';
  $('last-location').textContent=s.historicalLocation?`最后已提交记忆：${s.historicalLocation.name}（画面 ${time(s.historicalLocation.atMs)}，结果 ${time(s.historicalLocation.availableAtMs)}）；不是当前地点保证。`:'尚无已提交的空间判断';
-  $('live-progress').textContent=`${s.frames} 帧 · ${s.paid?'空间分析已开启':'仅预览'}`;
+  $('live-progress').textContent=`${s.frames} 帧 · 已记录 ${s.recordedFrames??0} · ${s.paid?'空间分析':s.recording?'记录中':'仅预览'}`;
  const pk=JSON.stringify(s.places);if(pk!==placeKey){placeKey=pk;list('live-places',s.places.map(p=>({time:`${p.members}条原图观察`,text:p.name+'：'+p.definition})));}
  const qk=JSON.stringify(s.questions);if(qk!==questionKey){questionKey=qk;
    const box=$('conversation'),nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<50;box.replaceChildren();
@@ -32,5 +35,6 @@ function render(data){
 async function poll(){if(busy)return;busy=true;try{render(await api('/api/live/state'));}catch(error){$('live-status').textContent='本地实时服务未连接';$('live-error').textContent=error.message;$('live-error').hidden=false;$('live-location').textContent='待确认';$('image-time').textContent='连接已断开 · 最后收到的历史画面';$('input-health').textContent='等待接收服务恢复';$('live-ask').disabled=true;$('system-toggle').disabled=true;}finally{busy=false;}}
 async function interaction(start){if(changing)return;changing=true;actionError='';$('system-toggle').disabled=true;try{await api(start?'/api/live/start':'/api/live/stop',{});}catch(e){actionError=e.message;}finally{changing=false;await poll();}}
 $('system-toggle').addEventListener('click',()=>void interaction($('system-toggle').getAttribute('aria-checked')!=='true'));
+$('record-toggle').addEventListener('change',async()=>{try{await api('/api/live/recording',{enabled:$('record-toggle').checked});}catch(error){actionError=error.message;}await poll();});
 $('live-question-form').addEventListener('submit',async e=>{e.preventDefault();const text=$('live-question').value.trim();if(!text||asking)return;asking=true;actionError='';$('live-ask').disabled=true;try{$('live-question').value='';await api('/api/live/question',{text});}catch(error){actionError=error.message;if(!$('live-question').value)$('live-question').value=text;}finally{asking=false;await poll();}});
 setInterval(()=>void poll(),500);void poll();

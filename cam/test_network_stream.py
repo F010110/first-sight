@@ -58,6 +58,21 @@ class NetworkReceiverTest(unittest.TestCase):
                     self.assertEqual((root/'capture/failed-responses/000000000.bin').read_bytes(),jpeg[:500])
                 finally:
                     process.terminate();process.wait(timeout=5);process.stderr.close()
+                Handler.count=1
+                preview=root/'preview'
+                process=subprocess.Popen([sys.executable,str(Path(__file__).with_name('network_stream.py')),str(preview),'--config',str(config),'--interval','1','--preview'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+                try:
+                    frame=json.loads(process.stdout.readline())
+                    self.assertEqual(frame['kind'],'preview')
+                    self.assertFalse(list((preview/'frames').glob('*.jpg')))
+                    self.assertEqual((preview/'observations.jsonl').read_text(),'')
+                    process.stdin.write('{"record":true}\n');process.stdin.flush()
+                    deadline=time.monotonic()+10
+                    while time.monotonic()<deadline and not list((preview/'frames').glob('*.jpg')):time.sleep(.1)
+                    self.assertTrue(list((preview/'frames').glob('*.jpg')))
+                finally:
+                    process.terminate();process.wait(timeout=5)
+                    process.stdin.close();process.stdout.close();process.stderr.close()
         finally:
             server.shutdown();server.server_close();worker.join()
 

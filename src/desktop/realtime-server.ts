@@ -28,13 +28,14 @@ export function realtimeServer(root:string,port=8884,allowPaid=false,autoReceive
     await ensureReceiver();await current!.startInteraction();return reply(200,current!.state());
    }
    if(req.method==='POST'&&url.pathname==='/api/live/stop'){await jsonBody(req);await current?.stopInteraction();return reply(200,{interactionStopped:true,previewContinues:true});}
+   if(req.method==='POST'&&url.pathname==='/api/live/recording'){const input=await jsonBody(req);if(typeof input.enabled!=='boolean'||Object.keys(input).length!==1)throw Error('Invalid recording option');await ensureReceiver();await current!.setRecording(input.enabled);return reply(200,current!.state());}
    if(req.method==='POST'&&url.pathname==='/api/live/question'){
     const input=await jsonBody(req);if(Object.keys(input).some(k=>k!=='text')||typeof input.text!=='string'||!current)throw Error('Question/session invalid');
     return reply(200,await current.ask(input.text));
    }
    if(req.method==='GET'&&url.pathname==='/api/live/image'){
     const image=current?.image(url.searchParams.get('id')??'');if(!image)return reply(404,{error:'Unknown frame'});
-    const bytes=await readFile(image.path);if(createHash('sha256').update(bytes).digest('hex')!==image.sha256)throw Error('Original image changed');
+    const bytes=image.bytes??await readFile(image.path!);if(createHash('sha256').update(bytes).digest('hex')!==image.sha256)throw Error('Original image changed');
     res.writeHead(200,{'Content-Type':'image/jpeg','Content-Length':bytes.length});res.end(bytes);return;
    }
    if(req.method==='GET'&&['/api/videos','/api/playback-timeline','/api/recordings'].includes(url.pathname))return reply(200,url.pathname==='/api/videos'?{episodes:[],memoryReady:false}:url.pathname==='/api/recordings'?[]:{questions:[],positions:[]});

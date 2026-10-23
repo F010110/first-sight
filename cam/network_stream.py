@@ -9,6 +9,9 @@ import signal
 import socket
 import time
 import uuid
+import sys
+import base64
+import threading
 from urllib.parse import urlsplit
 from portal_stream import validate_frame
 
@@ -45,7 +48,18 @@ def main():
     parser.add_argument('output', type=Path)
     parser.add_argument('--config', type=Path, default=Path(__file__).parent/'local/network-camera.json')
     parser.add_argument('--interval', type=float, default=2)
+    parser.add_argument('--preview', action='store_true', help='Memory-only image preview; record controlled through stdin JSON')
     args = parser.parse_args()
+    mode = {'record':not args.preview, 'epoch':0}
+    def control():
+        for line in sys.stdin:
+            try:
+                value=json.loads(line)
+                if isinstance(value.get('record'),bool):
+                    mode['record']=value['record'];mode['epoch']+=1
+            except (ValueError,TypeError):pass
+    if args.preview:
+        threading.Thread(target=control,daemon=True).start()
     if not 1 <= args.interval <= 10:
         parser.error('interval must be 1..10 seconds')
     root = args.output.resolve()
@@ -64,6 +78,7 @@ def main():
     start = time.monotonic()
     try:
         while running:
+            request_record, request_epoch = mode['record'], mode['epoch']
             requested = time.monotonic()
             wall = time.time_ns()//1000000
             data, metadata, client = b'', {}, None
@@ -117,7 +132,6 @@ def main():
                 received = time.monotonic()
                 at = round((requested-start)*1000)
                 path = root/'frames'/f'{index:09d}.jpg'
-                path.write_bytes(data)
                 digest = hashlib.sha256(data).hexdigest()
                 row = dict(id=f'{recording}:{index}',recordingId=recording,sequence=index,atMs=at,sourceAtMs=at,
                            frames=[str(path)],sha256=digest,wireSha256=digest,bytes=len(data),direction='front',
@@ -125,15 +139,21 @@ def main():
                            receivedAtMs=round((received-start)*1000),requestWallTimeMs=wall,
                            deviceBootId=boot,deviceSequence=seq,deviceCaptureMs=captured,deviceClockAligned=False,
                            width=640,height=480,jpegQuality=16,gapBefore=gap,requestToReceiveMs=round((received-requested)*1000))
-                with (root/'observations.jsonl').open('a',encoding='utf8') as output:
-                    output.write(json.dumps(row)+'\n')
+                should_record=request_record and mode['record'] and request_epoch==mode['epoch']
+                if should_record:
+                    path.write_bytes(data)
+                    with (root/'observations.jsonl').open('a',encoding='utf8') as output:
+                        output.write(json.dumps(row)+'\n')
+                    index += 1
+                if args.preview:
+                    print(json.dumps(dict(kind='preview',id=f'{recording}:preview:{attempt}',atMs=wall,sha256=digest,jpeg=base64.b64encode(data).decode('ascii'))),flush=True)
                 previous_boot, previous_sequence = boot, seq
-                index += 1
                 broken, failures = False, 0
                 atomic(root/'receiver-status.json', dict(state='receiving',frames=index,attempts=attempt+1,lastReceivedWallMs=time.time_ns()//1000000,usbRequired=False))
             except Exception as error:
                 broken, failures = True, failures+1
-                (root/'failed-responses'/f'{attempt:09d}.bin').write_bytes(data)
+                if request_record and mode['record'] and request_epoch==mode['epoch']:
+                    (root/'failed-responses'/f'{attempt:09d}.bin').write_bytes(data)
                 metadata.update(errorType=type(error).__name__,receivedBytes=len(data),receivedSha256=hashlib.sha256(data).hexdigest())
                 atomic(root/'failed-responses'/f'{attempt:09d}.json',metadata)
                 atomic(root/'receiver-status.json',dict(state='waiting-for-camera',frames=index,attempts=attempt+1,
