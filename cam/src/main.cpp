@@ -38,6 +38,11 @@ void setup() {
   Serial.printf("CAMERA_INIT=0x%x\n", err);
   if(err!=ESP_OK) return;
   sensor_t *s=esp_camera_sensor_get();
+#ifdef FIRST_SIGHT_NETWORK
+  // Physical mount is upside down; correct pixels for preview AND inference.
+  s->set_vflip(s,1);
+  s->set_hmirror(s,1);
+#endif
   Serial.printf("SENSOR_PID=0x%04x\n", s->id.PID);
   ready=true;
 #ifdef FIRST_SIGHT_NETWORK

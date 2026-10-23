@@ -40,6 +40,7 @@ export function realtimeServer(root:string,port=8884,allowPaid=false,autoReceive
    if(req.method==='GET'&&['/api/videos','/api/playback-timeline','/api/recordings'].includes(url.pathname))return reply(200,url.pathname==='/api/videos'?{episodes:[],memoryReady:false}:url.pathname==='/api/recordings'?[]:{questions:[],positions:[]});
    const files:Record<string,[string,string]>={'/':['index.html','text/html'],'/realtime.html':['realtime.html','text/html'],'/realtime.js':['realtime.js','text/javascript'],'/app.js':['app.js','text/javascript'],'/style.css':['style.css','text/css'],'/view-model.js':['view-model.js','text/javascript'],'/comparison-view.js':['comparison-view.js','text/javascript']};
    files['/realtime.css']=['realtime.css','text/css'];
+   files['/camera-orientation.css']=['camera-orientation.css','text/css'];
    const file=files[url.pathname];if(req.method!=='GET'||!file)return reply(404,{error:'Not found'});
    res.writeHead(200,{'Content-Type':file[1]+'; charset=utf-8'});res.end(await readFile(resolve('web/desktop',file[0])));
   }catch(error){if(!res.headersSent)reply(400,{error:String(error)});else res.destroy();}
