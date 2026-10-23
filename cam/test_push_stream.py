@@ -32,6 +32,12 @@ class PushTest(unittest.TestCase):
                 def post(h):
                     client=http.client.HTTPConnection('127.0.0.1',port,timeout=5);client.request('POST','/v1/upload',data,h);response=client.getresponse();status=response.status;response.read();client.close();return status
                 self.assertEqual(post(headers),200);preview=previews.get(timeout=5);self.assertEqual(base64.b64decode(preview['jpeg']),data);self.assertEqual(list((root/'capture/frames').glob('*')),[])
+                diagnostic=dict(bootId='persistent-history',capacity=48,total=1,uptimeMs=2,writeFailed=False,events=[dict(bootId='boot',kind='upload',sequence=0,code=-1,uptimeMs=1)])
+                client=http.client.HTTPConnection('127.0.0.1',port,timeout=5)
+                client.request('POST','/v1/network-log',json.dumps(diagnostic),{'Authorization':'Bearer '+'a'*64,'Content-Type':'application/json'})
+                response=client.getresponse();self.assertEqual(response.status,200);response.read();client.close()
+                saved=json.loads((root/'capture/network-diagnostics.jsonl').read_text());self.assertEqual(saved['device'],diagnostic)
+                self.assertEqual(list((root/'capture/frames').glob('*')),[])
                 process.stdin.write('{"record":true}\n');process.stdin.flush();time.sleep(.2);headers['X-Sequence']='1';self.assertEqual(post(headers),200);previews.get(timeout=5)
                 self.assertEqual(len(list((root/'capture/frames').glob('*.jpg'))),1)
                 self.assertEqual(post(headers),400)

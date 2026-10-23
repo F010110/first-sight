@@ -6,6 +6,7 @@
 #include <WiFiUdp.h>
 #include <mbedtls/sha256.h>
 #include "network_log.h"
+#include "network_history.h"
 static WebServer netServer(80);
 static WiFiUDP discovery;
 static String deviceKey,netBoot,authUser,authPassword;
@@ -13,9 +14,12 @@ static bool netStarted=false,authPending=false,authAttempted=false,portalOnline=
 static uint32_t netSequence=0,lastAssociation=0,lastPortalCheck=0;
 static String uplinkUrl;
 static uint32_t nextUpload=0;
+static uint32_t lastDiagnosticUpload=0;
+static bool uploadRecoveryPending=false;
 static bool netAuthorized(){if(netServer.header("Authorization")=="Bearer "+deviceKey)return true;netServer.send(401,"text/plain","Pairing required");return false;}
 static bool provideNetworkCredentials(String& user,String& password){Preferences prefs;prefs.begin("first-sight",true);user=prefs.getString("campus-user","");password=prefs.getString("campus-pass","");prefs.end();return user.length()>0&&password.length()>0;}
 static void networkCameraSetup(){
+ loadNetworkHistory();
  WiFi.onEvent([](WiFiEvent_t event,WiFiEventInfo_t info){
   if(event==ARDUINO_EVENT_WIFI_STA_DISCONNECTED)logNetwork("disconnect",info.wifi_sta_disconnected.reason,0,0,info.wifi_sta_disconnected.bssid);
   else if(event==ARDUINO_EVENT_WIFI_STA_CONNECTED)logNetwork("associated",0,0,0,info.wifi_sta_connected.bssid);
@@ -63,12 +67,15 @@ static void networkCameraSetup(){
   esp_camera_fb_return(frame);client.stop();
  });
  netServer.on("/v1/network-log",HTTP_GET,[]{if(!netAuthorized())return;netServer.sendHeader("Cache-Control","no-store");netServer.send(200,"application/json",networkLogJson(netBoot));});
+ netServer.on("/v1/network-history",HTTP_GET,[]{if(!netAuthorized())return;netServer.sendHeader("Cache-Control","no-store");netServer.send(200,"application/json",networkHistoryJson());});
  netServer.onNotFound([]{netServer.send(404,"text/plain","Not found");});
 }
 static void networkCameraLoop(){
+ persistNetworkHistory(netBoot);
  // Explicit USB-triggered connectivity probe; never sends images or credentials.
  if(Serial.available()){
   String command=Serial.readStringUntil('\n');command.trim();
+  if(command=="NETWORK_HISTORY")Serial.println(networkHistoryJson());
   if(command.startsWith("PROBE http://10.122.")&&command.length()<180){
    HTTPClient probe;probe.setConnectTimeout(3000);probe.setTimeout(3000);probe.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
    if(probe.begin(command.substring(6))){int status=probe.GET();Serial.printf("UPLINK_PROBE_HTTP=%d\n",status);probe.end();}
@@ -87,10 +94,11 @@ static void networkCameraLoop(){
  if(uplinkUrl.length()&&int32_t(millis()-nextUpload)>=0){
   uint32_t uploadStart=millis(),uploadSequence=netSequence;
   for(int i=0;i<3;i++){auto old=esp_camera_fb_get();if(old)esp_camera_fb_return(old);delay(100);}
-  auto frame=esp_camera_fb_get();int status=-1;
+  auto frame=esp_camera_fb_get();int status=-1001;
   if(frame){
    uint8_t digest[32];char hex[65];mbedtls_sha256_ret(frame->buf,frame->len,digest,0);for(int i=0;i<32;i++)snprintf(hex+i*2,3,"%02x",digest[i]);hex[64]=0;
    HTTPClient upload;upload.setConnectTimeout(3000);upload.setTimeout(8000);upload.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+   status=-1002;
    if(upload.begin(uplinkUrl)){
     upload.addHeader("Authorization","Bearer "+deviceKey);upload.addHeader("Content-Type","image/jpeg");upload.addHeader("X-Frame-Sha256",hex);
     upload.addHeader("X-Boot-Id",netBoot);upload.addHeader("X-Sequence",String(netSequence++));upload.addHeader("X-Jpeg-Quality","16");
@@ -101,6 +109,17 @@ static void networkCameraLoop(){
    esp_camera_fb_return(frame);
   }
   logNetwork("upload",status,millis()-uploadStart,uploadSequence);
+  persistNetworkHistory(netBoot);
+  if(status!=200)uploadRecoveryPending=true;
+  if(status==200&&(uploadRecoveryPending||millis()-lastDiagnosticUpload>=30000)){
+   String endpoint=uplinkUrl;endpoint.replace("/v1/upload","/v1/network-log");
+   HTTPClient diagnostic;diagnostic.setConnectTimeout(1500);diagnostic.setTimeout(2000);diagnostic.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+   if(diagnostic.begin(endpoint)){
+    diagnostic.addHeader("Authorization","Bearer "+deviceKey);diagnostic.addHeader("Content-Type","application/json");
+    int result=diagnostic.POST(networkHistoryJson());diagnostic.end();
+    if(result==200){lastDiagnosticUpload=millis();uploadRecoveryPending=false;}
+   }
+  }
   Serial.printf("UPLINK_FRAME_HTTP=%d\n",status);nextUpload=millis()+(status==200?1700:3000);
  }
  delay(2);

@@ -38,8 +38,23 @@ def main():
         def setup(self):
             super().setup();self.connection.settimeout(8)
         def do_POST(self):
-            if self.path!='/v1/upload':self.send_error(404);return
+            if self.path not in ['/v1/upload','/v1/network-log']:self.send_error(404);return
             if not hmac.compare_digest(self.headers.get('Authorization',''),'Bearer '+token):self.send_error(401);return
+            if self.path=='/v1/network-log':
+                try:
+                    length=int(self.headers.get('Content-Length','-1'))
+                    if self.headers.get('Content-Type')!='application/json' or not 0<length<=65536:raise ValueError('Invalid diagnostic body')
+                    value=json.loads(self.rfile.read(length))
+                    if not isinstance(value,dict) or not isinstance(value.get('events'),list) or len(value['events'])>128:raise ValueError('Invalid diagnostics')
+                    allowed={'bootId','uptimeMs','kind','sequence','durationMs','code','rssi','channel','bssid'}
+                    if set(value)-{'bootId','capacity','total','uptimeMs','events','writeFailed'}:raise ValueError('Unexpected diagnostics')
+                    for event in value['events']:
+                        if not isinstance(event,dict) or set(event)-allowed:raise ValueError('Unexpected event')
+                    with (root/'network-diagnostics.jsonl').open('a',encoding='utf8') as output:
+                        output.write(json.dumps(dict(receivedWallMs=time.time_ns()//1000000,device=value))+'\n')
+                    self.send_response(200);self.send_header('Content-Length','2');self.end_headers();self.wfile.write(b'OK')
+                except (ValueError,OSError):self.send_error(400)
+                return
             epoch=state['epoch'];record=state['record'];wall=time.time_ns()//1000000;at=round((time.monotonic()-start)*1000);data=b''
             try:
                 length=int(self.headers.get('Content-Length','-1'))
@@ -70,6 +85,8 @@ def main():
                 atomic(root/'receiver-status.json',dict(state='receiving',transport='push',frames=state['count'],lastReceivedWallMs=time.time_ns()//1000000,usbRequired=False))
                 self.send_response(200);self.send_header('Content-Length','2');self.end_headers();self.wfile.write(b'OK')
             except (ValueError,OSError) as error:
+                with (root/'network-errors.jsonl').open('a',encoding='utf8') as output:
+                    output.write(json.dumps(dict(atWallMs=time.time_ns()//1000000,requestWallMs=wall,errorType=type(error).__name__,receivedBytes=len(data),bootId=self.headers.get('X-Boot-Id'),sequence=self.headers.get('X-Sequence')))+'\n')
                 if record and state['record'] and epoch==state['epoch']:
                     name=str(time.time_ns());(root/'failed-responses'/(name+'.bin')).write_bytes(data)
                     atomic(root/'failed-responses'/(name+'.json'),dict(errorType=type(error).__name__,receivedBytes=len(data)))
