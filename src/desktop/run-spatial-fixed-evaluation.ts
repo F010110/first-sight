@@ -9,6 +9,7 @@ import {parseSpatialPerception} from '../agent/spatial-separated-protocol.js';
 import {aliasedSpatialRequest} from '../agent/spatial-reference-aliases.js';
 import {SpatialCandidateRecall} from '../agent/spatial-candidate-recall.js';
 import {SpatialVisitTopology} from '../agent/spatial-visit-topology.js';
+import {guardedGraphContext} from '../agent/spatial-guarded-graph.js';
 // Public replay input only: never load evaluation labels or expected group membership.
 const inputPath=process.argv[2];
 if(!inputPath||!process.argv.includes('--confirm-paid'))throw Error('Usage: run-spatial-fixed-evaluation PUBLIC-input.json --confirm-paid; max 128 calls, estimated USD0.50');
@@ -20,11 +21,13 @@ if(Object.keys(input).some(k=>!['schema','observations'].includes(k))||!Array.is
 type Row={id:string;scene:string;atMs:number;views:Array<{direction:string;path:string;sha256:string}>};
 const rows=input.observations as Row[],seen=new Set<string>(),last=new Map<string,number>();
 const groundFirst=process.argv.includes('--ground-first');
+const guardedGraph=process.argv.includes('--guarded-graph');
 const comparative=process.argv.includes('--comparative-resolution');
 const regionScale=process.argv.includes('--continuous-region-scope');
 const shortReferences=process.argv.includes('--short-references');
 const visitContextFlag=process.argv.find(arg=>arg.startsWith('--visit-context='));
 const visitContext=visitContextFlag?.slice('--visit-context='.length)??null;
+if(guardedGraph&&visitContext!=='graph')throw Error('guarded-graph requires graph context');
 if(visitContext!==null&&!['sequence','graph'].includes(visitContext))throw Error('visit-context must be sequence or graph');
 const featuresFlag=process.argv.find(arg=>arg.startsWith('--candidate-features='));
 const featuresRaw=featuresFlag?await readFile(featuresFlag.slice('--candidate-features='.length)):null;
@@ -38,9 +41,9 @@ if(visitContext&&!recall)throw Error('Visit context trial requires fixed recent-
 const scaleInstruction=' 本轮区域粒度为一个具体连续物理空间，不是每件家具前的局部站位：同一房间内转向、从一种家具走向另一种家具、开放空间内更换功能角落通常仍属同区，不能只因换了近处物体或功能名就拆分。需要原图可见的实墙/门洞空间隔断、围栏两侧等正面区域边界依据。反过来，隔门可见的物体和同款地板不能证明属于同一房间；不知道完整边界时说明限制，不补画看不见的连通或隔断。固定范围不能锁死拍摄朝向或仅仅距某个物体的远近。';
 for(const r of rows){if(Object.keys(r).some(k=>!['id','scene','atMs','views'].includes(k))||!r.id||seen.has(r.id)||!r.scene||!Number.isFinite(r.atMs)||r.atMs<=(last.get(r.scene)??-Infinity)||!Array.isArray(r.views)||r.views.length!==3||new Set(r.views.map(v=>v.direction)).size!==3||r.views.some(v=>!['front','left','right'].includes(v.direction)||!/^[a-f0-9]{64}$/.test(v.sha256)))throw Error('Invalid causal public replay row');seen.add(r.id);last.set(r.scene,r.atMs);}
 const root=resolve('run/spatial-fixed-evaluation',new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));await mkdir(root,{recursive:true});console.log(root);
-const sourceFiles=['src/desktop/run-spatial-fixed-evaluation.ts','src/agent/spatial-fixed-group-agent.ts','src/agent/spatial-place-contract.ts','src/agent/spatial-json-vlm.ts','src/agent/bounded-network-retry.ts','src/agent/spatial-ground-first.ts','src/agent/spatial-separated-protocol.ts','src/agent/spatial-fixed-prompts.ts','src/agent/spatial-reference-aliases.ts','src/agent/spatial-candidate-recall.ts','src/agent/spatial-visual-recall.ts','src/agent/spatial-visit-topology.ts'];
+const sourceFiles=['src/desktop/run-spatial-fixed-evaluation.ts','src/agent/spatial-fixed-group-agent.ts','src/agent/spatial-place-contract.ts','src/agent/spatial-json-vlm.ts','src/agent/bounded-network-retry.ts','src/agent/spatial-ground-first.ts','src/agent/spatial-separated-protocol.ts','src/agent/spatial-fixed-prompts.ts','src/agent/spatial-reference-aliases.ts','src/agent/spatial-candidate-recall.ts','src/agent/spatial-visual-recall.ts','src/agent/spatial-visit-topology.ts','src/agent/spatial-guarded-graph.ts'];
 await writeFile(join(root,'frozen.json'),JSON.stringify({schema:'spatial-fixed-online-v1',inputSha256:createHash('sha256').update(inputRaw).digest('hex'),sourceHashes:Object.fromEntries(await Promise.all(sourceFiles.map(async p=>[p,createHash('sha256').update(await readFile(p)).digest('hex')]))),model:'qwen3.8-flash',enableThinking:false,maxCalls,maxEstimatedUSD:.5,scope:'Empty memory per scene, no seed labels, every candidate group and all member originals checked. No paid automatic resume or splice.'},null,2));
-await writeFile(join(root,'strategy.json'),JSON.stringify({groundFirst,comparative,regionScale,shortReferences,visitContext,candidateRecall:recall?{recent:2,visual:2,descriptor:'rgb-layout-v1',sha256:createHash('sha256').update(featuresRaw!).digest('hex')}:null,scope:'Explicit experimental opt-in; not default frontend memory'}));
+await writeFile(join(root,'strategy.json'),JSON.stringify({groundFirst,comparative,regionScale,shortReferences,visitContext,guardedGraph,candidateRecall:recall?{recent:2,visual:2,descriptor:'rgb-layout-v1',sha256:createHash('sha256').update(featuresRaw!).digest('hex')}:null,scope:'Explicit experimental opt-in; not default frontend memory'}));
 if(featuresRaw)await writeFile(join(root,'candidate-features.json'),featuresRaw);
 await writeFile(join(root,'public-input.json'),inputRaw);
 const byId=new Map(rows.map(r=>[r.id,r])),providerRequest=spatialJsonVlm(join(root,'requests'),maxCalls,.5),request=shortReferences?aliasedSpatialRequest(providerRequest):providerRequest;
@@ -52,7 +55,7 @@ for(const [index,row] of rows.entries()){
   let agent=agents.get(row.scene);
   if(!agent){
    const graph=new SpatialVisitTopology();graphs.set(row.scene,graph);let recalledIds:string[]=[];
-   const history=(current:{atMs:number})=>visitContext?{visitMemory:graph.context(current.atMs,recalledIds,visitContext==='graph')}:{ };
+    const history=(current:{atMs:number})=>{if(!visitContext)return {};const context=graph.context(current.atMs,recalledIds,visitContext==='graph');return {visitMemory:guardedGraph?guardedGraphContext(context):context};};
    agent=new FixedGroupSpatialAgent({
    ...recall?{selectCandidates:async(input:Parameters<NonNullable<import('../agent/spatial-fixed-group-agent.js').FixedGroupModels['selectCandidates']>>[0])=>{const selection=recall!.select(input.current,input.groups);recalledIds=selection.groupIds;return selection;}}:{},
    ...groundFirst?{perceive:async(current:{id:string;atMs:number})=>{

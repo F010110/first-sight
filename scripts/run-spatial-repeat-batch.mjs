@@ -4,6 +4,7 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';import {resolve,dirnam
 const [destination,inputPath,featuresPath,confirm]=process.argv.slice(2);
 const batchCap=Number(process.env.SPATIAL_BATCH_MAX_USD??4.5);
 const allowReservedUnknown=process.env.SPATIAL_BATCH_ALLOW_RESERVED_UNKNOWN==='1';
+const guarded=process.env.SPATIAL_BATCH_GUARDED_GRAPH==='1';
 if(!Number.isFinite(batchCap)||batchCap<.5||batchCap>4.5)throw Error('Invalid batch cost cap');
 if(!destination||!inputPath||!featuresPath||confirm!=='--confirm-paid')throw Error('Usage: run-spatial-repeat-batch NEW-batch-directory PUBLIC-input.json FEATURES.json --confirm-paid');
 if(!process.env.QWEN_API_KEY||!process.env.QWEN_BASE_URL)throw Error('Missing Qwen configuration; no batch started');
@@ -15,8 +16,8 @@ const files=[...source.match(/const sourceFiles=\[(.*?)\];/s)[1].matchAll(/'([^'
 const paths=[...files,...files.map(p=>p.replace(/^src\//,'dist/current/').replace(/\.ts$/,'.js')),'scripts/run-spatial-repeat-batch.mjs',input,features];
 const hashes=Object.fromEntries(await Promise.all(paths.map(async path=>[path,sha(await readFile(path))])));
 await mkdir(dirname(root),{recursive:true});await mkdir(root);
-const trials=[['recall','sequence','graph'],['sequence','graph','recall'],['graph','recall','sequence']].flatMap((order,index)=>order.map(method=>({id:`round-${index+1}-${method}`,round:index+1,method,status:'pending',runRoot:null,estimatedUSD:null})));
-const plan={schema:'spatial-repeat-batch-v1',createdAt:new Date().toISOString(),input,features,inputSha256:sha(inputRaw),observations:JSON.parse(inputRaw).observations.length,plannedTrials:9,repeatsPerMethod:3,maxCallsPerTrial:256,maxEstimatedUSDPerTrial:.5,maxBatchEstimatedUSD:batchCap,allowReservedUnknown,methodOrder:'Rotated across rounds; serial, no overlapping paid trials',hashes,policy:'New empty memory every trial. Preserve all failures. No automatic resume, no success splicing, no frontend replacement. Current 64-second segment only, NOT all-campus evaluation.'};
+const trials=(guarded?[['sequence','graph'],['graph','sequence'],['sequence','graph']]:[['recall','sequence','graph'],['sequence','graph','recall'],['graph','recall','sequence']]).flatMap((order,index)=>order.map(method=>({id:`round-${index+1}-${method}`,round:index+1,method,status:'pending',runRoot:null,estimatedUSD:null})));
+const plan={schema:'spatial-repeat-batch-v1',guardedGraph:guarded,createdAt:new Date().toISOString(),input,features,inputSha256:sha(inputRaw),observations:JSON.parse(inputRaw).observations.length,plannedTrials:trials.length,repeatsPerMethod:3,maxCallsPerTrial:256,maxEstimatedUSDPerTrial:.5,maxBatchEstimatedUSD:batchCap,allowReservedUnknown,methodOrder:'Rotated across rounds; serial, no overlapping paid trials',hashes,policy:'New empty memory every trial. Preserve all failures. No automatic resume, no success splicing, no frontend replacement. Current 64-second segment only, NOT all-campus evaluation.'};
 await writeFile(join(root,'plan.json'),JSON.stringify(plan,null,2),{flag:'wx'});
 let billed=0,stopped=null;
 const save=()=>writeFile(join(root,'status.json'),JSON.stringify({updatedAt:new Date().toISOString(),estimatedUSD:billed,stopped,trials},null,2));
@@ -26,7 +27,7 @@ try{
   for(const [path,hash] of Object.entries(hashes))if(sha(await readFile(path))!==hash)throw Error('Frozen input/code changed: '+path);
   if(billed+.5>plan.maxBatchEstimatedUSD+1e-9)throw Error('Batch reservation would exceed cost cap');
   trial.status='running';await save();
-  const args=['--use-env-proxy','dist/current/desktop/run-spatial-fixed-evaluation.js',input,'--ground-first','--comparative-resolution','--continuous-region-scope','--short-references',`--candidate-features=${features}`,...trial.method==='recall'?[]:[`--visit-context=${trial.method}`],'--max-calls=256','--confirm-paid'];
+   const args=['--use-env-proxy','dist/current/desktop/run-spatial-fixed-evaluation.js',input,'--ground-first','--comparative-resolution','--continuous-region-scope','--short-references',`--candidate-features=${features}`,...trial.method==='recall'?[]:[`--visit-context=${trial.method}`],...guarded&&trial.method==='graph'?['--guarded-graph']:[],'--max-calls=256','--confirm-paid'];
   await writeFile(join(root,trial.id+'-command.json'),JSON.stringify({executable:process.execPath,args},null,2),{flag:'wx'});
   console.log(JSON.stringify({trial:trial.id,event:'started'}));
   const log=createWriteStream(join(root,trial.id+'.log'),{flags:'wx'});let stdout='';
