@@ -75,6 +75,7 @@ $('source').addEventListener('change',()=>void selectSource());
 $('method-view').addEventListener('change',()=>renderVideoTime());
 $('choose-replay').addEventListener('click',()=>{$('replay-kinds').hidden=false;$('kind-title').focus();});
 $('choose-realtime').addEventListener('click',()=>{window.location.href='http://127.0.0.1:8884/realtime.html';});
+$('choose-real-recordings').addEventListener('click',()=>{window.location.href='http://127.0.0.1:8884/recordings.html';});
 $('choose-simulation').addEventListener('click',()=>{$('sample-picker').hidden=false;$('sample-title').focus();});
 $('enter-sample').addEventListener('click',async()=>{$('entry').hidden=true;$('workspace').hidden=false;await selectSource();$('scene-title').focus();});
 $('back-to-samples').addEventListener('click',()=>{video.pause();stop();stopTail();$('workspace').hidden=true;$('entry').hidden=false;$('sample-title').focus();});

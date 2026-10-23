@@ -4,6 +4,7 @@ import {resolve,join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {RealtimeSession} from '../hardware/realtime-session.js';
+import {listRecordings,readRecording,recordingImage} from './live-recordings.js';
 async function jsonBody(req:IncomingMessage){
  if(req.headers['content-type']!=='application/json')throw Error('Require application/json');let size=0;const chunks:Buffer[]=[];
  for await(const chunk of req){size+=chunk.length;if(size>5000)throw Error('Body too large');chunks.push(chunk);}return JSON.parse(Buffer.concat(chunks).toString());
@@ -20,6 +21,16 @@ export function realtimeServer(root:string,port=8884,allowPaid=false,autoReceive
    if(![`127.0.0.1:${actual}`,`localhost:${actual}`].includes(host??''))return reply(403,{error:'Loopback host required'});
    if(req.headers.origin&&req.headers.origin!==`http://${host}`||req.method==='POST'&&req.headers.origin!==`http://${host}`)return reply(403,{error:'Same-origin required'});
    const url=new URL(req.url??'/',`http://${host}`);
+   if(req.method==='GET'&&url.pathname==='/api/live/recordings')return reply(200,{recordings:await listRecordings(root)});
+   if(req.method==='GET'&&url.pathname==='/api/live/recording'){
+    const recording=readRecording(root,url.searchParams.get('id')??'');
+    return reply(200,{id:recording.id,frames:recording.rows.map(r=>({id:r.original.id,atMs:r.original.atMs,gapBefore:r.original.gapBefore===true,url:'/api/live/recorded-image?recording='+encodeURIComponent(recording.id)+'&id='+encodeURIComponent(r.original.id),judgment:r.judgment,availableAtMs:r.availableAtMs})),questions:recording.questions});
+   }
+   if(req.method==='GET'&&url.pathname==='/api/live/recorded-image'){
+    const image=await recordingImage(root,url.searchParams.get('recording')??'',url.searchParams.get('id')??'');
+    if(createHash('sha256').update(image.bytes).digest('hex')!==image.sha256)throw Error('Recorded original changed');
+    res.writeHead(200,{'Content-Type':'image/jpeg','Content-Length':image.bytes.length});res.end(image.bytes);return;
+   }
    if(req.method==='GET'&&url.pathname==='/api/live/state'){if(autoReceive)await ensureReceiver();return reply(200,{available:true,allowPaid,session:current?.state()??null});}
    if(req.method==='POST'&&url.pathname==='/api/live/start'){
     const input=await jsonBody(req);if(Object.keys(input).length)throw Error('启动交互无需相机参数');
@@ -42,6 +53,7 @@ export function realtimeServer(root:string,port=8884,allowPaid=false,autoReceive
    const files:Record<string,[string,string]>={'/':['index.html','text/html'],'/realtime.html':['realtime.html','text/html'],'/realtime.js':['realtime.js','text/javascript'],'/app.js':['app.js','text/javascript'],'/style.css':['style.css','text/css'],'/view-model.js':['view-model.js','text/javascript'],'/comparison-view.js':['comparison-view.js','text/javascript']};
    files['/realtime.css']=['realtime.css','text/css'];
    files['/camera-orientation.css']=['camera-orientation.css','text/css'];
+   files['/recordings.html']=['recordings.html','text/html'];files['/recordings.js']=['recordings.js','text/javascript'];files['/recordings.css']=['recordings.css','text/css'];
    const file=files[url.pathname];if(req.method!=='GET'||!file)return reply(404,{error:'Not found'});
    res.writeHead(200,{'Content-Type':file[1]+'; charset=utf-8'});res.end(await readFile(resolve('web/desktop',file[0])));
   }catch(error){if(!res.headersSent)reply(400,{error:String(error)});else res.destroy();}

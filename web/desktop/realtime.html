@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>First Sight · 实时助手</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/realtime.css"><link rel="stylesheet" href="/camera-orientation.css"><script type="module" src="/realtime.js"></script></head>
 <body>
-<header><a class="brand" href="/">First Sight<span>实时助手</span></a><div class="system-control"><div><strong>系统启动</strong><small id="system-hint">关闭 · 仅播放画面</small></div><button id="system-toggle" type="button" role="switch" aria-checked="false" aria-label="系统启动"><span class="switch-knob"></span></button><span id="system-label">已关闭</span></div><a class="replay-link" href="http://127.0.0.1:8883">实验回放 ↗</a></header>
+<header><a class="brand" href="/">First Sight<span>实时助手</span></a><div class="system-control"><label><input id="record-toggle" type="checkbox"> 记录画面 <small id="record-hint">默认不保存</small></label><div><strong>系统启动</strong><small id="system-hint">关闭 · 仅播放画面</small></div><button id="system-toggle" type="button" role="switch" aria-checked="false" aria-label="系统启动"><span class="switch-knob"></span></button><span id="system-label">已关闭</span></div><a class="replay-link" href="/recordings.html">录像回放 ↗</a></header>
 <main>
-<div class="status-bar"><span id="live-status" role="status" aria-live="polite">连接相机中…</span><label><input id="record-toggle" type="checkbox"> 记录画面 <span id="record-hint">默认不保存</span></label><span id="input-health">等待信号</span></div>
+<div class="status-bar"><span id="live-status" role="status" aria-live="polite">连接相机中…</span><span id="input-health">等待信号</span></div>
 <p id="live-error" role="alert" hidden></p>
 <div class="live-workspace">
 <section class="camera-panel"><div class="section-heading"><h1>实时画面</h1><span>前方单摄 · 640×480</span></div><div class="camera-view"><img id="live-image" hidden alt="真实前方相机画面"><span id="camera-empty">等待相机信号…</span><span id="image-time">尚无画面</span></div><div class="location-line"><span>当前地点 <strong id="live-location">待确认</strong></span><span id="live-progress"></span></div><p id="last-location">尚无空间记忆</p><section class="memory-panel"><h2>空间记忆 <span>模型判断，非人工真值</span></h2><div id="live-places"></div></section></section>
