@@ -5,6 +5,7 @@
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <mbedtls/sha256.h>
+#include "network_log.h"
 static WebServer netServer(80);
 static WiFiUDP discovery;
 static String deviceKey,netBoot,authUser,authPassword;
@@ -15,6 +16,11 @@ static uint32_t nextUpload=0;
 static bool netAuthorized(){if(netServer.header("Authorization")=="Bearer "+deviceKey)return true;netServer.send(401,"text/plain","Pairing required");return false;}
 static bool provideNetworkCredentials(String& user,String& password){Preferences prefs;prefs.begin("first-sight",true);user=prefs.getString("campus-user","");password=prefs.getString("campus-pass","");prefs.end();return user.length()>0&&password.length()>0;}
 static void networkCameraSetup(){
+ WiFi.onEvent([](WiFiEvent_t event,WiFiEventInfo_t info){
+  if(event==ARDUINO_EVENT_WIFI_STA_DISCONNECTED)logNetwork("disconnect",info.wifi_sta_disconnected.reason,0,0,info.wifi_sta_disconnected.bssid);
+  else if(event==ARDUINO_EVENT_WIFI_STA_CONNECTED)logNetwork("associated",0,0,0,info.wifi_sta_connected.bssid);
+  else if(event==ARDUINO_EVENT_WIFI_STA_GOT_IP)logNetwork("got-ip");
+ });
  Preferences prefs;prefs.begin("first-sight",false);deviceKey=prefs.getString("pair-key","");
  if(deviceKey.length()!=64){
   Serial.println("NETWORK_PAIR_KEY_READY");Serial.setTimeout(120000);String value=Serial.readStringUntil('\n');value.trim();
@@ -56,6 +62,7 @@ static void networkCameraSetup(){
   Serial.printf("NETWORK_FRAME sequence=%u bytes=%u sent=%u\n",netSequence-1,frame->len,sent);
   esp_camera_fb_return(frame);client.stop();
  });
+ netServer.on("/v1/network-log",HTTP_GET,[]{if(!netAuthorized())return;netServer.sendHeader("Cache-Control","no-store");netServer.send(200,"application/json",networkLogJson(netBoot));});
  netServer.onNotFound([]{netServer.send(404,"text/plain","Not found");});
 }
 static void networkCameraLoop(){
@@ -78,6 +85,7 @@ static void networkCameraLoop(){
  if(discovery.parsePacket()){char query[64]={0};int n=discovery.read(query,63);if(n==21&&String(query)=="FIRST_SIGHT_DISCOVER_1"){discovery.beginPacket(discovery.remoteIP(),discovery.remotePort());discovery.print("FIRST_SIGHT_CAMERA_1");discovery.endPacket();}}
   netServer.handleClient();
  if(uplinkUrl.length()&&int32_t(millis()-nextUpload)>=0){
+  uint32_t uploadStart=millis(),uploadSequence=netSequence;
   for(int i=0;i<3;i++){auto old=esp_camera_fb_get();if(old)esp_camera_fb_return(old);delay(100);}
   auto frame=esp_camera_fb_get();int status=-1;
   if(frame){
@@ -92,6 +100,7 @@ static void networkCameraLoop(){
    }
    esp_camera_fb_return(frame);
   }
+  logNetwork("upload",status,millis()-uploadStart,uploadSequence);
   Serial.printf("UPLINK_FRAME_HTTP=%d\n",status);nextUpload=millis()+(status==200?1700:3000);
  }
  delay(2);
