@@ -18,7 +18,7 @@ node dist/current/desktop/realtime-server.js --allow-paid
 
 打开8884实时页会启动独立Python接收器8885。8884控制页面仍仅监听loopback；8885只支持鉴权JPEG上传，不提供系统启动、问答等控制接口。默认预览只在内存保留最新图；记录才保存，系统启动包含记录，原有回放自动读取记录。
 
-`CAMERA_TRANSPORT`不设置时仍为旧pull路径，不能直接用旧命令重启后误以为主动接收还在。避免两个接收器并发。电脑地址变化需更新host并重新通过`cam/configure_uplink.py --host 新地址`配置设备；当前不是固定域名或全校自动发现方案。设备回退可USB发送`UPLINK_OFF`，再切回pull。
+`CAMERA_TRANSPORT`不设置时仍为旧pull路径，不能直接用旧命令重启后误以为主动接收还在。避免两个接收器并发。电脑地址变化需更新host并重新通过`cam/host/configure_uplink.py --host 新地址`配置设备；当前不是固定域名或全校自动发现方案。设备回退可USB发送`UPLINK_OFF`，再切回pull。
 
 ## 时间和局限
 

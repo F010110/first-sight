@@ -1,6 +1,6 @@
 # 单摄串口接入：操作与实测
 
-> 提速更新：本页下方保留首次115200接入实测；随后固件升级后230400／460800均达到2秒目标。当前`run.ps1`默认460800，详见[提速验证](serial-baud-validation.md)。首次失败记录未改写。
+> 提速更新：本页下方保留首次115200接入实测；随后固件升级后230400／460800均达到2秒目标。当前`run.ps1`默认460800，详见[提速验证](./serial-baud-validation.md)。首次失败记录未改写。
 
 ## 结论
 
@@ -17,7 +17,7 @@
 
 | 文件 | 职责 |
 |---|---|
-| `cam/stream.py` | 有界采集，保存JPEG与独立逐帧收据，坏帧／超时即停止，不自动跨未知复位续写 |
+| `cam/host/stream.py` | 有界采集，保存JPEG与独立逐帧收据，坏帧／超时即停止，不自动跨未知复位续写 |
 | `cam/run.ps1` | 并行启动独立采集进程与主机消费进程；采集不等待模型返回 |
 | `src/hardware/camera-input.ts` | 路径／SHA256／时间／单摄契约校验，流式调度 |
 | `src/hardware/run-camera.ts` | 原ContextLoop、Memory与VLM的主机执行入口，支持已录制和实时follow |
@@ -74,4 +74,4 @@ node --use-env-proxy dist/current/hardware/run-camera.js cam/local/check-001 cam
 
 当前串口带宽不足，主机收到后再缩图不能改善线缆传输。需要设备端减小JPEG，或同时提高固件及主机波特率（建议先试230400／460800，再独立检验稳定性）；均涉及固件更改和重新烧录，本次未做。Wi-Fi到位后替换采集源，仍沿用主机观察／记忆链；三路身份、采集时间同步和断线策略需另行验证。
 
-测试命令：`cam/.venv/Scripts/python.exe -m unittest discover -s cam -p test_stream.py`（3项通过）；`npm test`（220项通过，包含硬件适配层与执行入口回归）。发布哈希／搬迁／旧冻结检查5项通过，文档链接检查通过。原模拟器／90题链完全保留，本次未重跑90题。
+测试命令（V2已迁移路径）：`cam/.venv/Scripts/python.exe -m unittest discover -s cam/host -p test_stream.py`（当时3项通过）；`npm test`（当时220项通过，包含硬件适配层与执行入口回归）。发布哈希／搬迁／旧冻结检查当时5项通过，文档链接检查通过。原模拟器／90题链完全保留，本次未重跑90题。

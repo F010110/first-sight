@@ -4,7 +4,7 @@
 
 ## 为什么不是继续修改v2提示
 
-[前两轮完整对照](spatial-identity-comparison-experiment-v1.md)仍有56—80%空身份，且模型会复制旧reason，或明确描述新区域但返回null。因此这次拆开调用与决策职责，而不是再次要求模型在同一JSON中同时描述、比较、生成UUID。
+[前两轮完整对照](./spatial-identity-comparison-experiment-v1.md)仍有56—80%空身份，且模型会复制旧reason，或明确描述新区域但返回null。因此这次拆开调用与决策职责，而不是再次要求模型在同一JSON中同时描述、比较、生成UUID。
 
 早期`scene-agent.ts`已有独立当前感知及same/known/new/unresolved思想；本次不是首次提出该原则，而是将其作为当前统一Context校园链之外的显式对照策略，采用现有SQLite／原图检索接口，保持旧链不变。
 
@@ -23,7 +23,7 @@ UUID由程序生成不等于程序证明空间正确。动作校验仍不能阻�
 
 ```powershell
 npm.cmd run build
-node --use-env-proxy dist/current/desktop/experiment-separated-spatial.js --confirm-paid
+node --use-env-proxy dist/current/sim/evaluation/experiment-separated-spatial.js --confirm-paid
 ```
 
 - 新选第6段0—62秒，32个原始三视图观察，0.5fps；没有复用前两轮第1／4段调试结果，不输入旧预测或真值。

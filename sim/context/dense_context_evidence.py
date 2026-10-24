@@ -64,7 +64,7 @@ def main():
     args=parser.parse_args()
     if args.tick_ms<=0: raise ValueError('Invalid original capture cadence')
     if not 500<=args.tick_ms<=1000: raise ValueError('Detection requires original 1–2 fps frames; do not invent or silently oversample frames')
-    spec=importlib.util.spec_from_file_location('image_match',Path(__file__).resolve().parents[2]/'scripts/image_match.py')
+    spec=importlib.util.spec_from_file_location('image_match',Path(__file__).resolve().parents[2]/'scripts/media/image_match.py')
     matcher=importlib.util.module_from_spec(spec); spec.loader.exec_module(matcher)
     cv2.setNumThreads(1); cv2.setRNGSeed(0); detector,norm=matcher.make_detector('sift')
     paths=sorted((args.dataset/'frames').glob('*.jpg')); features=[]; ticks=[]

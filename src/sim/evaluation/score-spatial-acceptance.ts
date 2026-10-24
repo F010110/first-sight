@@ -1,6 +1,6 @@
 import {readFile,writeFile} from 'node:fs/promises';import {createHash} from 'node:crypto';
 import {dirname,join} from 'node:path';
-import {spatialAcceptance} from '../agent/spatial-acceptance.js';
+import {spatialAcceptance} from '../../agent/spatial-acceptance.js';
 const [labelsPath,predictionsPath,outputPath]=process.argv.slice(2);
 if(!labelsPath||!predictionsPath||!outputPath)throw Error('Usage: score-spatial-acceptance labels.json predictions.json NEW-report.json');
 const labelsRaw=await readFile(labelsPath),predictionRaw=await readFile(predictionsPath);

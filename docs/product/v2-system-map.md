@@ -11,7 +11,7 @@ ESP32-S3 + 相机（固件，单前视图）
                 │ 校园Wi-Fi / HTTP bearer鉴权
                 ▼
 电脑：Python接收进程（8885，绑定指定校园IPv4）
-  cam/push_stream.py              认证、长度/hash/尺寸/序号校验
+  cam/host/push_stream.py              认证、长度/hash/尺寸/序号校验
     ├─ stdout预览JPEG ───────────→ 最新帧RAM（默认，不保存图像）
     └─ 记录有效时：JPEG + observations.jsonl
                 │ stdin接收record:true/false
@@ -70,6 +70,6 @@ ESP32-S3 + 相机（固件，单前视图）
 
 ## 历史链路不能混用
 
-`src/assistant/`和`src/desktop/server.ts`属于视频生活助手与旧入口；`src/sim/`、`sim/`供离线评测、审核、研究；`web/`根页面属于历史手机工具。它们与当前实时链路共享部分Agent代码，但不等于已合并成一个运行时。Android中继已放弃，构建APK与日志仅为本地历史产物。
+`src/assistant/`和`src/desktop/server.ts`属于视频生活助手与旧入口；`src/sim/`、`sim/`供离线评测、审核、研究，桌面评分／实验已移至`src/sim/evaluation/`；`web/`根页面属于历史手机工具。它们与当前实时链路共享部分Agent代码，但不等于已合并成一个运行时。Android中继已放弃，构建APK与日志仅为本地历史产物。
 
-**结论：逻辑职责可清楚描述，物理代码还不是完全解耦的分层架构。** 尤其`src/hardware/`同时包含适配、业务编排、存储、空间与问答，`src/agent/`混有现用与历史算法。后续拆分清单见[仓库审查](../maintenance/v2-repository-audit.md)，本轮不搬动路径。
+**结论：工具与应用／评测入口已按层归位，核心业务代码还不是完全解耦的分层架构。** 尤其`src/hardware/`同时包含适配、业务编排、存储、空间与问答，`src/agent/`混有现用与历史算法。后续拆分清单见[仓库审查](../maintenance/v2-repository-audit.md)；本次不把目录整理扩大成业务架构重写。

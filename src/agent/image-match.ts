@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
- * Thin bridge to the offline image-overlap matcher (`scripts/image_match.py`).
+ * Thin bridge to the offline image-overlap matcher (`scripts/media/image_match.py`).
  *
  * SIFT + RANSAC tells us whether two frames really share a surface (a close-up
  * vs a wide shot, or the same place seen twice), which is what makes an image
@@ -60,7 +60,7 @@ export async function matchImages(
 ): Promise<ImageMatchResponse> {
 	if (queries.length === 0) return EMPTY;
 	const script = resolve("scripts", "image_match.py");
-	if (!existsSync(script)) return { ...EMPTY, error: "scripts/image_match.py not found" };
+	if (!existsSync(script)) return { ...EMPTY, error: "scripts/media/image_match.py not found" };
 	const payload = JSON.stringify({
 		queries,
 		candidates,

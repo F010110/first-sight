@@ -49,7 +49,7 @@ if(stories){
 }
 const dataset=stories?'realistic-stories-v1':original90?'original90-regression':full90?'assistant-questions90-v1':'pilot3';
 const before=createHash('sha256').update(await readFile(join(memoryRoot,'memory.sqlite'))).digest('hex');
-const codeHashes=Object.fromEntries(await Promise.all(['src/assistant/question-agent.ts','src/assistant/prepared-memory.ts','src/desktop/run-campus-questions.ts','src/desktop/grade-campus-questions.ts'].map(async path=>[path,createHash('sha256').update(await readFile(path)).digest('hex')])));
+const codeHashes=Object.fromEntries(await Promise.all(['src/assistant/question-agent.ts','src/assistant/prepared-memory.ts','src/desktop/run-campus-questions.ts','src/sim/evaluation/grade-campus-questions.ts'].map(async path=>[path,createHash('sha256').update(await readFile(path)).digest('hex')])));
 await writeFile(join(root,'frozen.json'),JSON.stringify({mode:'question-only',dataset,codeHashes,memoryRoot:resolve(memoryRoot),memorySha256:before,script,spatialModelCalls:0,questionBudgetUSD:budget.maxUSD,sourceManifestSha256:source.manifestSha256},null,2));console.log(root);
 let failure:unknown;
 const settledTasks:Array<ReturnType<typeof runtime.view>['tasks'][number]>=[];

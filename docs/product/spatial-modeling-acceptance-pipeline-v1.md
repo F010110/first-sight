@@ -30,7 +30,7 @@ boundary或unknown的region必须null，不进入核心成对准确率；二者�
 
 ```powershell
 npm.cmd run build
-node dist/current/desktop/score-spatial-acceptance.js labels.private.json predictions.json NEW-report.json
+node dist/current/sim/evaluation/score-spatial-acceptance.js labels.private.json predictions.json NEW-report.json
 ```
 
 `spatial-acceptance.ts`按场景内所有core对统计，避免不同场景使用同样ID导致跨场景虚假合并；按场景宏平均，避免长场景压过短场景。all-merged、all-singletons、all-unknown、缺失结果、场景泄漏均有单测。
@@ -44,7 +44,7 @@ node dist/current/desktop/score-spatial-acceptance.js labels.private.json predic
 公共输入只允许schema和observations，每行只有id、scene、atMs、views，每视图direction/path/sha256。不允许标签、region、预期结果。接口按scene独立记忆，禁止未来／跨场景原图，使用已有adapter验证PNG及hash。每个请求保留原始响应和计费。候选组全量扫描是正确性参考实现：成员数增多时调用量近似二次增长，不冒称已达到实时性能；预算不足停止并计pending，不能偷偷截短历史来节省开销。
 
 ```powershell
-node --use-env-proxy dist/current/desktop/run-spatial-fixed-evaluation.js PUBLIC-input.json --confirm-paid
+node --use-env-proxy dist/current/sim/evaluation/run-spatial-fixed-evaluation.js PUBLIC-input.json --confirm-paid
 ```
 
 每轮最多128实际请求、估算USD0.50。冻结公开清单及源码hash后才付费，模型qwen3.8-flash、enable_thinking=false；不读私有标注。所有失败原样保留，不自动续接或无限重跑。应先小批次通过开发，再增加新场景和规模，不在未解决错误上直接烧完全量。
@@ -66,7 +66,7 @@ node --use-env-proxy dist/current/desktop/run-spatial-fixed-evaluation.js PUBLIC
 
 ## 通用原图审核入口
 
-`scripts/prepare-spatial-review.py PUBLIC-input.json NEW-directory`验证每张原图hash，生成左右前（展示顺序left/front/right）三视图source-only HTML及`labels.UNREVIEWED.json`。不显示模型名称／预测，不调用模型，不默认为core或boundary：kind、split为null，reviewer为空，因此未经审核无法通过评分器。已增加Python测试验证不覆盖、hash拒绝及HTML转义。
+`scripts/review/prepare-spatial-review.py PUBLIC-input.json NEW-directory`验证每张原图hash，生成左右前（展示顺序left/front/right）三视图source-only HTML及`labels.UNREVIEWED.json`。不显示模型名称／预测，不调用模型，不默认为core或boundary：kind、split为null，reviewer为空，因此未经审核无法通过评分器。已增加Python测试验证不覆盖、hash拒绝及HTML转义。
 
 另冻结`run/spatial-evaluation-inputs/campus-source-review-candidate-v1/`：第2／5／9段各20均匀源观察，共60，生成逐观察原图审核页。仅为新审核候选，尚未标成holdout，未付费执行；旧校园全量已使用过这些录制，不能冒称全新数据集。它们是稀疏固定采样，不代表原生0.5fps全部观察或连续视频完整验收。需先独立审核核心区域及真正重访，不能直接复用旧VLM标签做权威真值；已知HSSD旧标签也是模型生成，不能改署名为人工独立标签。
 
@@ -99,7 +99,7 @@ source-only contact sheets为人工辅助检查的缩略图（每方向480×360�
 
 ## HSSD交叉检查准备与边界
 
-新增`scripts/import-hssd-spatial-public.py`，只读取capture的windows.jsonl以及front/left/right源JPEG，不读取collector区域、坐标、旧模型标签或输出。确定性均匀采样，JPEG解码后无缩放保存PNG，逐像素核验与源／派生hash均保留；为现有PNG实验provider提供兼容输入，不把重编码PNG谎称原JPEG字节。原始数据不改，来源许可证继续适用，图像仅在Git忽略的run目录。
+新增`scripts/datasets/import-hssd-spatial-public.py`，只读取capture的windows.jsonl以及front/left/right源JPEG，不读取collector区域、坐标、旧模型标签或输出。确定性均匀采样，JPEG解码后无缩放保存PNG，逐像素核验与源／派生hash均保留；为现有PNG实验provider提供兼容输入，不把重编码PNG谎称原JPEG字节。原始数据不改，来源许可证继续适用，图像仅在Git忽略的run目录。
 
 `run/spatial-evaluation-inputs/hssd-three-source-development-v1/`冻结HSSD 102816051、103997445、105515151三场景，各8观察，共24。模型输入只有原图及公开id／时序；私有标签在新策略推理前根据全部24个三视图缩略页重新检查，未导入旧AI标签。19核心、4门口／隔墙边界、1因货架图不足以认证整体区域范围而unknown，3个明确离开后返回的实例对。第一场景浴室／卧室／走廊；第二场景壁炉房／吧台房／厨房／电视沙发房／浴室；第三场景工作台与炉具区域的隔墙粒度仍需独立人工裁定，暂为开发解释而非权威物理房间真值。均为assistant-source-reviewed development，不得记为人类独立留出。
 
@@ -154,7 +154,7 @@ source-only contact sheets为人工辅助检查的缩略图（每方向480×360�
 
 **评测纠正，不能沿用前述约81%为可靠空间准确率**：检查官方语义多边形与精确采集时刻位置后，102816051鞋架角属于独立closet区域，而非此前assistant标注的bedroom；105515151也含不同厨房区域，不能按同功能合并。此前assistant标注保留为有争议的开发解释，不覆盖、不当独立真值。密集轮原23.75%亦受错误标注与中断影响，不支持语义因果结论。
 
-新增`scripts/label-spatial-hssd-source.py`，仅供私有评价：精确绑定公开图id／时刻到source window和position，重新计算多边形包含，不采用collectorRegionIndex直接赋值；固定0.35m边界缓冲、0.4m楼层容差，重叠为boundary，无包含为unknown，不找最近区域。按具体polygon编号而非功能名计身份；已使用场景始终development。来源hash、图片hash与公开输入hash全部绑定，不读取预测或旧AI标签。位置、polygon和正确身份绝不交给推理。
+新增`scripts/datasets/label-spatial-hssd-source.py`，仅供私有评价：精确绑定公开图id／时刻到source window和position，重新计算多边形包含，不采用collectorRegionIndex直接赋值；固定0.35m边界缓冲、0.4m楼层容差，重叠为boundary，无包含为unknown，不找最近区域。按具体polygon编号而非功能名计身份；已使用场景始终development。来源hash、图片hash与公开输入hash全部绑定，不读取预测或旧AI标签。位置、polygon和正确身份绝不交给推理。
 
 对完整24观察历史预测进行**零模型调用**重评分：`labels.source-polygons-v1.private.json`及`acceptance.source-polygons-v1.json`为独立新文件。18核心、4边界、2unknown，核心覆盖17/18=94.44%，同区5/6、异区27/40、平衡准确率75.42%，错合并8、错拆分0，重访3/3。场景平衡准确率依次100%、100%、47.22%。仍未达到验收要求，不能用前两场景掩盖第三场景。官方polygon可重复但不自动等于产品期望的物理地点粒度；第三场景仍需图像／几何一致性审核，以及新的独立场景验证。先校准评测，暂停继续付费提示调优。
 

@@ -10,7 +10,7 @@ import {spatialJsonVlm} from '../agent/spatial-json-vlm.js';
 import {answerRealtimeQuestion} from './realtime-question.js';
 import {liveProvider} from './live-provider.js';
 function prepare(python:string,row:LiveOriginal,path:string):Promise<LiveOriginal>{return new Promise((resolve,reject)=>{
- const child=spawn(python,['cam/prepare_live_image.py'],{stdio:['pipe','pipe','pipe']});let output='',error='';
+ const child=spawn(python,['cam/host/prepare_live_image.py'],{stdio:['pipe','pipe','pipe']});let output='',error='';
  const timer=setTimeout(()=>{child.kill();reject(Error('Image preparation timed out'));},10000);
  child.stdout!.on('data',c=>{output+=c;if(output.length>20000){child.kill();reject(Error('Image metadata too large'));}});child.stderr!.on('data',c=>{error=(error+c).slice(-1000);});
  child.on('error',reject);child.on('close',code=>{clearTimeout(timer);if(code!==0)return reject(Error('Image preparation failed: '+error));try{const value=JSON.parse(output);resolve({...row,pngPath:value.path,pngSha256:value.sha256,features:value.features});}catch(e){reject(e);}});
@@ -35,7 +35,7 @@ export class RealtimeSession{
   await writeFile(join(this.root,'plan.json'),JSON.stringify({schema:'realtime-system-v2',sessionId:this.id,paid:this.paid,budget:{spatialUSDPerHour:.5,questionUSDPerHour:.25},method:'method2-single-view/recent2-visual2-sequence6/no-graph',source:'real-camera',views:['front'],missingViews:['left','right'],maxFrames:null,usbRequired:false,intervalMs:2000,freshnessMs:2500,queueCapacity:1,originals:'JPEG kept; PNG preserves decoded pixels, never duplicated views',httpRiskAcceptedByUser:true},null,2));
   this.running=true;
   const push=process.env.CAMERA_TRANSPORT==='push';
-  this.capture=spawn(this.python,['-X','utf8',push?'cam/push_stream.py':'cam/network_stream.py',this.captureRoot,...push?['--host',process.env.CAMERA_RECEIVER_HOST??'10.122.241.38']:['--interval','2','--preview']],{stdio:['pipe','pipe','pipe']});
+  this.capture=spawn(this.python,['-X','utf8',push?'cam/host/push_stream.py':'cam/host/network_stream.py',this.captureRoot,...push?['--host',process.env.CAMERA_RECEIVER_HOST??'10.122.241.38']:['--interval','2','--preview']],{stdio:['pipe','pipe','pipe']});
   this.capture.stdout!.on('data',chunk=>{this.stdoutTail+=String(chunk);let end;while((end=this.stdoutTail.indexOf('\n'))>=0){const line=this.stdoutTail.slice(0,end);this.stdoutTail=this.stdoutTail.slice(end+1);try{const v=JSON.parse(line);if(v.kind==='preview'&&typeof v.jpeg==='string'&&v.jpeg.length<=400000){this.preview={id:v.id,atMs:v.atMs,sha256:v.sha256,bytes:Buffer.from(v.jpeg,'base64')};this.previewFrames++;}}catch{}}});
   this.capture.stderr!.on('data',()=>{this.inputError='采集异常；查看本地stopped记录，未自动重试账号。';});
   this.capture.on('error',e=>{this.inputError=e.message;this.captureEnded=true;});

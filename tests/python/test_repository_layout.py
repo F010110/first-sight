@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import json
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -21,10 +22,12 @@ class RepositoryLayoutTests(unittest.TestCase):
 
     def test_published_core_hashes(self):
         release = json.loads(Path('docs/releases/v1.2.0.json').read_text(encoding='utf8'))
-        self.assertEqual(release['version'], json.loads(Path('package.json').read_text())['version'])
+        # A frozen V1 release validates its own tag, not evolving V2 sources.
+        package = json.loads(subprocess.check_output(['git', 'show', 'v1.2.0:package.json']))
+        self.assertEqual(release['version'], package['version'])
         for name, expected in release['sourceHashesLfNormalized'].items():
-            content = Path(name).read_bytes().replace(b'\r\n', b'\n')
-            self.assertEqual(hashlib.sha256(content).hexdigest(), expected, name + ': version/bugfix decision required')
+            content = subprocess.check_output(['git', 'show', 'v1.2.0:' + name]).replace(b'\r\n', b'\n')
+            self.assertEqual(hashlib.sha256(content).hexdigest(), expected, name + ': frozen V1 tag changed')
 
     def test_sim_root_is_only_package_and_index(self):
         files = {p.name for p in Path('sim').iterdir() if p.is_file()}

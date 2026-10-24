@@ -1,7 +1,7 @@
 """Index ignored local artifacts without moving hash-bound evaluation evidence."""
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 CURRENT = {
     'run/inspect-repair-full90-v1': 'v1.2.0正式版90题实测及独立评分',
     'run/inspect-repair-44-probe-v1': '44题捕获状态专项修复，不是完整成绩',

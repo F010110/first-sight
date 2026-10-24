@@ -1,6 +1,6 @@
 # 独立测试操作
 
-> 当前固件新增了显式波特率协商，原115200 `c`命令不变；主机接入默认使用460800。详见[提速验证](serial-baud-validation.md)，旧抓拍脚本使用前确保设备已恢复115200或断电重启。
+> 当前固件新增了显式波特率协商，原115200 `c`命令不变；主机接入默认使用460800。详见[提速验证](./serial-baud-validation.md)，旧抓拍脚本使用前确保设备已恢复115200或断电重启。
 
 以下命令从项目根目录运行，仅用于硬件测试，不启动手机端或模拟器。
 
@@ -17,7 +17,7 @@ cam/.venv/Scripts/python.exe -m pip install platformio==6.2.0 esptool==5.6.0 pys
 
 ```powershell
 $env:PYTHONIOENCODING = 'utf-8'
-cam/.venv/Scripts/python.exe cam/capture.py
+cam/.venv/Scripts/python.exe cam/host/capture.py
 ```
 
 脚本使用 COM3、115200、8N1，关闭主动 DTR/RTS；端口变化需修改 `capture.py`。每次请求前固件丢弃三帧用于更新曝光，再采一帧。原始脚本会在自身目录输出 `capture-1.jpg` 至 `capture-3.jpg`；本目录归档版已改为输出 `local/`，避免误提交图片。

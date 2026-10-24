@@ -2,7 +2,7 @@
 
 ## 最新结果：开发板单次portal认证成功
 
-用户明确接受HTTP明文风险后，新增`cam/portal_login_probe.py --confirm-http-credentials`。主机读取被Git忽略的本地JSON，通过USB向已准备好的开发板临时传递UTF-8十六进制编码凭据（编码不是加密）；不将账号写入源代码／构建镜像或串口日志。固件仅接受重定向到精确`http://10.3.8.216/index`（可带AC参数）后提交到同源`/login`，复用CookieJar，URL编码user/pass，最多POST一次；不执行第三方脚本、不自动无限重连、不写凭据NVS。
+用户明确接受HTTP明文风险后，新增`cam/host/portal_login_probe.py --confirm-http-credentials`。主机读取被Git忽略的本地JSON，通过USB向已准备好的开发板临时传递UTF-8十六进制编码凭据（编码不是加密）；不将账号写入源代码／构建镜像或串口日志。固件仅接受重定向到精确`http://10.3.8.216/index`（可带AC参数）后提交到同源`/login`，复用CookieJar，URL编码user/pass，最多POST一次；不执行第三方脚本、不自动无限重连、不写凭据NVS。
 
 实板结果：portal关联成功→AC认证页→AUTH_POST_HTTP=200→重新请求apple检测页POST_LOGIN_HTTP=200、INTERNET_CHECK_SUCCESS=1→PROBE_DONE RADIO_OFF。证据`cam/local/campus-portal-login-20261022.log`；后续脚本生成独立时间戳日志，避免覆盖。认证提交200本身不是成功标准，必须再取得检测页预期Success标记。本次验证是HTTP外网连通，不是TLS安全性证明，也未做长时稳定／掉线恢复／电脑互通或相机传图。
 

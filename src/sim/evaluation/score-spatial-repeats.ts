@@ -1,5 +1,5 @@
 import {readFile,writeFile} from 'node:fs/promises';import {join} from 'node:path';import {createHash} from 'node:crypto';
-import {evaluateSpatialRepeats} from '../agent/spatial-repeat-evaluation.js';
+import {evaluateSpatialRepeats} from '../../agent/spatial-repeat-evaluation.js';
 const [truthPath,outputPath,...directories]=process.argv.slice(2);
 if(!truthPath||!outputPath||directories.length<2)throw Error('Usage: score-spatial-repeats LABELS.json NEW-output.json RUN-dir RUN-dir ... (include all trials)');
 const raw=await readFile(truthPath),truth=JSON.parse(raw.toString());

@@ -12,7 +12,7 @@ A changed blob is exactly a local change: the desk is the same desk, but the
 laptop screen flipped black->white, a lamp turned off, an object appeared/moved.
 
 Usage:
-  python scripts/image_change.py A.jpg B.jpg [--vis out.jpg] [--min-area 250] [--k 4]
+  python scripts/media/image_change.py A.jpg B.jpg [--vis out.jpg] [--min-area 250] [--k 4]
 Outputs a single JSON object on stdout.
 """
 

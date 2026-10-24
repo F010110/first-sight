@@ -2,7 +2,7 @@ import pathlib
 import time
 import serial
 
-root = pathlib.Path(__file__).parent / 'local'
+root = pathlib.Path(__file__).parent.parent / 'local'
 root.mkdir(parents=True, exist_ok=True)
 s = serial.Serial()
 s.port = 'COM3'

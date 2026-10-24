@@ -12,7 +12,7 @@ def main():
     parser.add_argument('--port', default='COM3')
     parser.add_argument('--confirm-http-credentials', action='store_true', required=True)
     args = parser.parse_args()
-    credentials = json.loads((Path(__file__).parent/'local/campus-credentials.json').read_text(encoding='utf-8-sig'))
+    credentials = json.loads((Path(__file__).parent.parent/'local/campus-credentials.json').read_text(encoding='utf-8-sig'))
     values = [credentials.get('username'), credentials.get('password')]
     if any(not isinstance(v, str) or not v or len(v.encode('utf8')) > 1024 for v in values):
         raise ValueError('Invalid local credentials; no credentials sent')
@@ -45,7 +45,7 @@ def main():
                 done = True
                 break
     name = 'campus-portal-login-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')+'.log'
-    with (Path(__file__).parent/'local'/name).open('x', encoding='utf8') as output:
+    with (Path(__file__).parent.parent/'local'/name).open('x', encoding='utf8') as output:
         output.write('\n'.join(lines))
     if not done:
         raise RuntimeError('Probe did not finish; no automatic credential retry')

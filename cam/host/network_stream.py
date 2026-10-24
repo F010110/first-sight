@@ -46,7 +46,7 @@ def discover():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output', type=Path)
-    parser.add_argument('--config', type=Path, default=Path(__file__).parent/'local/network-camera.json')
+    parser.add_argument('--config', type=Path, default=Path(__file__).parent.parent/'local/network-camera.json')
     parser.add_argument('--interval', type=float, default=2)
     parser.add_argument('--preview', action='store_true', help='Memory-only image preview; record controlled through stdin JSON')
     args = parser.parse_args()

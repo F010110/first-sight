@@ -1,10 +1,10 @@
 import {mkdir,readFile,writeFile,appendFile} from 'node:fs/promises';
 import {resolve,join} from 'node:path';import {createHash,randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';import {promisify} from 'node:util';
-import {CampusSource} from '../assistant/campus-source.js';
-import {spatialJsonVlm,type SpatialJsonImage} from '../agent/spatial-json-vlm.js';
-import {independentPerceptionPrompt,parseSpatialPerception} from '../agent/spatial-separated-protocol.js';
-import {FixedScopePlaceGroup,parsePlaceScope,placeScopePrompt,groupMembershipPrompt} from '../agent/spatial-place-contract.js';
+import {CampusSource} from '../../assistant/campus-source.js';
+import {spatialJsonVlm,type SpatialJsonImage} from '../../agent/spatial-json-vlm.js';
+import {independentPerceptionPrompt,parseSpatialPerception} from '../../agent/spatial-separated-protocol.js';
+import {FixedScopePlaceGroup,parsePlaceScope,placeScopePrompt,groupMembershipPrompt} from '../../agent/spatial-place-contract.js';
 
 if(!process.argv.includes('--confirm-paid'))throw Error('Require --confirm-paid; isolated prompt/packing and fixed-group diagnostics, max estimated USD0.35');
 const root=resolve('run/spatial-prompt-group-diagnostic',new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));await mkdir(root,{recursive:true});console.log(root);
@@ -16,7 +16,7 @@ const privateChecks={perception:samples.map((r,i)=>({id:r.id,expected:['inside-m
 await writeFile(join(root,'private-checks.json'),JSON.stringify(privateChecks,null,2));
 await writeFile(join(root,'triptych-sources.json'),JSON.stringify(samples.map(r=>({id:r.id,cameras:r.cameras,sha256:r.sha256})),null,2));
 const python=resolve('.venv',process.platform==='win32'?'Scripts/python.exe':'bin/python');
-try{await promisify(execFile)(python,['scripts/build-spatial-prompt-triptychs.py',join(root,'triptych-sources.json'),join(root,'triptychs')]);}
+try{await promisify(execFile)(python,['scripts/spatial/build-spatial-prompt-triptychs.py',join(root,'triptych-sources.json'),join(root,'triptychs')]);}
 catch(error){await writeFile(join(root,'stopped.json'),JSON.stringify({stage:'local-image-preparation',error:String(error),modelCalls:0}));throw error;}
 const packed=JSON.parse(await readFile(join(root,'triptychs/provenance.json'),'utf8')) as Array<{id:string;path:string;sha256:string}>;
 const neutral=independentPerceptionPrompt.replace('画面里有球架不等于在球场。','');
@@ -26,7 +26,7 @@ const methods=[{key:'original-separate',prompt:independentPerceptionPrompt,packi
 const hash=async(path:string)=>createHash('sha256').update(await readFile(path)).digest('hex');
 const originals=['run/inspect-repair-full90-v1/memory.sqlite','run/campus-spatial-memory/2026-10-20T13-42-03-856Z-ecad0254/memory.sqlite'];
 const originalHashes=Object.fromEntries(await Promise.all(originals.map(async p=>[p,await hash(p)])));
-const files=['src/desktop/experiment-spatial-prompts-and-groups.ts','src/agent/spatial-place-contract.ts','src/agent/spatial-json-vlm.ts','src/agent/spatial-separated-protocol.ts','scripts/build-spatial-prompt-triptychs.py'];
+const files=['src/sim/evaluation/experiment-spatial-prompts-and-groups.ts','src/agent/spatial-place-contract.ts','src/agent/spatial-json-vlm.ts','src/agent/spatial-separated-protocol.ts','scripts/spatial/build-spatial-prompt-triptychs.py'];
 await writeFile(join(root,'frozen.json'),JSON.stringify({schema:'spatial-prompt-group-diagnostic-v1',sourceManifestSha256:source.manifestSha256,sampleIds:samples.map(r=>r.id),methods,sourceHashes:Object.fromEntries(await Promise.all(files.map(async p=>[p,await hash(p)]))),privateChecksSha256:await hash(join(root,'private-checks.json')),triptychProvenanceSha256:await hash(join(root,'triptychs/provenance.json')),originalHashes,maxCalls:64,maxEstimatedUSD:.35,plannedCalls:48,outdoorRepeats:2,indoorRepeats:1,model:'qwen3.8-flash',enableThinking:false,temperature:0,warning:'Known difficult samples, tiny repeated development diagnostic, no independent semantic grader or full-scene acceptance. Native panels only, provider-internal resizing unknown. Group trials use supplied seed memberships, model-generated frozen names and all seed images; no GT name supplied.'},null,2));
 const request=spatialJsonVlm(join(root,'requests'),64,.35);
 const imageRows=async(ids:string[],atMs:number):Promise<SpatialJsonImage[]>=>{

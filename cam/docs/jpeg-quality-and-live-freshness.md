@@ -36,7 +36,7 @@ r1画面明显改变，不能拿它的平均字节作同场景压缩率。查看
 例如：
 
 ```powershell
-cam/.venv/Scripts/python.exe -X utf8 cam/portal_stream.py NEW-capture --count 12 --interval 2 --keep-alive --jpeg-quality 16 --confirm-http-credentials
+cam/.venv/Scripts/python.exe -X utf8 cam/host/portal_stream.py NEW-capture --count 12 --interval 2 --keep-alive --jpeg-quality 16 --confirm-http-credentials
 # 另一终端，在plan.json生成后：
 node dist/current/hardware/run-camera.js NEW-capture NEW-consumer --validate-only --follow --live-policy
 ```

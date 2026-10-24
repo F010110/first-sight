@@ -4,7 +4,7 @@
 
 HSSD非商业扩展正在接入：[6例优先下载及20候选](../research/hssd-initial-selection.md)。6例完整依赖2546文件约503MB已取得；本地hash、1635个GLB格式、6个stage的官方LFS hash校验通过，物体未独立核对官方hash。隔离Habitat GPU环境已验证；实际采集/图像回放/保存重启、冻结test.5无真值推理与独立AI预标签/人工审核队列正在首次运行，尚未宣称6例全链路完成或正确率通过。正式结果以`run/hssd-six-v1/summary.json`及人工审核记录为准；原生产代理不改动。
 
-当前固定[主体＋单图标注v3.1](../research/group-identity-annotations-v3-1.json)：每组唯一主体／边界身份，必要时未知；单图靠近/异议附注不自动撤销身份。val5两次核心28/28，但整组边界3/0、靠近附注5/0，附注与过渡不稳定，尚不证明普遍更可靠。原方案保留作[历史对照](spatial-memory-version-history.md)，默认生产链路及网页保存预测未替换。
+当前固定[主体＋单图标注v3.1](../research/group-identity-annotations-v3-1.json)：每组唯一主体／边界身份，必要时未知；单图靠近/异议附注不自动撤销身份。val5两次核心28/28，但整组边界3/0、靠近附注5/0，附注与过渡不稳定，尚不证明普遍更可靠。原方案保留作[历史对照](./spatial-memory-version-history.md)，默认生产链路及网页保存预测未替换。
 
 **空间记忆算法已初步可用（离线研究链路）**：已固定主体区域＋边界组／边界观察协议，可组织观察并关联具体区域，保留边界与未知状态。val4粗粒度44个核心查询44/44正确，但边界仅检出4/13；val5还没有完整审核标签。这是进入扩大测试与精确人工标注前的阶段性基线，不代表长期历史身份匹配、真实头盔或实时生产可靠性已验证。
 
@@ -24,12 +24,12 @@ HSSD非商业扩展正在接入：[6例优先下载及20候选](../research/hssd
 
 - [测试版说明与复现入口](../testing-version.md)
 - [实验文档索引](../experiments/README.md)
-- [原图与真实轨迹核验](region-partition-actual-review.md)
+- [原图与真实轨迹核验](./region-partition-actual-review.md)
 - [替换方法还是训练：研究决策](../research/region-methods-and-training.md)
 
 一个手机浏览器里的第一视角视觉试用工具：手机摄像头连续取景，服务端用 Qwen 多模态模型理解画面，对外表现为**三条互相独立的观察线**——场景记录、场景变化、用户要求。
 
-**当前研发方向更新**：头盔三摄与方向模块仅负责数据采集，所有处理继续在电脑执行。[兼容接口](../research/helmet-capture-interface.md)已预留，实际驱动尚未实现。以下手机浏览器功能是[保留的旧实现](mobile-implementation-status.md)，不作为新空间研究接入目标。
+**当前研发方向更新**：头盔三摄与方向模块仅负责数据采集，所有处理继续在电脑执行。[兼容接口](../research/helmet-capture-interface.md)已预留，实际驱动尚未实现。以下手机浏览器功能是[保留的旧实现](./mobile-implementation-status.md)，不作为新空间研究接入目标。
 
 > V1 定位：一个**可稳定演示**的体验版。不提供可靠的安全导航、测距或绝对定位能力；运动信息只作定性参考，是否切换场景由 VLM 判断。
 
@@ -52,7 +52,7 @@ npm.cmd install
 python -m pip install -r requirements.txt          # 建议装在 .venv 里
 
 # 生成局域网 HTTPS 证书（写 run/tls/：CA 证书 + 服务器证书 + 局域网 IP）
-powershell -ExecutionPolicy Bypass -File scripts/setup-lan-tls.ps1
+powershell -ExecutionPolicy Bypass -File scripts/network/setup-lan-tls.ps1
 ```
 
 ### 1.3 启动服务
@@ -141,7 +141,7 @@ npm.cmd run trial:web
 ### 2.2 场景记忆与图片记忆（本项目的重点）
 
 - `SceneAgent` 维护场景库：每个场景有 `label / summary / objects / visits`，以及**若干张代表帧**（磁盘上 `run/experiments/<session>/scene-memory/scene-N/rep-*.jpg`，默认每次观察存最多 2 张、每场景上限 5 张）。
-- 每次观察前，本地匹配器 `scripts/image_match.py`（SIFT + 比值检验 + RANSAC 单应）把**当前所有帧**与代表帧比对，回答“两张不同视角的图是否共享同一块表面”（例如**书桌特写 vs 含书桌的宽景**）。
+- 每次观察前，本地匹配器 `scripts/media/image_match.py`（SIFT + 比值检验 + RANSAC 单应）把**当前所有帧**与代表帧比对，回答“两张不同视角的图是否共享同一块表面”（例如**书桌特写 vs 含书桌的宽景**）。
 - **记忆里的图片默认不给 VLM**；只有当匹配内点数达到阈值（默认 15）时，才把命中的那张代表图 + 其标签 + `IMAGE_MATCH` 提示一起拼进 prompt，让 VLM 复核“是不是同一处”。
 - 匹配只对**最近 5 个场景 × 2 张**候选进行，规模有界；每张图长边缩到 900px。实测：同一视角 250–900 内点，不同视角 4–8 内点，阈值能分开。
 - 价值场景：**离开又回来**（非相邻访问判为“回到已知场景”）、**特写↔全景**。对“同一房间但毫无共同表面的两个角落”，它**不会**硬合并——这是刻意保守。
@@ -190,7 +190,7 @@ inputs/<runId>/       某次观察的原始 IMU（motion.json）与输入帧
 scene-memory/scene-N/ 场景代表帧（图片记忆）
 ```
 
-离线工具：`scripts/image_match.py`（图片记忆匹配）、`scripts/image_change.py`（局部变化检测）、`scripts/image_overlap.py`，以及 `npm run vio:plot` / `motion:plot` 生成的 HTML 报告（`run/analysis/`，可用 `/report` 查看）。
+离线工具：`scripts/media/image_match.py`（图片记忆匹配）、`scripts/media/image_change.py`（局部变化检测）、`scripts/media/image_overlap.py`，以及 `npm run vio:plot` / `motion:plot` 生成的 HTML 报告（`run/analysis/`，可用 `/report` 查看）。
 
 ### 2.7 项目结构
 
@@ -241,6 +241,6 @@ scene-memory/scene-N/ 场景代表帧（图片记忆）
 ## 附：文档
 
 - 文档索引：[docs/README.md](../README.md)
-- 历史（四模式时期）架构：[docs/archive/architecture-legacy-4mode.md](architecture-legacy-4mode.md)
-- 惯导说明：[docs/application/motion-dead-reckoning.md](application-history/motion-dead-reckoning.md)
-- 产品设计：[docs/application/product-design.md](application-history/product-design.md)
+- 历史（四模式时期）架构：[docs/archive/architecture-legacy-4mode.md](./architecture-legacy-4mode.md)
+- 惯导说明：[docs/application/motion-dead-reckoning.md](./application-history/motion-dead-reckoning.md)
+- 产品设计：[docs/application/product-design.md](./application-history/product-design.md)

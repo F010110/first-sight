@@ -36,4 +36,4 @@ node dist/current/desktop/realtime-server.js --allow-paid
 
 链路仍有校验失败与长尾；当前服务遇到异常保留证据并停止，不自动重认证校园账号。场景在拍摄时以桌面近物为主，不能由物体识别成功推导空间识别成功。单摄、缺失方向、粗RGB召回和固定组增长成本限制继续成立。
 
-当前记忆按会话独立；落盘可审计，服务重启不会自动恢复生产者或跨会话合并。历史独立验收工具为`node scripts/check-realtime-history.mjs SESSION NEW-OUTPUT --confirm-paid`，独立上限USD0.10，显式付费，不篡改原会话。尚需后续完成长时断线恢复、会话浏览／加载UI、多场景空间质量验收和真实用户评测。
+当前记忆按会话独立；落盘可审计，服务重启不会自动恢复生产者或跨会话合并。历史独立验收工具为`node scripts/testing/check-realtime-history.mjs SESSION NEW-OUTPUT --confirm-paid`，独立上限USD0.10，显式付费，不篡改原会话。尚需后续完成长时断线恢复、会话浏览／加载UI、多场景空间质量验收和真实用户评测。

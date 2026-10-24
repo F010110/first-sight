@@ -9,7 +9,7 @@
 #   vlm-server.pfx     - server certificate + private key for Node
 #   passphrase.txt     - PFX passphrase (local, git-ignored run directory)
 #
-# Usage: powershell -ExecutionPolicy Bypass -File scripts/setup-lan-tls.ps1
+# Usage: powershell -ExecutionPolicy Bypass -File scripts/network/setup-lan-tls.ps1
 
 $ErrorActionPreference = "Stop"
 

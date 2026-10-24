@@ -2,7 +2,7 @@
 import {mkdir,readFile,writeFile,appendFile} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {questionUtility,compareBaseline} from '../assistant/question-score.js';
+import {questionUtility,compareBaseline} from '../../assistant/question-score.js';
 const args=process.argv.slice(2),prepare=args.includes('--prepare-references');
 if(!args.includes('--confirm-paid'))throw Error('Require --confirm-paid');
 const load=async(path:string)=>JSON.parse(await readFile(path,'utf8'));
@@ -50,7 +50,7 @@ try{
   const rawEvents=await readFile(join(run,'events.jsonl'),'utf8'),events=rawEvents.trim().split('\n').map(line=>JSON.parse(line));
   const settled=events.filter(e=>e.kind==='task-settled').map(e=>e.value),created=events.filter(e=>e.kind==='task-created').map(e=>e.value);
   if(settled.length!==90||created.length!==90||new Set(settled.map(t=>t.id)).size!==90||tasks.length!==90)throw Error('Need exactly 90 unique tasks');
-  await writeFile(join(root,'frozen.json'),JSON.stringify({run,dataset:frozen.dataset,referenceHash,eventsSha256:hash(rawEvents),rubricSha256:hash(rubric),codeSha256:hash(await readFile('src/desktop/grade-campus-questions.ts')),policy},null,2));
+  await writeFile(join(root,'frozen.json'),JSON.stringify({run,dataset:frozen.dataset,referenceHash,eventsSha256:hash(rawEvents),rubricSha256:hash(rubric),codeSha256:hash(await readFile('src/sim/evaluation/grade-campus-questions.ts')),policy},null,2));
   const grades:any[]=[];
   for(let index=0;index<90;index++){
    const step=frozen.script[index],task=tasks.find(t=>t.id===step.id),createdTask=created[index],execution=settled.find(t=>t.id===createdTask.id);

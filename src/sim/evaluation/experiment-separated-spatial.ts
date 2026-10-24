@@ -2,14 +2,14 @@ import {mkdir,readFile,writeFile,appendFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {CampusSource} from '../assistant/campus-source.js';
-import {SpatialContextMemory} from '../agent/spatial-context-memory.js';
-import {SpatialContextLoop} from '../agent/spatial-context-loop.js';
-import {spatialContextVlm} from '../agent/spatial-context-vlm.js';
-import {SeparatedSpatialAgent} from '../agent/spatial-separated-agent.js';
-import {spatialJsonVlm,type SpatialJsonImage} from '../agent/spatial-json-vlm.js';
-import {independentPerceptionPrompt,explicitIdentityPrompt} from '../agent/spatial-separated-protocol.js';
-import type {SpatialObservation} from '../agent/incremental-spatial-memory.js';
+import {CampusSource} from '../../assistant/campus-source.js';
+import {SpatialContextMemory} from '../../agent/spatial-context-memory.js';
+import {SpatialContextLoop} from '../../agent/spatial-context-loop.js';
+import {spatialContextVlm} from '../../agent/spatial-context-vlm.js';
+import {SeparatedSpatialAgent} from '../../agent/spatial-separated-agent.js';
+import {spatialJsonVlm,type SpatialJsonImage} from '../../agent/spatial-json-vlm.js';
+import {independentPerceptionPrompt,explicitIdentityPrompt} from '../../agent/spatial-separated-protocol.js';
+import type {SpatialObservation} from '../../agent/incremental-spatial-memory.js';
 
 if(!process.argv.includes('--confirm-paid'))throw Error('Require --confirm-paid; two isolated arms, total estimated budget USD0.60');
 const root=resolve('run/spatial-separated-experiment',new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));await mkdir(root,{recursive:true});console.log(root);
@@ -24,7 +24,7 @@ await writeFile(join(root,'private-checks.json'),JSON.stringify({checks,note:'Ne
 const hash=async(p:string)=>createHash('sha256').update(await readFile(p)).digest('hex');
 const originals=['run/inspect-repair-full90-v1/memory.sqlite','run/campus-spatial-memory/2026-10-20T13-42-03-856Z-ecad0254/memory.sqlite'];
 const originalHashes=Object.fromEntries(await Promise.all(originals.map(async p=>[p,await hash(p)])));
-const files=['src/desktop/experiment-separated-spatial.ts','src/agent/spatial-separated-protocol.ts','src/agent/spatial-separated-agent.ts','src/agent/spatial-json-vlm.ts','src/agent/spatial-context-loop.ts','src/agent/spatial-context-memory.ts','src/agent/spatial-context-vlm.ts'];
+const files=['src/sim/evaluation/experiment-separated-spatial.ts','src/agent/spatial-separated-protocol.ts','src/agent/spatial-separated-agent.ts','src/agent/spatial-json-vlm.ts','src/agent/spatial-context-loop.ts','src/agent/spatial-context-memory.ts','src/agent/spatial-context-vlm.ts'];
 await writeFile(join(root,'frozen.json'),JSON.stringify({schema:'separated-spatial-experiment-v2',sourceManifestSha256:source.manifestSha256,observations:selected,sourceHashes:Object.fromEntries(await Promise.all(files.map(async p=>[p,await hash(p)]))),originalHashes,privateChecksSha256:await hash(join(root,'private-checks.json')),model:'qwen3.8-flash',enableThinking:false,temperature:0,budgets:{control:{maxCalls:48,maxEstimatedUSD:.2},separated:{maxCalls:96,maxEstimatedUSD:.4}},schedule:'Both arms one source observation at a time, same 32 observations at 0.5fps. Control one unified judgment; separated independent current perception then explicit identity action with retrieved originals.',scope:'Episode 6 first 62s, not used in earlier episode1/4 tuning; startup six seconds now development-reviewed after v1 stopped. Not independent held-out dataset or full-episode/real-time acceptance.'},null,2));
 const imagesFor=async(ids:string[],currentId:string,atMs:number):Promise<SpatialJsonImage[]>=>{
  const images:SpatialJsonImage[]=[];

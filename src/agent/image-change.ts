@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
- * Bridge to the local change detector (`scripts/image_change.py`).
+ * Bridge to the local change detector (`scripts/media/image_change.py`).
  *
  * It aligns the baseline view to the current view with a homography (SIFT +
  * RANSAC) and then reports the local residual blobs. Because the two views are
@@ -58,7 +58,7 @@ export async function detectChanges(
 	options: { minArea?: number; maxDim?: number; k?: number; boxesPath?: string; timeoutMs?: number } = {},
 ): Promise<ChangeDetection> {
 	const script = resolve("scripts", "image_change.py");
-	if (!existsSync(script)) return { ...EMPTY, error: "scripts/image_change.py not found" };
+	if (!existsSync(script)) return { ...EMPTY, error: "scripts/media/image_change.py not found" };
 	const args = [
 		script,
 		baselinePath,

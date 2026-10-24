@@ -2,7 +2,7 @@ import importlib.util
 import unittest
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location('source_labels', Path(__file__).resolve().parents[2] / 'scripts/label-spatial-hssd-source.py')
+spec = importlib.util.spec_from_file_location('source_labels', Path(__file__).resolve().parents[2] / 'scripts/datasets/label-spatial-hssd-source.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 

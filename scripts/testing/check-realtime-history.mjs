@@ -2,8 +2,8 @@
 import {DatabaseSync} from 'node:sqlite';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {resolve,join} from 'node:path';
-import {answerRealtimeQuestion} from '../dist/current/hardware/realtime-question.js';
-import {spatialJsonVlm} from '../dist/current/agent/spatial-json-vlm.js';
+import {answerRealtimeQuestion} from '../../dist/current/hardware/realtime-question.js';
+import {spatialJsonVlm} from '../../dist/current/agent/spatial-json-vlm.js';
 const [source,output,confirmation]=process.argv.slice(2);
 if(!source||!output||confirmation!=='--confirm-paid')throw Error('Usage: check-realtime-history SESSION NEW-OUTPUT --confirm-paid (USD0.10 cap)');
 const root=resolve(output);await mkdir(root,{recursive:false});

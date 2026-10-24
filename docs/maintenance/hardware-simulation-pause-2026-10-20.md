@@ -37,7 +37,7 @@
 - [单摄接入](../../cam/docs/serial-integration.md)、[串口提速](../../cam/docs/serial-baud-validation.md)。
 - [Wi-Fi与光学准备、完整恢复操作](../../cam/docs/wifi-and-optics-preparation.md)。
 - `cam/src/main.cpp`、`cam/src/wifi_transport.h`、`cam/platformio.ini`：串口／Wi-Fi分别构建，默认仍串口目标。
-- `cam/wifi_receiver.py`、`cam/check_wifi.py`、`src/hardware/`：接收与输入适配；合成测试不得当实机证据。
+- `cam/host/wifi_receiver.py`、`cam/host/check_wifi.py`、`src/hardware/`：接收与输入适配；合成测试不得当实机证据。
 - `cam/camera-profile.json`、`sim/capture/hardware_camera.py`及`render_side_views.py`：光学近似。
 - `cam/local/`：私有原图、收据、SQLite、固件备份／实测二进制和本地配置；全部保持忽略，不提交私人图像或凭据。
 - `cam/local/baud460800-live-v2`、`baud460800-memory-v2`：完整12张实时验收，3窗口、12归属、pending=0。

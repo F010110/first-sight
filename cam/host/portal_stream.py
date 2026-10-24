@@ -53,7 +53,7 @@ def main():
         args.jpeg_quality = 16 if args.keep_alive else 12
     if not 1 <= args.count <= 60 or not 1 <= args.interval <= 10 or args.count*args.interval > 140:
         p.error('Bounded capture requires count 1..60, interval 1..10, total <=140s')
-    c = json.loads((Path(__file__).parent/'local/campus-credentials.json').read_text(encoding='utf-8-sig'))
+    c = json.loads((Path(__file__).parent.parent/'local/campus-credentials.json').read_text(encoding='utf-8-sig'))
     values = [c.get('username'), c.get('password')]
     if any(not isinstance(v, str) or not v or len(v.encode('utf8')) > 1024 for v in values):
         raise ValueError('Invalid local credentials')

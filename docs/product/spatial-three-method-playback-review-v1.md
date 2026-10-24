@@ -14,7 +14,7 @@
 
 14秒能看到近处长椅、硬化地面、开阔场地，两侧围栏与建筑；序列轮仍属此前草地通道，边界时刻存在疑问。30／32秒视角具有相似建筑、网格和硬化地面，是否已跨出球场需要持续画面核对，不能仅凭“围栏通道”名称判错或判对；但图轮的30秒新组随后与原球场同时匹配，32—42、46—50秒大片待定，是实际可用性退化风险，不是单纯名称变化。56秒在长椅／围栏附近，三轮边界归属不同；62秒石板路径明确，但前两轮仍归到庭院／草地固定定义，稳定输出不等于正确。尚无独立逐帧真值，不给三轮伪造语义准确率。
 
-数量对照已在[顺序实验记录](spatial-candidate-recall-and-topology-v1.md)保存：待定1／2／12，4／4／5地点。候选召回与序列之间也有归属差异，不能承诺无回归；图轮当前不足以支持上线。网页保持三轮原始名称、固定定义、独立地点ID、unknown和运行出处，让用户在相同画面下检查，而不是展示“整理后的最佳结果”。
+数量对照已在[顺序实验记录](./spatial-candidate-recall-and-topology-v1.md)保存：待定1／2／12，4／4／5地点。候选召回与序列之间也有归属差异，不能承诺无回归；图轮当前不足以支持上线。网页保持三轮原始名称、固定定义、独立地点ID、unknown和运行出处，让用户在相同画面下检查，而不是展示“整理后的最佳结果”。
 
 ## 页面信息结构
 
@@ -32,7 +32,7 @@
 
 ```powershell
 npm.cmd run build
-node scripts/serve-spatial-run-preview.mjs run/spatial-fixed-evaluation/2026-10-22T08-46-48-313Z-8f74797f run/spatial-preview-video/campus-episode6-first64s-v1 8883 run/spatial-method-comparison/three-methods-v1.json
+node scripts/review/serve-spatial-run-preview.mjs run/spatial-fixed-evaluation/2026-10-22T08-46-48-313Z-8f74797f run/spatial-preview-video/campus-episode6-first64s-v1 8883 run/spatial-method-comparison/three-methods-v1.json
 ```
 
 地址`http://127.0.0.1:8883`。只读比较API为`/api/method-comparison`；视频支持原播放器Range寻址。配置及截图、录像派生文件均在Git忽略的run中，原模型运行不改。

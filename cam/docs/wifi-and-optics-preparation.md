@@ -35,10 +35,10 @@
 ```powershell
 npm run build
 cam/.venv/Scripts/python.exe -m pip install -r cam/requirements.txt
-cam/.venv/Scripts/python.exe -m unittest discover -s cam -p "test_*.py"
+cam/.venv/Scripts/python.exe -m unittest discover -s cam/host -p "test_*.py"
 
 # 自动生成临时token，运行三个合成发送端，接收并验证；无模型费用
-cam/.venv/Scripts/python.exe cam/check_wifi.py cam/local/wifi-check-002
+cam/.venv/Scripts/python.exe cam/host/check_wifi.py cam/local/wifi-check-002
 ```
 
 已完成记录在`cam/local/wifi-local-acceptance-v2/report.json`，逐图收据明确标记`sourceKind: synthetic-protocol-test`。这是纯协议测试；不能拿合成三图的结果给空间识别评分。
@@ -53,7 +53,7 @@ cam/.venv/Scripts/python.exe cam/check_wifi.py cam/local/wifi-check-002
 6. 启动主机：
 
 ```powershell
-cam/.venv/Scripts/python.exe cam/wifi_receiver.py cam/local/wifi-live-001 --host 0.0.0.0 --allow-lan --count 30
+cam/.venv/Scripts/python.exe cam/host/wifi_receiver.py cam/local/wifi-live-001 --host 0.0.0.0 --allow-lan --count 30
 # 另一终端，先只验证：
 node dist/current/hardware/run-camera.js cam/local/wifi-live-001 cam/local/wifi-input-001 --validate-only --follow
 ```
@@ -92,12 +92,12 @@ python -m sim render_side_views EPISODE --house HOUSE --output NEW-OUTPUT --wind
 
 ```powershell
 # 无第三方依赖，生成9×6内角点、20mm方格SVG。按100%比例打印，实测方格边长。
-python cam/calibrate.py board cam/local/checkerboard.svg
+python cam/host/calibrate.py board cam/local/checkerboard.svg
 
 # 每个摄像头在当前640×480模式，分别采至少12张不同距离／倾角／位置的标定板照片
 # 使用已装OpenCV的项目虚拟环境；明确选择模型，不自动宣布哪个正确
-.venv/Scripts/python.exe cam/calibrate.py fit cam/local/calibration-front cam/local/front-fisheye.json --model fisheye
-.venv/Scripts/python.exe cam/calibrate.py fit cam/local/calibration-front cam/local/front-pinhole.json --model pinhole
+.venv/Scripts/python.exe cam/host/calibrate.py fit cam/local/calibration-front cam/local/front-fisheye.json --model fisheye
+.venv/Scripts/python.exe cam/host/calibrate.py fit cam/local/calibration-front cam/local/front-pinhole.json --model pinhole
 ```
 
 拟合工具检查尺寸、重复文件、有效角点数量及覆盖范围，记录原图hash、K／D／RMS；输出始终`fitted-needs-review`，不自动写成“160°已验证”或覆盖硬件profile。需要补独立重投影、边缘覆盖、FoV实测及三摄外参审核。当前没有标定板实拍，未宣称标定拟合已经通过实物验证。

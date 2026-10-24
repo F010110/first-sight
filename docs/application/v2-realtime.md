@@ -30,7 +30,7 @@ npm.cmd run realtime
 当前不是固定地址方案。需同时更新服务环境变量和设备NVS中的上传地址；先退出该接收服务，确认新IP可绑定，再启动。设备更新需USB且会短暂复位：
 
 ```powershell
-cam/.venv/Scripts/python.exe cam/configure_uplink.py --host 10.122.x.x
+cam/.venv/Scripts/python.exe cam/host/configure_uplink.py --host 10.122.x.x
 ```
 
 **现有基线脚本／固件USB配置命令只接受10.122前缀**，上例也必须替换为实际IPv4；电脑若被分到10.21等其他网段，不要照抄命令冒充可用，也不要擅自恢复已回退的热点配置器。该限制是待维护事项，当前不改固件。曾用后续实验固件写入过其他私有网段地址，不代表回退版配置器支持它。
@@ -57,9 +57,9 @@ cam/.venv/Scripts/python.exe cam/configure_uplink.py --host 10.122.x.x
 
 ```powershell
 npm.cmd test
-cam/.venv/Scripts/python.exe -m unittest discover -s cam -p test_push_stream.py
-cam/.venv/Scripts/python.exe -m unittest discover -s cam -p test_network_stream.py
-python scripts/check-doc-links.py
+cam/.venv/Scripts/python.exe -m unittest discover -s cam/host -p test_push_stream.py
+cam/.venv/Scripts/python.exe -m unittest discover -s cam/host -p test_network_stream.py
+python scripts/testing/check-doc-links.py
 ```
 
-`scripts/check-compact-live-ui.cjs`使用mock API，不更改真实记录／模型模式；需本地Playwright与Chrome，依赖位置不写入项目。固件本轮不重刷，最近回退已构建／烧写校验。
+`scripts/testing/check-compact-live-ui.cjs`使用mock API，不更改真实记录／模型模式；需本地Playwright与Chrome，依赖位置不写入项目。固件本轮不重刷，最近回退已构建／烧写校验。

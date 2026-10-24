@@ -5,7 +5,7 @@ import secrets
 import time
 import serial
 
-path = Path(__file__).parent/'local/network-camera.json'
+path = Path(__file__).parent.parent/'local/network-camera.json'
 config = json.loads(path.read_text(encoding='utf8')) if path.exists() else dict(token=secrets.token_hex(32),host='first-sight-cam.local')
 # Save key BEFORE sending, so an interrupted commissioning never loses the host key.
 path.parent.mkdir(exist_ok=True)

@@ -16,7 +16,7 @@ npm.cmd install
 python -m pip install -r requirements.txt        # 建议装在 .venv 中
 
 # 生成局域网 HTTPS 证书（写 run/tls/：CA 证书 + 服务器证书 + 局域网 IP）
-powershell -ExecutionPolicy Bypass -File scripts/setup-lan-tls.ps1
+powershell -ExecutionPolicy Bypass -File scripts/network/setup-lan-tls.ps1
 ```
 
 生成物：

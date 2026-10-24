@@ -8,7 +8,7 @@
 
 ```powershell
 npm.cmd run build
-node scripts/run-spatial-method2.mjs PUBLIC-input.json BOUND-features.json --confirm-paid
+node scripts/evaluation/run-spatial-method2.mjs PUBLIC-input.json BOUND-features.json --confirm-paid
 ```
 
 入口不接受graph或其他额外调参开关，必须明确付费授权；默认最多256请求、估算USD0.50，沿用现有失败保存，不自动重跑。原实验runner保留，以便显式控制变量，不偷偷改变历史命令语义。默认网页选择方法2并标“当前固定方法”，另外两种方法和三列比较仍可手动选择。旧全量空间库／问答接口未被替换，本次没有新付费执行。
@@ -17,7 +17,7 @@ node scripts/run-spatial-method2.mjs PUBLIC-input.json BOUND-features.json --con
 
 ## 零调用诊断结果
 
-`scripts/diagnose-spatial-graph-run.mjs`读取两轮冻结源码、原图及请求／响应，写新报告`run/spatial-fixed-evaluation/2026-10-22T09-36-53-303Z-b7617f5e/graph-diagnosis-v1.json`。不修改旧预测／分数、不调用模型。它检查两轮输入和源码一致，并要求当前provider源码hash与冻结版一致，随后按该adapter重建独立感知的HTTP body指纹（不保存Base64或密钥）。只比较请求体，不能断言服务端状态／路由／硬件完全相同。
+`scripts/spatial/diagnose-spatial-graph-run.mjs`读取两轮冻结源码、原图及请求／响应，写新报告`run/spatial-fixed-evaluation/2026-10-22T09-36-53-303Z-b7617f5e/graph-diagnosis-v1.json`。不修改旧预测／分数、不调用模型。它检查两轮输入和源码一致，并要求当前provider源码hash与冻结版一致，随后按该adapter重建独立感知的HTTP body指纹（不保存Base64或密钥）。只比较请求体，不能断言服务端状态／路由／硬件完全相同。
 
 ### 1. 先有模型波动，不能直接说图导致退化
 

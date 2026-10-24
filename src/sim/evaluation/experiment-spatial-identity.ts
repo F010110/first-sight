@@ -2,12 +2,12 @@ import {mkdir,readFile,writeFile,appendFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {CampusSource} from '../assistant/campus-source.js';
-import {SpatialContextMemory} from '../agent/spatial-context-memory.js';
-import {SpatialContextLoop} from '../agent/spatial-context-loop.js';
-import {spatialContextVlm} from '../agent/spatial-context-vlm.js';
-import {reviewedSpatialModel,spatialReferenceIds} from '../agent/spatial-context-identity-review.js';
-import type {SpatialObservation} from '../agent/incremental-spatial-memory.js';
+import {CampusSource} from '../../assistant/campus-source.js';
+import {SpatialContextMemory} from '../../agent/spatial-context-memory.js';
+import {SpatialContextLoop} from '../../agent/spatial-context-loop.js';
+import {spatialContextVlm} from '../../agent/spatial-context-vlm.js';
+import {reviewedSpatialModel,spatialReferenceIds} from '../../agent/spatial-context-identity-review.js';
+import type {SpatialObservation} from '../../agent/incremental-spatial-memory.js';
 
 if(!process.argv.includes('--confirm-paid'))throw Error('Require --confirm-paid; maximum estimated USD0.60 across two isolated arms');
 const root=resolve('run/spatial-identity-experiment',new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));
@@ -29,7 +29,7 @@ const checks=[
  ...[[112,120],[120,128],[112,128]].map(([a,b])=>({a:id(4,a!),b:id(4,b!),relation:'review-required',basis:'Connected indoor circulation with turns/doorways; region granularity not independently established. Inspect new/reused identities and original comparisons; exclude from correctness count.'}))
 ];
 await writeFile(join(root,'private-checks.json'),JSON.stringify({checks,note:'Frozen development-only checks, not full boundary annotation or independent acceptance; never model input.'},null,2));
-const files=['src/desktop/experiment-spatial-identity.ts','src/agent/spatial-context-identity-review.ts','src/agent/spatial-context-loop.ts','src/agent/spatial-context-memory.ts','src/agent/spatial-context-vlm.ts','src/agent/spatial-working-context.ts'];
+const files=['src/sim/evaluation/experiment-spatial-identity.ts','src/agent/spatial-context-identity-review.ts','src/agent/spatial-context-loop.ts','src/agent/spatial-context-memory.ts','src/agent/spatial-context-vlm.ts','src/agent/spatial-working-context.ts'];
 const hash=async(path:string)=>createHash('sha256').update(await readFile(path)).digest('hex');
 const originals=['run/inspect-repair-full90-v1/memory.sqlite','run/campus-spatial-memory/2026-10-20T13-42-03-856Z-ecad0254/memory.sqlite'];
 const originalHashes=Object.fromEntries(await Promise.all(originals.map(async p=>[p,await hash(p)])));

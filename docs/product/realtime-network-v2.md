@@ -14,7 +14,7 @@
 
 ## 一次性配置与凭据边界
 
-新固件目标 `camera-network`，`cam/pair_network_camera.py`负责一次性USB配置。随机配对密钥及校园凭据存入设备Preferences NVS，电脑密钥保存于忽略的`cam/local/network-camera.json`。用户已分别明确同意密钥持久化及校园凭据持久化。账号密码不进入源码、构建固件镜像或日志。**NVS未启用Flash加密，有物理读取风险**；禁止将配置后整片Flash备份作为公开附件。
+新固件目标 `camera-network`，`cam/host/pair_network_camera.py`负责一次性USB配置。随机配对密钥及校园凭据存入设备Preferences NVS，电脑密钥保存于忽略的`cam/local/network-camera.json`。用户已分别明确同意密钥持久化及校园凭据持久化。账号密码不进入源码、构建固件镜像或日志。**NVS未启用Flash加密，有物理读取风险**；禁止将配置后整片Flash备份作为公开附件。
 
 最初试过仅在电脑保存校园凭据、网络临时发送，但校园认证前HTTP不可达，无法完成启动闭环；该方案未采用。现在设备启动时从NVS读取校园凭据，仅向原有allowlist门户认证；每10分钟检查一次、已在线不提交密码，失败不会紧密循环撞账号。
 

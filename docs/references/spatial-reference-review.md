@@ -34,7 +34,7 @@
 | [DUSt3R](https://github.com/naver/dust3r) | 从多张图片估计稠密 3D 点图并对齐场景，可用于没有标定的离线图像重建。 | 可做离线几何对照实验，不适合作为持续移动中的手机定位层。代码为 CC BY-NC-SA 4.0，非商业许可。 |
 | [FoundationPose](https://github.com/NVlabs/FoundationPose) | 对有 CAD 模型或少量参考图的特定新物体估计/跟踪 6D 物体姿态。 | 适合“已指定的某个对象姿态”或机器人抓取；对开放词汇的房间级物体定位过重。NVIDIA 源码许可限制为非商业研究/评估用途。 |
 | [NaviSense](https://arxiv.org/abs/2509.18672) 与 [ObjectFinder](https://arxiv.org/abs/2412.03118) | 两项视障辅助系统研究分别组合 VLM、AR/LiDAR、语音/触觉反馈，或开放词汇检测器与 MLLM，并向用户提供目标方向/距离及交互式找物流程。 | 适合参考提示节奏、目标确认和用户交互。NaviSense 论文报告 12 名参与者的评估，ObjectFinder 报告 8 名参与者；本次检索没有在论文页找到公开代码链接。 |
-| [Vinci](https://github.com/OpenGVLab/vinci) | 实时第一视角视频流、按时间抽取多帧、将过去画面压成带时间戳的文本记忆。 | 适合作为连续观察与历史摘要参考，不包含深度、相机位姿或 3D 地图。已有检查记录见 [vinci-review.md](vinci-review.md)。 |
+| [Vinci](https://github.com/OpenGVLab/vinci) | 实时第一视角视频流、按时间抽取多帧、将过去画面压成带时间戳的文本记忆。 | 适合作为连续观察与历史摘要参考，不包含深度、相机位姿或 3D 地图。已有检查记录见 [vinci-review.md](./vinci-review.md)。 |
 
 ## 建议的数据与实现路径
 

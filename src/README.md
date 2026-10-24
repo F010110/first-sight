@@ -13,7 +13,7 @@
 |`hardware/realtime-memory.ts`、`live-provider.ts`|当前SQLite与模型预算／请求适配|
 |`agent/`|现用共享协议＋多代空间实验；不是单一已发布算法集合|
 |`assistant/`、`desktop/server.ts`|旧视频生活助手应用链路，独立于实时主编排|
-|`sim/`、`desktop/experiment-*`及评分入口|离线评测／开发／历史实验，非默认实时服务|
+|`sim/`（含`sim/evaluation/experiment-*`及评分入口）|离线评测／开发／历史实验，非默认实时服务|
 |根目录旧trial／motion等入口|历史手机采集、轨迹与工具，见各文档复现|
 
-邻接的`.test.ts`由`scripts/test-typescript.mjs`按源码清单运行，避免命中旧dist中的残留测试。构建到`dist/current`，不能覆盖历史冻结目录。物理目录尚有业务／适配耦合，本轮只补导航，不搬迁路径或修改评测。
+邻接的`.test.ts`由`scripts/testing/test-typescript.mjs`按源码清单运行，避免命中旧dist中的残留测试。构建到`dist/current`，不能覆盖历史冻结目录。物理目录尚有业务／适配耦合，本轮只补导航，不搬迁路径或修改评测。

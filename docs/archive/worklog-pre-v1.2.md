@@ -348,7 +348,7 @@ test.3发布检查：memory 75、visual-pipeline 61、helmet/repair 7、research
 - [x] 根目录`迭代建议.md`及`建议2–8.md`归入`docs/notes/suggestions/`，保留原文，补主题索引；建议8也按用户本轮要求归档。
 - [x] 新增`docs/research/research-application-gap.md`：离线三视图软件实现不等同手机单摄能力，多镜头不等同多方向，顺序扫视不等同同步观察。硬件输入差异与算法未达标分别列为阻塞。
 - [x] 更新文档导航和测试版入口，应用代码及默认研究算法不变。
-- [x] 本轮验证：`python scripts/check-doc-links.py`与`git diff --check`通过；仅文档整理，未重跑算法测试。未修改已发布`v1.1.0-test.2`标签。
+- [x] 本轮验证：`python scripts/testing/check-doc-links.py`与`git diff --check`通过；仅文档整理，未重跑算法测试。未修改已发布`v1.1.0-test.2`标签。
 - [ ] 研究：补独立标签、固定正确历史组分类对照及版本适配，继续检查混合组、历史身份与修复负例。
 - [ ] 应用（暂缓）：确定单摄时序/外部多视角设备方案，验证实际校准、同步与采集协议；不能复制图像或降低证据门槛冒充三视图。
 - [ ] 应用（暂缓）：建立硬件对应固定数据集，独立验证归类、拒答、误修及实时延迟后，才讨论接入。当前不把研究成绩写作手机成绩。

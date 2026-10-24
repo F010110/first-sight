@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location('spatial_review', Path(__file__).resolve().parents[2] / 'scripts/prepare-spatial-review.py')
+spec = importlib.util.spec_from_file_location('spatial_review', Path(__file__).resolve().parents[2] / 'scripts/review/prepare-spatial-review.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 

@@ -1,7 +1,7 @@
 from pathlib import Path
 import tempfile
 import unittest
-from cam.calibrate import board,fit
+from cam.host.calibrate import board,fit
 
 
 class CalibrationPreparationTests(unittest.TestCase):

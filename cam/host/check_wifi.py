@@ -17,13 +17,13 @@ def main():
     env={**os.environ,'FIRST_SIGHT_CAMERA_TOKEN':secrets.token_urlsafe(32)}
     capture=root/'synthetic-capture';consumer=root/'validated-input'
     with (root/'receiver.log').open('w',encoding='utf8') as log:
-        server=subprocess.Popen([sys.executable,'cam/wifi_receiver.py',str(capture),'--port',str(port),'--count','3'],env=env,stdout=log,stderr=subprocess.STDOUT)
+        server=subprocess.Popen([sys.executable,'cam/host/wifi_receiver.py',str(capture),'--port',str(port),'--count','3'],env=env,stdout=log,stderr=subprocess.STDOUT)
         try:
             deadline=time.monotonic()+10
             while not (capture/'plan.json').exists():
                 if server.poll() is not None or time.monotonic()>deadline:raise RuntimeError('Receiver startup failed')
                 time.sleep(.05)
-            subprocess.run([sys.executable,'cam/mock_wifi.py','--server',f'http://127.0.0.1:{port}','--seconds','12'],env=env,check=True,timeout=20)
+            subprocess.run([sys.executable,'cam/host/mock_wifi.py','--server',f'http://127.0.0.1:{port}','--seconds','12'],env=env,check=True,timeout=20)
             if server.wait(timeout=15)!=0:raise RuntimeError('Receiver failed')
             complete=json.loads((capture/'complete.json').read_text())
             if complete['frames']!=3 or complete['missingRounds']!=0:raise RuntimeError(complete)

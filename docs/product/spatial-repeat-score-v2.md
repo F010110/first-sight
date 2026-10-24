@@ -66,6 +66,6 @@ graph第二轮100%覆盖说明它不是必然失效；第三轮69.70%说明关�
 
 ## 复现
 
-`node scripts/score-spatial-repeat-batch.mjs run/spatial-repeat-batches/campus-episode6-3methods-3repeats-2026-10-22-v2 NEW-OUTPUT`
+`node scripts/evaluation/score-spatial-repeat-batch.mjs run/spatial-repeat-batches/campus-episode6-3methods-3repeats-2026-10-22-v2 NEW-OUTPUT`
 
 完整报告含每轮事件哈希、逐时刻身份、scope成员、请求摘要、配对指标：`run/spatial-repeat-analysis/campus-v2-20261023/report.json`。总费用USD1.3056494544，新增模型调用0。评分脚本只写新的报告目录，原始事件和结果不改动。

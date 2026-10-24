@@ -10,7 +10,7 @@ from pathlib import Path
 class HssdSpatialPublicExport(unittest.TestCase):
     def test_native_pixels_and_public_whitelist_without_truth(self):
         from PIL import Image
-        spec = importlib.util.spec_from_file_location('hssd_export', Path(__file__).resolve().parents[2] / 'scripts/import-hssd-spatial-public.py')
+        spec = importlib.util.spec_from_file_location('hssd_export', Path(__file__).resolve().parents[2] / 'scripts/datasets/import-hssd-spatial-public.py')
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         with tempfile.TemporaryDirectory() as directory:

@@ -48,7 +48,7 @@
 
 ```powershell
 npm.cmd run build
-node --use-env-proxy dist/current/desktop/experiment-spatial-prompts-and-groups.js --confirm-paid
+node --use-env-proxy dist/current/sim/evaluation/experiment-spatial-prompts-and-groups.js --confirm-paid
 ```
 
 计划最多48请求，含有限网络重试总上限64、估算USD0.35。`qwen3.8-flash`、enable_thinking=false、temperature=0，不调用额外裁判模型。先冻结输入、私有检查hash、源码hash、三联图provenance和旧库hash，再执行；原始响应／格式失败／中断全部保存。实验后才人工逐条件审查，不修改历史分数。

@@ -15,7 +15,7 @@
 
 ```powershell
 npm.cmd run build
-node --use-env-proxy dist/current/desktop/experiment-spatial-identity.js --confirm-paid
+node --use-env-proxy dist/current/sim/evaluation/experiment-spatial-identity.js --confirm-paid
 ```
 
 两臂都从空记忆读取相同100个原始三视图观察：第1段0—134秒、第4段88—150秒；相同最多4观察窗口，同模型`qwen3.8-flash`、`enable_thinking:false`、temperature=0、输出上限2400tokens。control保持既有判断流程；review增加原图对照与核验。不同臂不共享身份或输出。

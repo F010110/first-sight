@@ -15,9 +15,9 @@ cam/.venv/Scripts/python.exe -m platformio run -d cam -e camera-network
 
 ## 历史串口接入（不是当前运行方式）
 
-三摄Wi-Fi准备及640×480／160°广角模拟：[实现、操作与限制](docs/wifi-and-optics-preparation.md)。Wi-Fi固件已编译、本地三发送端协议已测，尚未进行实机无线测试；当前板上串口固件不变。
+三摄Wi-Fi准备及640×480／160°广角模拟：[实现、操作与限制](./docs/wifi-and-optics-preparation.md)。Wi-Fi固件已编译、本地三发送端协议已测，尚未进行实机无线测试；当前板上串口固件不变。
 
-参见[接入操作和实测](docs/serial-integration.md)。单摄只提供一个实际视图。旧115200配置曾未达到2秒目标；本次升级可协商波特率的固件后，**230400／460800均实测达到每2秒一张**，不降低640×480分辨率或JPEG质量。见[提速验证与恢复规则](docs/serial-baud-validation.md)。`run.ps1`默认460800，设备启动和底层诊断脚本仍115200。
+参见[接入操作和实测](./docs/serial-integration.md)。单摄只提供一个实际视图。旧115200配置曾未达到2秒目标；本次升级可协商波特率的固件后，**230400／460800均实测达到每2秒一张**，不降低640×480分辨率或JPEG质量。见[提速验证与恢复规则](./docs/serial-baud-validation.md)。`run.ps1`默认460800，设备启动和底层诊断脚本仍115200。
 
 ## 历史初次硬件验证结论
 
@@ -33,8 +33,9 @@ cam/.venv/Scripts/python.exe -m platformio run -d cam -e camera-network
 | `docs/operation.md` | 环境准备、拍照协议、编译与烧录注意事项 |
 | `docs/integration-plan.md` | 后续接入的建议边界和待验证事项，仅设计说明 |
 | `platformio.ini`、`src/main.cpp` | 独立摄像头测试固件 |
-| `capture.py` | 主机串口抓取三张 JPEG 的测试脚本 |
-| `stream.py`、`run.ps1` | 有界连续抓拍与主机实时接入；默认仅校验，模型需显式确认 |
+| `host/capture.py` | 主机串口抓取三张 JPEG 的历史测试脚本 |
+| `host/stream.py`、`run.ps1` | 历史有界串口抓拍与主机接入；默认仅校验，模型需显式确认 |
+| `host/`、`build/` | 电脑侧接收／配置／测试与固件构建钩子分离；[工具导航](host/README.md) |
 | `local/` | 本地原始照片、抓拍、完整固件备份及日志，已被 git 忽略 |
 
 ## 使用前必读

@@ -10,7 +10,7 @@ parser.add_argument('public', type=Path)
 parser.add_argument('output', type=Path)
 args = parser.parse_args()
 raw = args.public.read_bytes()
-spec = importlib.util.spec_from_file_location('features', Path(__file__).resolve().parents[1] / 'sim/spatial/spatial_visual_features.py')
+spec = importlib.util.spec_from_file_location('features', Path(__file__).resolve().parents[2] / 'sim/spatial/spatial_visual_features.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 rows = []

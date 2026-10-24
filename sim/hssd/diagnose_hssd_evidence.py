@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from sim.hssd.download_hssd import SCENES
 
-spec = importlib.util.spec_from_file_location('image_match',Path('scripts/image_match.py'))
+spec = importlib.util.spec_from_file_location('image_match',Path('scripts/media/image_match.py'))
 matcher = importlib.util.module_from_spec(spec); spec.loader.exec_module(matcher)
 cv2.setNumThreads(1); cv2.setRNGSeed(0)
 

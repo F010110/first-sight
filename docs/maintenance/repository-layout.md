@@ -2,11 +2,11 @@
 
 ## 三层职责
 
-- 当前V2实现：`cam/src/network_camera.h`→`cam/push_stream.py`→`src/hardware/realtime-*`→`src/desktop/realtime-server.ts`／`live-recordings.ts`→`web/desktop/realtime.*`／`recordings.*`；[架构图](../product/v2-system-map.md)。`src/agent`是共享协议／空间推理及历史算法集合，`src/sim/evaluation`属于评测，不是实时服务。
+- 当前V2实现：`cam/src/network_camera.h`→`cam/host/push_stream.py`→`src/hardware/realtime-*`→`src/desktop/realtime-server.ts`／`live-recordings.ts`→`web/desktop/realtime.*`／`recordings.*`；[架构图](../product/v2-system-map.md)。`src/agent`是共享协议／空间推理及历史算法集合，`src/sim/evaluation`属于评测，不是实时服务。
 - 研究工具：`sim`下按学校／HSSD／采集／审核／分组等分类，不混进核心默认路径。
 - 历史：`docs/archive`、`docs/experiments`、`docs/research`明确保留旧结论、失败和未完成研究，不当当前运行状态。
 
-`sim`顶层不再接纳独立脚本。新工具放入功能包并登记[工具注册表](layout-map.json)；测试放`tests/python`，对应TypeScript测试仍邻接源码。禁止为保持旧路径大量新增一行包装脚本。
+`sim`顶层不再接纳独立脚本。新工具放入功能包并登记[工具注册表](./layout-map.json)；测试放`tests/python`，对应TypeScript测试仍邻接源码。禁止为保持旧路径大量新增一行包装脚本。
 
 ## 命令迁移
 
@@ -41,7 +41,9 @@ node dist/sim/foo.js ...     -> node dist/current/sim/{evaluation|replay|develop
 
 ## 后续维护
 
-本次完整验证记录见[v1.2.0整理验证](v1.2.0-layout-validation.md)。本地产物索引可用`python scripts/index-local-artifacts.py`重新生成，只写INDEX，不搬迁或删除证据。
+V2实际脚本分类与55条迁移清单见[V2整理验证](v2-layout-validation.md)及[v2-layout-map.json](v2-layout-map.json)。`scripts/`顶层仅留导航，工具按testing／maintenance／media／datasets／spatial／review／evaluation／network分类；相机主机端移到`cam/host/`，构建钩子移到`cam/build/`；桌面实验／评分移到`src/sim/evaluation/`。不保留一行旧路径包装。新增文件须遵守[scripts导航](../../scripts/README.md)。
+
+本次完整验证记录见[v1.2.0整理验证](./v1.2.0-layout-validation.md)。本地产物索引可用`python scripts/maintenance/index-local-artifacts.py`重新生成，只写INDEX，不搬迁或删除证据。
 
 1. README只写当前状态与入口；实验过程放报告，完成历史不要继续堆进TODO。
 2. 实验版本和失败保持独立目录；不为“整理”重写原回执中的绝对路径与hash。

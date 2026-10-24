@@ -2,7 +2,7 @@
 from pathlib import Path
 import re
 
-root = Path(__file__).resolve().parents[1]
+root = Path(__file__).resolve().parents[2]
 errors = []
 for source in [root / 'README.md', root / 'TODO.md', *sorted((root / 'docs').rglob('*.md'))]:
     text = source.read_text(encoding='utf-8')

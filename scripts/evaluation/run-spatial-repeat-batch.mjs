@@ -11,9 +11,9 @@ if(!process.env.QWEN_API_KEY||!process.env.QWEN_BASE_URL)throw Error('Missing Qw
 const root=resolve(destination),input=resolve(inputPath),features=resolve(featuresPath),sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const inputRaw=await readFile(input),featuresRaw=await readFile(features);
 if(JSON.parse(featuresRaw).inputSha256!==sha(inputRaw))throw Error('Features not bound to public source');
-const source=await readFile('src/desktop/run-spatial-fixed-evaluation.ts','utf8');
+const source=await readFile('src/sim/evaluation/run-spatial-fixed-evaluation.ts','utf8');
 const files=[...source.match(/const sourceFiles=\[(.*?)\];/s)[1].matchAll(/'([^']+)'/g)].map(m=>m[1]);
-const paths=[...files,...files.map(p=>p.replace(/^src\//,'dist/current/').replace(/\.ts$/,'.js')),'scripts/run-spatial-repeat-batch.mjs',input,features];
+const paths=[...files,...files.map(p=>p.replace(/^src\//,'dist/current/').replace(/\.ts$/,'.js')),'scripts/evaluation/run-spatial-repeat-batch.mjs',input,features];
 const hashes=Object.fromEntries(await Promise.all(paths.map(async path=>[path,sha(await readFile(path))])));
 await mkdir(dirname(root),{recursive:true});await mkdir(root);
 const trials=(guarded?[['sequence','graph'],['graph','sequence'],['sequence','graph']]:[['recall','sequence','graph'],['sequence','graph','recall'],['graph','recall','sequence']]).flatMap((order,index)=>order.map(method=>({id:`round-${index+1}-${method}`,round:index+1,method,status:'pending',runRoot:null,estimatedUSD:null})));
@@ -27,7 +27,7 @@ try{
   for(const [path,hash] of Object.entries(hashes))if(sha(await readFile(path))!==hash)throw Error('Frozen input/code changed: '+path);
   if(billed+.5>plan.maxBatchEstimatedUSD+1e-9)throw Error('Batch reservation would exceed cost cap');
   trial.status='running';await save();
-   const args=['--use-env-proxy','dist/current/desktop/run-spatial-fixed-evaluation.js',input,'--ground-first','--comparative-resolution','--continuous-region-scope','--short-references',`--candidate-features=${features}`,...trial.method==='recall'?[]:[`--visit-context=${trial.method}`],...guarded&&trial.method==='graph'?['--guarded-graph']:[],'--max-calls=256','--confirm-paid'];
+   const args=['--use-env-proxy','dist/current/sim/evaluation/run-spatial-fixed-evaluation.js',input,'--ground-first','--comparative-resolution','--continuous-region-scope','--short-references',`--candidate-features=${features}`,...trial.method==='recall'?[]:[`--visit-context=${trial.method}`],...guarded&&trial.method==='graph'?['--guarded-graph']:[],'--max-calls=256','--confirm-paid'];
   await writeFile(join(root,trial.id+'-command.json'),JSON.stringify({executable:process.execPath,args},null,2),{flag:'wx'});
   console.log(JSON.stringify({trial:trial.id,event:'started'}));
   const log=createWriteStream(join(root,trial.id+'.log'),{flags:'wx'});let stdout='';

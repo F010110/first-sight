@@ -6,6 +6,8 @@
 
 ## 本轮已整理
 
+第二阶段已进行**实际目录迁移**，不再只是补导航：55个工具／实验入口按职责归位，导入、subprocess、npm命令、PlatformIO构建钩子和文档引用同步修正。[迁移清单](v2-layout-map.json) · [验证记录](v2-layout-validation.md)。下列“本轮不搬迁”描述属于第一阶段673a9e4保存点；第二阶段以本段和验证记录为准。
+
 - package.json与lockfile版本统一为2.0.0；新增V2发布说明、系统图、运行手册、审查清单。
 - 根README／docs索引以8884实时＋8885接收为主，8880视频、8765手机明确为历史入口。
 - cam README改正“当前串口固件／尚未实机Wi-Fi”等过期说明，旧实验保留历史身份。
@@ -17,7 +19,7 @@
 
 |问题|当前事实|后续处理（暂停，本轮不实现）|
 |---|---|---|
-|实时与历史入口混杂|src/desktop含实时API、视频API和评分实验；src/agent含多代算法|按明确依赖清单再拆product／evaluation，不直接删“未使用”文件|
+|实时与历史入口混杂|desktop评分／实验已迁至sim/evaluation；视频API仍保留应用身份，agent仍含多代算法|不继续为外观拆共享算法；后续业务解耦独立验收，不直接删“未使用”文件|
 |src/hardware职责过多|接收适配、Session编排、SQLite、空间和QA同目录|先抽稳定接口，再移动application／storage／adapters，保留兼容与回归|
 |前端与API合同|手写DOM／HTTP字段，无共享生成契约；只读回放依赖开关事件|独立schema／类型及契约测试，不能只改网页标签|
 |启动不自足|npm realtime不设push／host；首次state请求才启动接收器|后续专用启动器／配置检查；V2手册明确，不暗中改回退基线|

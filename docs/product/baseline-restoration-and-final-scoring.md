@@ -1,6 +1,6 @@
 # 基线能力恢复、逐步对比与最终评分
 
-> 最新用户调整：放弃模板新90题的产品评测，保留原90题作为功能与鲁棒性回归。下方新90题重跑及最终评分计划停止；已启动的原90题回归继续，旧评分与失败不改写。产品改用[6个真实交互情境草案](spatial-assistant-realistic-stories-v1.md)，不是放松已发现问题或把旧验收失败改成成功。
+> 最新用户调整：放弃模板新90题的产品评测，保留原90题作为功能与鲁棒性回归。下方新90题重跑及最终评分计划停止；已启动的原90题回归继续，旧评分与失败不改写。产品改用[6个真实交互情境草案](./spatial-assistant-realistic-stories-v1.md)，不是放松已发现问题或把旧验收失败改成成功。
 
 ## 验收规则先于结果
 
@@ -39,7 +39,7 @@
 - 保留原三张能力卡、分层成绩及语义诊断；额外给最终主分和原90题逐题回归差异。
 - 评分请求异常／缺失评分／标签hash不符时停止并保存stopped，不发布完整最终分数。
 
-评分器：`src/desktop/grade-campus-questions.ts`；确定性计分与逐题对比：`src/assistant/question-score.ts`。原90题采用旧参考与旧rubric；新90题参考和评分均与Agent隔离。
+评分器：`src/sim/evaluation/grade-campus-questions.ts`；确定性计分与逐题对比：`src/assistant/question-score.ts`。原90题采用旧参考与旧rubric；新90题参考和评分均与Agent隔离。
 
 ## 执行顺序
 

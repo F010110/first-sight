@@ -13,7 +13,7 @@
 启动命令：
 
 ```powershell
-node scripts/run-spatial-repeat-batch.mjs run/spatial-repeat-batches/campus-episode6-3methods-3repeats-2026-10-22-v1 run/spatial-evaluation-inputs/campus-episode6-first64s-current-v1/public.json run/spatial-evaluation-inputs/campus-episode6-first64s-current-v1/features.rgb-v1.json --confirm-paid
+node scripts/evaluation/run-spatial-repeat-batch.mjs run/spatial-repeat-batches/campus-episode6-3methods-3repeats-2026-10-22-v1 run/spatial-evaluation-inputs/campus-episode6-first64s-current-v1/public.json run/spatial-evaluation-inputs/campus-episode6-first64s-current-v1/features.rgb-v1.json --confirm-paid
 ```
 
 该目录已建立并确认round-1-recall为running；不可重复执行上述同名命令，脚本也会拒绝覆盖已有目录。后台工具shell ID写入TODO。当前不等待结果，不更换前端回放、不自动推广任何方法。完成后分别汇总各方法完整三轮和所有失败、覆盖／unknown、配对稳定性、组数、费用、请求数／可获得的延迟；没有独立真值仍不能把稳定性称为空间准确率。

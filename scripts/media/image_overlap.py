@@ -16,7 +16,7 @@ It also reports the matched-region bounding box in each image, so the caller can
 tell *which part* overlaps.
 
 Usage:
-  python scripts/image_overlap.py A.jpg B.jpg [--min-inliers 15] [--vis out.jpg]
+  python scripts/media/image_overlap.py A.jpg B.jpg [--min-inliers 15] [--vis out.jpg]
 Outputs a single JSON object on stdout.
 """
 

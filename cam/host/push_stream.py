@@ -17,7 +17,7 @@ from network_stream import atomic
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('output',type=Path)
-    parser.add_argument('--config',type=Path,default=Path(__file__).parent/'local/network-camera.json')
+    parser.add_argument('--config',type=Path,default=Path(__file__).parent.parent/'local/network-camera.json')
     parser.add_argument('--host',default='10.122.241.38')
     parser.add_argument('--port',type=int,default=8885)
     args=parser.parse_args()

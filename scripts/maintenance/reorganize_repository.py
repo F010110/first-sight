@@ -11,7 +11,7 @@ import re
 import subprocess
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def category(name):
@@ -104,7 +104,7 @@ def main():
                 if Path(oldpath).parent==Path(old).parent and Path(newpath).parent!=p.parent:
                     updated=updated.replace("Path(__file__).with_name('"+basename+"')","Path('"+newpath+"')")
             if new!=old:
-                updated=updated.replace('Path(__file__).resolve().parents[1]', 'Path(__file__).resolve().parents[2]')
+                updated=updated.replace('Path(__file__).resolve().parents[2]', 'Path(__file__).resolve().parents[2]')
             if Path(old).name=='test_research_snapshot.py':
                 for module,target in py_modules.items():
                     if module.startswith('test_'): updated=updated.replace("'"+module+"'","'"+target+"'")
