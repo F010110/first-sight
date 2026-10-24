@@ -2,7 +2,7 @@
 
 ## 三层职责
 
-- 当前实现：`src/agent`与`src/sim/evaluation`；当前API／旧移动应用边界见发布说明。
+- 当前V2实现：`cam/src/network_camera.h`→`cam/push_stream.py`→`src/hardware/realtime-*`→`src/desktop/realtime-server.ts`／`live-recordings.ts`→`web/desktop/realtime.*`／`recordings.*`；[架构图](../product/v2-system-map.md)。`src/agent`是共享协议／空间推理及历史算法集合，`src/sim/evaluation`属于评测，不是实时服务。
 - 研究工具：`sim`下按学校／HSSD／采集／审核／分组等分类，不混进核心默认路径。
 - 历史：`docs/archive`、`docs/experiments`、`docs/research`明确保留旧结论、失败和未完成研究，不当当前运行状态。
 

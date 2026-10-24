@@ -1,8 +1,15 @@
 # 文档导航
 
-当前正式版本：**[v1.2.0](releases/v1.2.0.md)**。旧v1.0.0手机基线及v1.1测试研究记录保留，不覆盖。
+当前版本：**[V2 / v2.0.0](releases/v2.0.0.md)**，单摄校园网实时原型，接受已知断联限制。历史[v1.2.0](releases/v1.2.0.md)、v1.0.0手机基线及v1.1测试记录保留，不覆盖。
 
 ## 当前入口
+
+- [V2硬件／软件、前端／后端架构](product/v2-system-map.md)
+- [V2启动、配置、端口与运行手册](application/v2-realtime.md)
+- [V2仓库审查与后续整理清单](maintenance/v2-repository-audit.md)
+- [未来随身本地计算＋蜂窝同步（不实施）](product/future-wearable-architecture.md)
+
+## 历史设计、评测与复现
 
 - [生活助手产品设计缺口审阅](product/design-gap-review-2026-10-20.md)
 - [硬件与模拟器暂缓保存点](maintenance/hardware-simulation-pause-2026-10-20.md)
@@ -18,7 +25,7 @@
 - [当前主体＋单图标注冻结协议](research/group-identity-annotations-v3-1.json)
 - [空间记忆版本历史与旧方案归档](archive/spatial-memory-version-history.md)
 
-## 优先阅读
+## 研究资料（非V2实时启动步骤）
 
 1. [测试版范围、限制与测试命令](testing-version.md)
 2. [当前时间连续分组](research/temporal-continuity-integration.md)

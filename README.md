@@ -1,14 +1,28 @@
-# First Sight · 第一视角空间记忆
+# First Sight V2 · 第一视角生活助手
 
-电脑浏览器生活助手入口：`npm.cmd run assistant:web` → http://127.0.0.1:8880 （默认零模型调用）。[新应用架构与边界](docs/product/assistant-architecture.md)。
+**当前版本：v2.0.0，单摄校园网实时原型。** 默认仅预览；独立记录；系统启动后运行空间记忆和问答；真实记录只读回放。校园网断联、单摄视野和模型错误仍是已知限制，**不是安全导航或稳定移动通信产品**。
 
-连续观看使用原校园10fps视频，模型仍按0.5fps观察。[空间建模与问答分离](docs/product/separate-memory-and-question-runs.md)：`assistant:prepare-memory -- --confirm-paid`只建空间记忆；以后`assistant:questions -- --confirm-paid`只跑问答，不重新建模。
+从这里开始：[V2发布说明](docs/releases/v2.0.0.md) · [硬件—软件／前端—后端架构](docs/product/v2-system-map.md) · [V2运行手册](docs/application/v2-realtime.md) · [仓库审查与待整理清单](docs/maintenance/v2-repository-audit.md)。
 
-产品目标是面向视障人士的生活助手；空间记忆是当前已验证的核心能力，不代表完整产品已验收。[产品设计审阅](docs/product/design-gap-review-2026-10-20.md) · [硬件／模拟器暂缓说明](docs/maintenance/hardware-simulation-pause-2026-10-20.md)。
+## 当前运行入口
 
-**正式版本：v1.2.0**。持续进行窗口级空间判断，独立短期Context与SQLite长期记忆配合，通过检索并查看原始图像回答问题。
+Windows开发环境需Node.js ≥22.13、`cam/.venv`中的Python依赖，以及已配对的camera-network设备。先确认电脑当前校园IPv4，与设备NVS中的上传地址一致：
 
-## 当前结果与范围
+```powershell
+$env:CAMERA_TRANSPORT = 'push'
+$env:CAMERA_RECEIVER_HOST = '电脑当前校园IPv4' # 替换为实际地址
+npm.cmd run realtime
+```
+
+- 实时界面：http://127.0.0.1:8884/realtime.html
+- 真实回放：http://127.0.0.1:8884/recordings.html
+- 8884仅本机控制；8885在指定校园地址接收鉴权JPEG。打开实时页后启动接收器，默认不调用模型、不保存图像。
+- 不设置`CAMERA_TRANSPORT=push`仍会进入旧pull模式，不要把两条链路同时启动。完整配置／端口／IP变化操作见[运行手册](docs/application/v2-realtime.md)。
+- 当前通信开发暂停；后续[随身计算机＋本地存储＋蜂窝同步架构](docs/product/future-wearable-architecture.md)仅记录，不实施。
+
+旧视频体验入口为`npm.cmd run assistant:web` → 8880；旧手机HTTPS体验为`trial:web` → 8765。它们不是V2实时主链路。[视频空间建模与问答分离](docs/product/separate-memory-and-question-runs.md)仍供历史评测复现。
+
+## 历史v1.2结果（不可作为V2实时验收成绩）
 
 学校样本完整连续回放：851个观察、90题，全部形成最终答案。独立上下文自动评分：
 
@@ -53,17 +67,22 @@ python -m sim serve_review_site --help
 
 | 路径 | 职责 |
 |---|---|
-| `src/agent/` | 空间推断、独立短期Context、长期拓扑、检索和旧应用Agent |
+| `cam/src/network_camera.h`、`cam/src/main.cpp` | 当前ESP32-S3单摄固件：校园认证、采集、主动上传 |
+| `cam/push_stream.py` | 电脑图像接收、校验、RAM预览、按控制归档 |
+| `src/hardware/` | 实时编排、输入新鲜度、方法2、SQLite及只读问题Agent |
+| `src/desktop/realtime-server.ts`、`live-recordings.ts` | V2控制API、静态页、录像分段与证据读取 |
+| `web/desktop/realtime.*`、`recordings.*` | V2实时界面和真实录像回放 |
+| `src/agent/` | 共享空间推理／协议／模型适配，也含历史算法；非全目录默认启用 |
+| `src/assistant/`、其他`src/desktop/`入口 | 历史视频应用链路，与V2实时编排不同 |
 | `src/sim/evaluation/` | 当前连续评测及配套问答／评分工具 |
 | `src/sim/development/` | 本地开发服务与诊断 |
 | `src/sim/replay/` | 历史回放／对照实验，不是默认生产入口 |
 | `sim/` | 按学校、HSSD、采集、审核、分组等分类的Python工具 |
 | `tests/python/`、`tests/web/` | Python与审核页回归测试 |
 | `scripts/` | 应用图像桥接、测试与运行监督 |
-| `web/` | 保留的手机试用前端；尚未全面迁移到新Context循环 |
-| `cam/`、`src/hardware/` | 单摄串口接入、三摄Wi-Fi准备与640×480广角仿真；[实现和限制](cam/docs/wifi-and-optics-preparation.md) |
+| `web/`其他文件 | 旧手机／视频／审核页面，保留复现，不与V2入口混用 |
 | `docs/` | 当前手册、发布说明、研究与历史归档 |
-| `run/`、`dist/` | 本地产物，不进git；冻结结果保持原路径，不修改证据 |
+| `run/`、`dist/`、`cam/local/` | 录像／实验、构建、私有配置；不进git，不修改冻结证据 |
 
 [工具目录](sim/README.md) · [文档索引](docs/README.md) · [当前任务](TODO.md) · [整理与复现规则](docs/maintenance/repository-layout.md)
 
