@@ -91,6 +91,9 @@ static void networkCameraLoop(){
  if(Serial.available()){
   String command=Serial.readStringUntil('\n');command.trim();
   if(command=="NETWORK_HISTORY")Serial.println(networkHistoryJson());
+  if(command=="NETWORK_LINK_STATUS"){
+   Serial.printf("NETWORK_LINK_STATUS connected=%d profile=%s ip=%s gateway=%s rssi=%d channel=%d upload=%s\n",WiFi.status()==WL_CONNECTED,hotspotMode?"hotspot":"campus",WiFi.localIP().toString().c_str(),WiFi.gatewayIP().toString().c_str(),WiFi.RSSI(),WiFi.channel(),uplinkUrl.length()?"configured":"off");
+  }
   if(command=="HOTSPOT_SCAN"){
    // Explicit USB diagnostic; no passwords, no unrelated network names.
    WiFi.disconnect(false,false);delay(150);
@@ -105,13 +108,13 @@ static void networkCameraLoop(){
    Serial.printf("HOTSPOT_SCAN_DONE matches=%d\n",matching);WiFi.scanDelete();
    if(hotspotMode)WiFi.begin(hotspotProfile.ssid,hotspotProfile.password);else WiFi.begin("BUPT-portal");lastAssociation=millis();return;
   }
-  if(command=="WIFI_HOTSPOT"){
+  if(command=="WIFI_HOTSPOT"||command=="WIFI_HOTSPOT_TEST"){
    Serial.println("HOTSPOT_SECRETS_READY");Serial.setTimeout(10000);String ssid,password;
    bool valid=readSecret(ssid)&&readSecret(password)&&ssid.length()>0&&ssid.length()<=32&&password.length()>=8&&password.length()<=63;
    if(!valid){Serial.println("HOTSPOT_CONFIG_INVALID");return;}
    HotspotProfile profile={};memcpy(profile.ssid,ssid.c_str(),ssid.length());memcpy(profile.password,password.c_str(),password.length());ssid="";password="";
    Preferences p;bool saved=p.begin("first-sight",false);
-   if(saved){saved=p.putString("uplink","hotspot-gateway")>0&&p.putBytes("phone-wifi",&profile,sizeof(profile))==sizeof(profile);p.end();}
+   if(saved){String target=command=="WIFI_HOTSPOT_TEST"?"":"hotspot-gateway";p.putString("uplink",target);saved=p.getString("uplink","missing")==target&&p.putBytes("phone-wifi",&profile,sizeof(profile))==sizeof(profile);p.end();}
    memset(&profile,0,sizeof(profile));Serial.println(saved?"HOTSPOT_CONFIGURED":"HOTSPOT_CONFIG_SAVE_FAILED");
    if(saved){delay(150);ESP.restart();}return;
   }

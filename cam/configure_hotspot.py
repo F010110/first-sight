@@ -10,6 +10,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',type=Path,default=Path(__file__).parent/'local/android-hotspot.json')
     parser.add_argument('--port',default='COM3')
+    parser.add_argument('--connect-only',action='store_true',help='Associate to hotspot with image uploads disabled')
     parser.add_argument('--restore-campus-host',help='Restore campus Wi-Fi and this private computer IPv4')
     args=parser.parse_args()
     if args.restore_campus_host:
@@ -36,9 +37,10 @@ def main():
             device.write(b'WIFI_CAMPUS\n');device.flush();wait('CAMPUS_PROFILE_CONFIGURED')
             print('Campus profile restored; boot and upload verification still required')
         else:
-            device.write(b'WIFI_HOTSPOT\n');device.flush();wait('HOTSPOT_SECRETS_READY')
+            device.write(b'WIFI_HOTSPOT_TEST\n' if args.connect_only else b'WIFI_HOTSPOT\n');device.flush();wait('HOTSPOT_SECRETS_READY')
             device.write(profile['ssid'].encode().hex().encode()+b'\n'+profile['password'].encode().hex().encode()+b'\n');device.flush()
             wait('HOTSPOT_CONFIGURED')
-            print('Hotspot profile saved; camera will upload to DHCP gateway:8885. Connection not yet verified.')
+            if args.connect_only:print('Hotspot profile saved with uploads OFF. Association not yet verified.')
+            else:print('Hotspot profile saved; camera will upload to DHCP gateway:8885. Connection not yet verified.')
 
 if __name__=='__main__':main()

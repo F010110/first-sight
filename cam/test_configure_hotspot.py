@@ -16,6 +16,12 @@ class FakeSerial:
     def flush(self):pass
 
 class HotspotTest(unittest.TestCase):
+    def test_connection_only_never_targets_phone_as_receiver(self):
+        with tempfile.TemporaryDirectory() as root:
+            path=Path(root)/'profile.json';path.write_text(json.dumps(dict(ssid='test-network',password='test-passphrase')))
+            device=FakeSerial(['NETWORK_PAIRED','HOTSPOT_SECRETS_READY','HOTSPOT_CONFIGURED']);output=io.StringIO()
+            with patch('sys.argv',['configure_hotspot','--config',str(path),'--connect-only']),patch.object(configure_hotspot.serial,'Serial',return_value=device),patch.object(configure_hotspot.time,'sleep'),contextlib.redirect_stdout(output):configure_hotspot.main()
+            self.assertEqual(device.writes[0],b'WIFI_HOTSPOT_TEST\n');self.assertIn('uploads OFF',output.getvalue())
     def test_private_profile_hex_transport_and_no_secret_output(self):
         with tempfile.TemporaryDirectory() as root:
             path=Path(root)/'profile.json';path.write_text(json.dumps(dict(ssid='test-network',password='test-passphrase')))
