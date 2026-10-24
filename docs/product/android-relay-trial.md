@@ -37,3 +37,11 @@ SDK Android35平台和build-tools35.0.0、JDK17，脚本：`scripts/build-androi
 已用官方SDK Android35平台／Build Tools35.0.0及JDK17实际编译并完成APK v2/v3签名验证；aapt确认包名org.firstsight.relay、最低API26、目标34。APK约21KB，不含设备配对密钥（逐ZIP条目扫描确认）。启动服务先发送明确标识android-relay-probe的无图像诊断探针，便于摄像头尚未切换前验证手机→电脑方向。
 
 目前ADB列表为空、未识别到MTP手机，尚未传输／安装APK，也未完成手机端运行、热点／上行路由、锁屏验收。旧命令行工具下载过慢，最终直接下载并按官方repository2-1.xml SHA1校验平台和Build Tools归档，手动脚本构建，无Gradle依赖。
+
+## 后续接线进度
+
+APK及私有配置已通过MTP送到手机Download，复查大小20823／114字节；用户安装启动。电脑后来IP变为10.21.167.88且原服务已停止，现以新IP恢复push服务，手机需停止后更新目的地址再启动。未收到新手机探针前不声称手机到电脑已通。
+
+摄像头COM3已接回，新固件已编译烧写Hash验证：支持独立NVS热点profile，默认仍用原BUPT-portal，热点模式跳过校园Portal登录；热点模式上传到DHCP网关8885，省去猜手机IP。仅USB命令WIFI_HOTSPOT接收hex编码的SSID/password，不打印，不嵌入固件。摄像头原校园凭据与持久诊断仍保留。网络目的地址约束扩展到RFC1918私有IPv4，仍限HTTP8885/v1/upload，无任意公网转发。
+
+本地cam/local/android-hotspot.json（git忽略）由用户填ssid/password，手机热点设2.4GHz、WPA2；然后执行`cam/.venv/Scripts/python.exe cam/configure_hotspot.py`。当前只创建空模板并打开本地记事本，**还未获取热点凭据／实际切换**。写入NVS后重启，必须核对手机接收和电脑确认两个计数。回退命令`cam/.venv/Scripts/python.exe cam/configure_hotspot.py --restore-campus-host 10.21.167.88`（电脑地址变动需替换），先设电脑目的地址再切回校园profile，不删除原始证据。
