@@ -58,8 +58,7 @@ export function realtimeServer(root:string,port=8884,allowPaid=false,autoReceive
    res.writeHead(200,{'Content-Type':file[1]+'; charset=utf-8'});res.end(await readFile(resolve('web/desktop',file[0])));
   }catch(error){if(!res.headersSent)reply(400,{error:String(error)});else res.destroy();}
  });
-  if(autoReceive)server.once('listening',()=>void ensureReceiver().catch(error=>console.error('网络接收启动失败：',String(error))));
-  return {server,async close(){await Promise.all(sessions.map(s=>s.close()));await new Promise<void>(r=>server.close(()=>r()));}};
+ return {server,async close(){await Promise.all(sessions.map(s=>s.close()));await new Promise<void>(r=>server.close(()=>r()));}};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
  const port=Number(process.env.FIRST_SIGHT_REALTIME_PORT??8884);if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid realtime port');
