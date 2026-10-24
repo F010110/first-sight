@@ -90,7 +90,21 @@ static void networkCameraLoop(){
  // Explicit USB-triggered connectivity probe; never sends images or credentials.
  if(Serial.available()){
   String command=Serial.readStringUntil('\n');command.trim();
-   if(command=="NETWORK_HISTORY")Serial.println(networkHistoryJson());
+  if(command=="NETWORK_HISTORY")Serial.println(networkHistoryJson());
+  if(command=="HOTSPOT_SCAN"){
+   // Explicit USB diagnostic; no passwords, no unrelated network names.
+   WiFi.disconnect(false,false);delay(150);
+   int found=WiFi.scanNetworks(false,true);int matching=0;
+   Serial.printf("HOTSPOT_SCAN_TOTAL=%d PROFILE=%s\n",found,hotspotMode?"hotspot":"campus");
+   for(int i=0;i<found;i++){
+    String name=WiFi.SSID(i),lower=name;lower.toLowerCase();
+    if(name!=hotspotProfile.ssid&&lower.indexOf("redmi")<0)continue;
+    matching++;String hex;for(size_t j=0;j<name.length();j++){char b[3];snprintf(b,3,"%02x",uint8_t(name[j]));hex+=b;}
+    Serial.printf("HOTSPOT_SCAN_MATCH exact=%d rssi=%d channel=%d auth=%d ssidHex=%s\n",name==hotspotProfile.ssid,WiFi.RSSI(i),WiFi.channel(i),int(WiFi.encryptionType(i)),hex.c_str());
+   }
+   Serial.printf("HOTSPOT_SCAN_DONE matches=%d\n",matching);WiFi.scanDelete();
+   if(hotspotMode)WiFi.begin(hotspotProfile.ssid,hotspotProfile.password);else WiFi.begin("BUPT-portal");lastAssociation=millis();return;
+  }
   if(command=="WIFI_HOTSPOT"){
    Serial.println("HOTSPOT_SECRETS_READY");Serial.setTimeout(10000);String ssid,password;
    bool valid=readSecret(ssid)&&readSecret(password)&&ssid.length()>0&&ssid.length()<=32&&password.length()>=8&&password.length()<=63;

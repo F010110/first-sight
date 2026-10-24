@@ -45,3 +45,5 @@ APK及私有配置已通过MTP送到手机Download，复查大小20823／114字�
 摄像头COM3已接回，新固件已编译烧写Hash验证：支持独立NVS热点profile，默认仍用原BUPT-portal，热点模式跳过校园Portal登录；热点模式上传到DHCP网关8885，省去猜手机IP。仅USB命令WIFI_HOTSPOT接收hex编码的SSID/password，不打印，不嵌入固件。摄像头原校园凭据与持久诊断仍保留。网络目的地址约束扩展到RFC1918私有IPv4，仍限HTTP8885/v1/upload，无任意公网转发。
 
 本地cam/local/android-hotspot.json（git忽略）由用户填ssid/password，手机热点设2.4GHz、WPA2；然后执行`cam/.venv/Scripts/python.exe cam/configure_hotspot.py`。当前只创建空模板并打开本地记事本，**还未获取热点凭据／实际切换**。写入NVS后重启，必须核对手机接收和电脑确认两个计数。回退命令`cam/.venv/Scripts/python.exe cam/configure_hotspot.py --restore-campus-host 10.21.167.88`（电脑地址变动需替换），先设电脑目的地址再切回校园profile，不删除原始证据。
+
+用户填入密码后，发现记事本旧模板保存使ssid重新为空，已补回用户提供的REDMI Note 17，密码未输出。USB配置已确认HOTSPOT_CONFIGURED。随后多次连接reason201（NO_AP_FOUND），不是已确认密码错误。新增USB HOTSPOT_SCAN命令，显式短暂断开再扫描，仅读取配置SSID或名称含redmi的相关AP，输出hex SSID／RSSI／channel／auth，不输出密码或无关SSID；结束恢复配置连接。已编译烧写校验，新扫描发现13个AP但匹配0，证据run/network-diagnostics/hotspot-scan-1792811187881298500.txt。目前尚未连上热点，也未证明中继图像可达，需核对手机实际热点频段、隐藏状态、SSID和广播状态，不能误报成功。
