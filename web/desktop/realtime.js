@@ -1,10 +1,15 @@
 const $=id=>document.getElementById(id);
 let latestId='',busy=false,asking=false,changing=false,questionKey='',placeKey='',actionError='';
+const sideIds=new Map();
+const cameraGrid=document.createElement('div');cameraGrid.id='live-camera-grid';
+const frontView=document.querySelector('.camera-view');frontView.before(cameraGrid);cameraGrid.append(frontView,$('side-previews'));
 async function api(path,value){const r=await fetch(path,value===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});const data=await r.json();if(!r.ok)throw Error(data.error??'请求失败');return data;}
 const time=at=>new Date(at).toLocaleTimeString();
 function list(id,rows){const box=$(id);box.replaceChildren();for(const row of rows){const item=document.createElement('article');item.className='message';const small=document.createElement('small');small.textContent=row.time;const text=document.createElement('div');text.textContent=row.text;item.append(small,text);box.append(item);}}
 function render(data){
   const s=data.session;
+  const sides=s?.previewViews??[];$('side-previews').hidden=!sides.length;$('three-scope').hidden=!sides.length;cameraGrid.classList.toggle('three-views',sides.length>0);
+  for(const view of sides){let box=document.getElementById('preview-'+view.direction);if(!box){box=document.createElement('figure');box.id='preview-'+view.direction;const caption=document.createElement('figcaption'),img=document.createElement('img');img.hidden=true;img.alt=view.direction==='left'?'真实左摄':'真实右摄';box.append(caption,img);$('side-previews').append(box);}box.querySelector('figcaption').textContent=`${view.direction==='left'?'左':'右'}摄 · ${view.cameraId??'等待身份'} · ${view.error?'连接异常，最后画面':view.ageMs===null?'等待信号':view.ageMs>2500?'最后画面，已延迟':'已接收'}${view.ageMs===null?'':` · ${(view.ageMs/1000).toFixed(1)}秒前`}`;if(view.latest&&sideIds.get(view.direction)!==view.latest.id){const img=box.querySelector('img');img.src=view.latest.url;img.hidden=false;sideIds.set(view.direction,view.latest.id);}}
    $('record-toggle').setAttribute('aria-checked',String(!!s?.recording));
    $('record-label').textContent=s?.recording?'已开启':'已关闭';
   $('record-toggle').disabled=!!s?.paid;
@@ -17,7 +22,7 @@ function render(data){
  if(!s){$('live-status').textContent='正在启动网络接收服务…';return;}
  const fresh=s.inputState==='fresh-input';
  $('live-status').textContent=!s.running?'接收服务已停止':!s.frames?'等待Wi-Fi相机信号':s.paid?(s.processing?'交互已启动 · 空间建模中':'交互已启动 · 等待下一张新鲜画面'):'实时预览 · 交互未启动';
-  $('live-error').textContent=actionError||s.inputError||s.modelError||(!data.allowPaid?'模型服务未启用，请用 npm run realtime 启动':'');
+   $('live-error').textContent=actionError||s.inputError||s.modelError||'';
   $('live-error').hidden=!$('live-error').textContent;
   if(s.latest&&s.latest.id!==latestId){latestId=s.latest.id;$('live-image').src=s.latest.url;$('live-image').hidden=false;$('camera-empty').hidden=true;}
  $('image-time').textContent=s.latest?`主机采样 ${time(s.latest.atMs)} · ${fresh?'实时画面':'最后收到的画面，非当前'}`:'等待Wi-Fi相机信号 · 相机需要接通电源';

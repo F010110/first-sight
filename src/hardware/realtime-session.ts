@@ -1,7 +1,7 @@
 import {mkdir,readFile,writeFile,appendFile,open} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {spawn,type ChildProcess} from 'node:child_process';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {cameraObservation} from './camera-input.js';
 import {LiveFramePolicy} from './live-frame-policy.js';
 import {RealtimeMemory,type LiveOriginal} from './realtime-memory.js';
@@ -25,7 +25,10 @@ export class RealtimeSession{
  private reading=false;private working=false;private questionBusy=false;private running=false;private closed=false;private captureEnded=false;
  private modelError:string|null=null;private inputError:string|null=null;private lastModeled=-Infinity;private latestResult:any=null;
  private questions:any[]=[];private journalTail:string[]=[];
- private disposed=false;
+  private disposed=false;
+  private sideCapture:ChildProcess|null=null;
+  private sideViews=new Map<string,{id:string;atMs:number;sha256:string;bytes:Buffer;cameraId:string}>();
+  private sideErrors=new Map<string,string>();
  private manualRecording=false;private preview:{id:string;atMs:number;sha256:string;bytes:Buffer}|null=null;private previewFrames=0;private stdoutTail='';
  private receiverStatus:unknown=null;private receiptOffset=0;private receiptTail='';private budgetResumeAt=0;private startedAt=Date.now();
  constructor(parent:string,public paid:boolean,private python=resolve('cam/.venv/Scripts/python.exe')){this.root=join(parent,this.id);this.captureRoot=join(this.root,'capture');}
@@ -33,7 +36,13 @@ export class RealtimeSession{
   await mkdir(this.root,{recursive:false});this.memory=new RealtimeMemory(join(this.root,'memory.sqlite'));
   this.method=new RealtimeMethod2(liveProvider(join(this.root,'spatial-requests'),.5));this.questionRequest=liveProvider(join(this.root,'question-requests'),.25);this.startedAt=Date.now();
   await writeFile(join(this.root,'plan.json'),JSON.stringify({schema:'realtime-system-v2',sessionId:this.id,paid:this.paid,budget:{spatialUSDPerHour:.5,questionUSDPerHour:.25},method:'method2-single-view/recent2-visual2-sequence6/no-graph',source:'real-camera',views:['front'],missingViews:['left','right'],maxFrames:null,usbRequired:false,intervalMs:2000,freshnessMs:2500,queueCapacity:1,originals:'JPEG kept; PNG preserves decoded pixels, never duplicated views',httpRiskAcceptedByUser:true},null,2));
-  this.running=true;
+   this.running=true;
+   if(process.env.FIRST_SIGHT_THREE_CAMERAS==='1'){
+    this.sideCapture=spawn(this.python,['-X','utf8','cam/host/side_camera_preview.py'],{stdio:['ignore','pipe','pipe']});
+    let tail='';this.sideCapture.stdout!.on('data',chunk=>{tail+=String(chunk);let end;while((end=tail.indexOf('\n'))>=0){const line=tail.slice(0,end);tail=tail.slice(end+1);try{const v=JSON.parse(line);if(!['left','right'].includes(v.direction))continue;if(v.kind==='preview'&&typeof v.jpeg==='string'&&v.jpeg.length<=400000){const bytes=Buffer.from(v.jpeg,'base64');if(createHash('sha256').update(bytes).digest('hex')!==v.sha256)continue;this.sideViews.set(v.direction,{id:v.id,atMs:v.atMs,sha256:v.sha256,bytes,cameraId:v.cameraId});this.sideErrors.delete(v.direction);}else if(v.kind==='health')this.sideErrors.set(v.direction,v.error);}catch{}}});
+    this.sideCapture.on('error',()=>{for(const role of ['left','right'])this.sideErrors.set(role,'Side preview unavailable');});
+    this.sideCapture.on('close',()=>{for(const role of ['left','right'])this.sideErrors.set(role,'Side preview stopped');});
+   }
   const push=process.env.CAMERA_TRANSPORT==='push';
   this.capture=spawn(this.python,['-X','utf8',push?'cam/host/push_stream.py':'cam/host/network_stream.py',this.captureRoot,...push?['--host',process.env.CAMERA_RECEIVER_HOST??'10.122.241.38']:['--interval','2','--preview']],{stdio:['pipe','pipe','pipe']});
   this.capture.stdout!.on('data',chunk=>{this.stdoutTail+=String(chunk);let end;while((end=this.stdoutTail.indexOf('\n'))>=0){const line=this.stdoutTail.slice(0,end);this.stdoutTail=this.stdoutTail.slice(end+1);try{const v=JSON.parse(line);if(v.kind==='preview'&&typeof v.jpeg==='string'&&v.jpeg.length<=400000){this.preview={id:v.id,atMs:v.atMs,sha256:v.sha256,bytes:Buffer.from(v.jpeg,'base64')};this.previewFrames++;}}catch{}}});
@@ -86,7 +95,9 @@ export class RealtimeSession{
   const group=this.latestResult?.result.groups.find((g:any)=>g.id===this.latestResult.result.placeId);
   return {sessionId:this.id,running:this.running&&!this.captureEnded,settling:this.working||this.questionBusy||this.reading,paid:this.paid,processing:this.working,questionBusy:this.questionBusy,inputError:this.inputError,modelError:this.modelError,
    recording:this.paid||this.manualRecording,manualRecording:this.manualRecording,recordedFrames:this.originals.length,
-   inputState:fresh?'fresh-input':'current-state-unconfirmed',ageMs:previewAge,frames:this.previewFrames,missingViews:['left','right'],
+    inputState:fresh?'fresh-input':'current-state-unconfirmed',ageMs:previewAge,frames:this.previewFrames,missingViews:['left','right'].filter(role=>!this.sideViews.has(role)),
+    previewViews:process.env.FIRST_SIGHT_THREE_CAMERAS==='1'?['left','right'].map(direction=>{const v=this.sideViews.get(direction);return {direction,cameraId:v?.cameraId??null,ageMs:v?Date.now()-v.atMs:null,error:this.sideErrors.get(direction)??null,latest:v?{id:v.id,atMs:v.atMs,url:'/api/live/image?id='+encodeURIComponent(v.id)}:null};}):[],
+    previewScope:'左右仅RAM预览；记录及现有method2只使用前摄，三路未曝光同步',
    latest:this.preview?{id:this.preview.id,atMs:this.preview.atMs,url:'/api/live/image?id='+encodeURIComponent(this.preview.id)}:null,
    currentLocation:recognized?(group?.scope.name??'地点待定'):null,
    historicalLocation:this.latestResult?{atMs:this.latestResult.atMs,name:group?.scope.name??'地点待定',availableAtMs:this.latestResult.availableAtMs}:null,
@@ -97,7 +108,7 @@ export class RealtimeSession{
   async setRecording(enabled:boolean){this.manualRecording=enabled;this.syncRecording();await this.audit({kind:'recording',manual:enabled,effective:this.paid||enabled});}
   async startInteraction(){if(this.closed||this.captureEnded)throw Error('接收服务已结束');this.paid=true;this.syncRecording();if(!this.budgetResumeAt)this.modelError=null;await this.audit({kind:'interaction-started',budget:'USD0.50 spatial + USD0.25 questions per hour; repeats do not reset the ledger'});}
   async stopInteraction(){this.paid=false;this.syncRecording();await this.audit({kind:'interaction-paused',previewContinues:true});}
-  image(id:string):{bytes?:Buffer;path?:string;sha256:string}|null{if(this.preview?.id===id)return {bytes:this.preview.bytes,sha256:this.preview.sha256};const row=this.originals.find(r=>r.id===id);return row?{path:row.jpegPath,sha256:row.jpegSha256}:null;}
+  image(id:string):{bytes?:Buffer;path?:string;sha256:string}|null{if(this.preview?.id===id)return {bytes:this.preview.bytes,sha256:this.preview.sha256};for(const v of this.sideViews.values())if(v.id===id)return {bytes:v.bytes,sha256:v.sha256};const row=this.originals.find(r=>r.id===id);return row?{path:row.jpegPath,sha256:row.jpegSha256}:null;}
  async ask(text:string){
   if(!this.paid)throw Error('请先显式启用预算内模型会话');if(this.questionBusy)throw Error('上一问题尚未完成');
   if(!text.trim()||text.length>2000)throw Error('问题长度无效');if(!this.originals.length)throw Error('尚未收到相机原图');
@@ -107,6 +118,6 @@ export class RealtimeSession{
   finally{this.memory.question(id,entry);this.questionBusy=false;}
   return structuredClone(entry);
  }
- async stop(){this.running=false;this.closed=true;this.capture?.kill();if(this.timer)clearInterval(this.timer);await this.audit({kind:'session-stopped',inflightHistoricalOnly:this.working,note:'Device radio auto-expires at its 180s bound'});}
+  async stop(){this.running=false;this.closed=true;this.capture?.kill();this.sideCapture?.kill();if(this.timer)clearInterval(this.timer);await this.audit({kind:'session-stopped',inflightHistoricalOnly:this.working});}
  async close(){if(this.disposed)return;await this.stop();while(this.working||this.questionBusy||this.reading)await new Promise(r=>setTimeout(r,100));this.memory.close();this.disposed=true;}
 }

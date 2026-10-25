@@ -1,12 +1,13 @@
 {
   "name": "first-sight",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22.13"
   },
   "scripts": {
+    "realtime:three": "npm run build && node dist/current/desktop/realtime-server.js --three-cameras",
     "realtime": "npm run build && node dist/current/desktop/realtime-server.js --allow-paid",
     "test:long-term-memory": "npm run build && node --test dist/current/agent/spatial-*.test.js",
     "test:research-snapshot": "python -m tests.python.test_research_snapshot",

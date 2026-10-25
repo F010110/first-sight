@@ -92,7 +92,7 @@ def main():
                     host = config.get('host', 'first-sight-cam.local')
                 if failures and failures % 3 == 0:
                     try:
-                        host = socket.gethostbyname('first-sight-cam.local') if failures % 6 else discover()
+                        host = socket.gethostbyname(config['cameraId']+'.local') if failures % 6 else discover()
                     except (OSError, ValueError):
                         host = config.get('host', 'first-sight-cam.local')
                 parsed = urllib_host(host)
@@ -110,6 +110,8 @@ def main():
                     status = json.loads(status_response.read(8192))
                     if status.get('device') != 'first-sight-cam':
                         raise ValueError('Unknown camera identity')
+                    if not config.get('cameraId') or config.get('direction') not in ('front','left','right') or status.get('cameraId') != config['cameraId'] or status.get('direction') != config['direction']:
+                        raise ValueError('Camera identity/direction does not match pairing')
                     boot = status['bootId']
                     client.close()
                     client = http.client.HTTPConnection(parsed[0], parsed[1], timeout=3)
@@ -133,6 +135,8 @@ def main():
                         break
                     data += part
                 stage = 'validation'
+                if response.headers.get('X-Camera-Id') != config.get('cameraId') or response.headers.get('X-Camera-Direction') != config.get('direction'):
+                    raise ValueError('Frame camera identity/direction does not match pairing')
                 seq = int(response.headers.get('X-Sequence', '-1'))
                 if seq < 0:
                     raise ValueError('Invalid device sequence')
@@ -145,7 +149,7 @@ def main():
                 path = root/'frames'/f'{index:09d}.jpg'
                 digest = hashlib.sha256(data).hexdigest()
                 row = dict(id=f'{recording}:{index}',recordingId=recording,sequence=index,atMs=at,sourceAtMs=at,
-                           frames=[str(path)],sha256=digest,wireSha256=digest,bytes=len(data),direction='front',
+                            frames=[str(path)],sha256=digest,wireSha256=digest,bytes=len(data),direction=config['direction'],cameraId=config['cameraId'],
                            transport='wifi-network-http',timestampSource='host-request',exposureTimeKnown=False,
                            receivedAtMs=round((received-start)*1000),requestWallTimeMs=wall,
                            deviceBootId=boot,deviceSequence=seq,deviceCaptureMs=captured,deviceClockAligned=False,

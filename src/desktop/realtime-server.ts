@@ -5,22 +5,35 @@ import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {RealtimeSession} from '../hardware/realtime-session.js';
 import {listRecordings,readRecording,recordingImage} from './live-recordings.js';
+import {listSimulations,readSimulation,simulationImage} from './simulation-recordings.js';
+import {campusReplay} from './campus-replay.js';
+import {realVideoReplay} from './real-video-replay.js';
 async function jsonBody(req:IncomingMessage){
  if(req.headers['content-type']!=='application/json')throw Error('Require application/json');let size=0;const chunks:Buffer[]=[];
  for await(const chunk of req){size+=chunk.length;if(size>5000)throw Error('Body too large');chunks.push(chunk);}return JSON.parse(Buffer.concat(chunks).toString());
 }
-export function realtimeServer(root:string,port=8884,allowPaid=false,autoReceive=false){
+export function realtimeServer(root:string,port=8884,allowPaid=false,autoReceive=false,simulationRoot=resolve(process.env.FIRST_SIGHT_SIMULATION_REPLAYS??'run/replicacad-pilot')){
  let current:RealtimeSession|null=null,starting:Promise<void>|null=null;const sessions:RealtimeSession[]=[];
  async function ensureReceiver(){if(current)return;if(starting)return starting;starting=(async()=>{const session=new RealtimeSession(root,false);await session.start();current=session;sessions.push(session);})();try{await starting;}finally{starting=null;}}
  const server=createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Cross-Origin-Resource-Policy','same-origin');
-  res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");
+   res.setHeader('Content-Security-Policy',"default-src 'self'; img-src 'self'; media-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");
   const reply=(status:number,value:unknown)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(value));};
   try{
    const actual=(server.address() as {port:number}|null)?.port??port,host=req.headers.host;
    if(![`127.0.0.1:${actual}`,`localhost:${actual}`].includes(host??''))return reply(403,{error:'Loopback host required'});
    if(req.headers.origin&&req.headers.origin!==`http://${host}`||req.method==='POST'&&req.headers.origin!==`http://${host}`)return reply(403,{error:'Same-origin required'});
-   const url=new URL(req.url??'/',`http://${host}`);
+     const url=new URL(req.url??'/',`http://${host}`);
+     if(await realVideoReplay(req,res,url))return;
+    if(req.method==='GET'&&url.pathname==='/api/replay/simulations')return reply(200,{recordings:await listSimulations(simulationRoot)});
+    if(req.method==='GET'&&url.pathname==='/api/replay/simulation'){
+     const sample=await readSimulation(simulationRoot,url.searchParams.get('id')??'');
+     return reply(200,{id:sample.id,title:sample.title,scope:sample.scope,clock:sample.clock,readOnly:true,provenance:sample.provenance,questions:[],frames:sample.frames.map(f=>({id:f.id,atMs:f.atMs,judgment:null,availableAtMs:null,views:f.views.map(v=>({view:v.view,url:'/api/replay/simulation-image?sample='+encodeURIComponent(sample.id)+'&id='+encodeURIComponent(f.id)+'&view='+v.view})),url:'/api/replay/simulation-image?sample='+encodeURIComponent(sample.id)+'&id='+encodeURIComponent(f.id)+'&view=front'}))});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/replay/simulation-image'){
+     const image=await simulationImage(simulationRoot,url.searchParams.get('sample')??'',url.searchParams.get('id')??'',url.searchParams.get('view')??'front');
+     res.writeHead(200,{'Content-Type':image.type,'Content-Length':image.bytes.length});res.end(image.bytes);return;
+    }
    if(req.method==='GET'&&url.pathname==='/api/live/recordings')return reply(200,{recordings:await listRecordings(root)});
    if(req.method==='GET'&&url.pathname==='/api/live/recording'){
     const recording=readRecording(root,url.searchParams.get('id')??'');
@@ -49,18 +62,33 @@ export function realtimeServer(root:string,port=8884,allowPaid=false,autoReceive
     const bytes=image.bytes??await readFile(image.path!);if(createHash('sha256').update(bytes).digest('hex')!==image.sha256)throw Error('Original image changed');
     res.writeHead(200,{'Content-Type':'image/jpeg','Content-Length':bytes.length});res.end(bytes);return;
    }
-   if(req.method==='GET'&&['/api/videos','/api/playback-timeline','/api/recordings'].includes(url.pathname))return reply(200,url.pathname==='/api/videos'?{episodes:[],memoryReady:false}:url.pathname==='/api/recordings'?[]:{questions:[],positions:[]});
-   const files:Record<string,[string,string]>={'/':['index.html','text/html'],'/realtime.html':['realtime.html','text/html'],'/realtime.js':['realtime.js','text/javascript'],'/app.js':['app.js','text/javascript'],'/style.css':['style.css','text/css'],'/view-model.js':['view-model.js','text/javascript'],'/comparison-view.js':['comparison-view.js','text/javascript']};
-   files['/realtime.css']=['realtime.css','text/css'];
-   files['/camera-orientation.css']=['camera-orientation.css','text/css'];
-   files['/recordings.html']=['recordings.html','text/html'];files['/recordings.js']=['recordings.js','text/javascript'];files['/recordings.css']=['recordings.css','text/css'];
-   const file=files[url.pathname];if(req.method!=='GET'||!file)return reply(404,{error:'Not found'});
+    if(await campusReplay(req,res,url))return;
+    const files:Record<string,[string,string]>={'/':['home.html','text/html'],'/realtime.html':['realtime.html','text/html'],'/realtime.js':['realtime.js','text/javascript'],'/app.js':['app.js','text/javascript'],'/style.css':['style.css','text/css'],'/view-model.js':['view-model.js','text/javascript'],'/comparison-view.js':['comparison-view.js','text/javascript']};
+    files['/realtime.css']=['realtime.css','text/css'];
+    files['/three-camera.css']=['three-camera.css','text/css'];
+    files['/camera-orientation.css']=['camera-orientation.css','text/css'];
+    files['/home.css']=['home.css','text/css'];
+    files['/recordings.html']=['recordings.html','text/html'];files['/recordings.js']=['recordings.js','text/javascript'];files['/recordings.css']=['recordings.css','text/css'];
+    files['/campus.html']=['index.html','text/html'];
+    if(req.method==='GET'&&['/campus-prototype/','/campus-prototype/index.html','/campus-prototype/prototype.js','/campus-prototype/prototype.css'].includes(url.pathname)){
+     const source=await readFile(resolve('sim/capture/campus-prototype.html'),'utf8');
+     const script=source.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1],style=source.match(/<style>([\s\S]*?)<\/style>/)?.[1];
+     if(!script||!style)throw Error('Incomplete campus prototype source');
+     const js=url.pathname.endsWith('.js'),css=url.pathname.endsWith('.css');
+     const body=js?script+"\ndocument.querySelectorAll('[data-preset]').forEach(button=>button.addEventListener('click',()=>window.preset(button.dataset.preset)));":css?style:source.replace(/<style>[\s\S]*?<\/style>/,'<link rel="stylesheet" href="/campus-prototype/prototype.css">').replace(/<script type="module">[\s\S]*?<\/script>/,'<script type="module" src="/campus-prototype/prototype.js"></script>').replace(/onclick="preset\('([^']+)'\)"/g,'data-preset="$1"');
+     res.writeHead(200,{'Content-Type':(js?'text/javascript':css?'text/css':'text/html')+'; charset=utf-8'});res.end(body);return;
+    }
+    const prototypeFiles:Record<string,[string,string]>={'/campus-prototype/three.module.js':['three.module.js','text/javascript']};
+    const prototype=prototypeFiles[url.pathname];
+    if(req.method==='GET'&&prototype){const bytes=await readFile(resolve('run/campus-prototype-v1',prototype[0]));res.writeHead(200,{'Content-Type':prototype[1]+'; charset=utf-8'});res.end(bytes);return;}
+    const file=files[url.pathname];if(req.method!=='GET'||!file)return reply(404,{error:'Not found'});
    res.writeHead(200,{'Content-Type':file[1]+'; charset=utf-8'});res.end(await readFile(resolve('web/desktop',file[0])));
   }catch(error){if(!res.headersSent)reply(400,{error:String(error)});else res.destroy();}
  });
  return {server,async close(){await Promise.all(sessions.map(s=>s.close()));await new Promise<void>(r=>server.close(()=>r()));}};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
+  if(process.argv.includes('--three-cameras'))process.env.FIRST_SIGHT_THREE_CAMERAS='1';
  const port=Number(process.env.FIRST_SIGHT_REALTIME_PORT??8884);if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid realtime port');
  const root=resolve('run/realtime-system');await mkdir(root,{recursive:true});
  const app=realtimeServer(root,port,process.argv.includes('--allow-paid'),true);
