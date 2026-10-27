@@ -1,5 +1,9 @@
 # 科研复现状态
 
+V2启动记录：新增openvins_image_replay.cpp与CMake目标，后台正在构建真实图像回放驱动；首次120秒构建超时，未宣称编译通过。另启动generate_hm3d_image_vio.py实际渲染第1题固定GT路线smoke序列（20Hz图像、200Hz三套IMU），生成器语法检查已通过。尚无VIO轨迹／V2下游得分，不调用VLM。
+
+主线切换V2图像VIO：用户明确要求位姿输入改用VIO或更强定位。保留3D-Mem，下游不换；旧纯惯导先导停止扩展。现有OpenVINS仿真使用理想特征／GT初始化，不作为真实图像主实验。新增无ROS实际图像＋IMU回放适配器openvins_image_replay.cpp，使用原生视觉惯性初始化与feed_measurement_camera，正在构建验证。连续HM3D序列、坐标校验、VIO输出和完整3D-Mem接入尚未完成，无V2得分。方案见reports/image-vio-v2-protocol.md。
+
 最新异常已定位：第2题MPU-like第7步清理将49对象降为13并删除冰箱对象33；planner.max_point仍引用第3步旧快照cluster=[33]，agent_step可视化访问objects[33]抛KeyError。不是休眠／OOM／网络。该运行已生成接近参考的饮水机候选答案，未正式交付；第1题两噪声运行同样生成过文本但因目标导航失败未写正式输出，不能说VLM没作答。第1题BMI-like前13帧RGB-D与GT相同，第2步末对象GT9 vs BMI17、快照5 vs7，提供同图融合退化证据。分析与过程曲线见reports/imu-memory-v1-pilot-findings.md、reports/imu-memory-v1-process/。仍暂停，未修复重跑；2题1种子纯惯导米级误差不外推正常VIO。
 
 最新运行状态：IMU先导已尝试6/9（5个进程正常结束，第6个即第2题MPU-like进程失败），主控按保护规则停止，余3次未启动。该失败末帧纯惯导位置误差约29.4m，尚未诊断具体异常；不将进程失败等同VLM答错，也不把结果视为正常VIO性能。当前无继续运行的先导任务，未自动重跑。全部原始文件保留。研究工作改在research/3dmem-imu-noise分支提交，其他已有仓库改动不混入。
