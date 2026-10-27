@@ -1,0 +1,38 @@
+{
+  "audit_date": "2026-10-27",
+  "scope": "Static paper-fulltext and official-source inspection only; no vendor code execution, model download, or reproduction.",
+  "papers": [
+    {"name": "CROSS", "version": "2605.02227v2", "url": "https://arxiv.org/html/2605.02227v2", "html_sha256": "14de8c7f358dd89621897dadf1b8b244bd4c847f81e1a0430d6a250fa829b4cc"},
+    {"name": "Mem2Ego", "version": "2502.14254v3", "url": "https://arxiv.org/html/2502.14254v3", "html_sha256": "9cbbe069ba9c7867bca9fe8a91f7ae8e44eb6c847f64e42b06e0b01ab27e3c1c"},
+    {"name": "Embodied-Navigator", "version": "2608.17512v2", "url": "https://arxiv.org/html/2608.17512v2", "html_sha256": "e30586e33cf43b61486be3979e21294c28503e63ca64569949a22f5ad78ecc5d"},
+    {"name": "MemClaw-RAG", "version": "ICRA 2026 public PDF", "url": "https://rasevents.org/uploads/documents/pdfviewer/12/8c/222287-0378.pdf", "html_sha256": null},
+    {"name": "OmniVLA", "version": "2509.19480v1", "url": "https://arxiv.org/html/2509.19480v1", "html_sha256": "540a7b13616d2b204c42ec798e44ccd333731305a99e5228c8fe59582e964604"},
+    {"name": "NavHarness: Towards Lifelong Embodied Navigation", "version": "2609.34276v1", "url": "https://arxiv.org/html/2609.34276v1", "html_sha256": "038825d47c8ec5ee3356676ce2b7a569d6c94fa9835cd8fee6ffd58b7043cacc"},
+    {"name": "FARM", "version": "2606.15476v3", "url": "https://arxiv.org/html/2606.15476v3", "html_sha256": "bcd8badb01cd4aef857f5cd16be73700bca15c45f53b907f5144b1fb8f9206b2"},
+    {"name": "sensVLA", "version": "2609.17021v1", "url": "https://arxiv.org/html/2609.17021v1", "html_sha256": "2f03379e73dec0319a3745eece9fcba2baa06a8bdf8d9edb6d22fd07bfc287a5"},
+    {"name": "SpaMEM", "version": "2604.22409v3", "url": "https://arxiv.org/html/2604.22409v3", "html_sha256": "9e2593ab42448011004cc7678c134ed0fd1fb485d7bb915edcee8590555db713"},
+    {"name": "Concept-Guided Exploration", "version": "2608.23650v1", "url": "https://arxiv.org/html/2608.23650v1", "html_sha256": "7d91a5df5c8ab3fb0106d0364d7c3d8699180f655b546fd5077c46a63454a649"},
+    {"name": "Motion-MLLM (supplementary neighbor)", "version": "2603.17980v2", "url": "https://arxiv.org/html/2603.17980v2", "html_sha256": "8c93484158b86fd470630b84791f1537b1144ae2268e6e75aa045def05e18b3d"}
+  ],
+  "public_core_repositories": [
+    {"name": "CROSS", "repository": "https://github.com/jiaming-ai/CROSS", "commit": "2b560ceaaac8f439655cc53d0ab0238c483c1c1b", "included_in_public_table": true},
+    {"name": "Embodied-Navigator", "repository": "https://github.com/ZJU-OmniAI/Embodied-Omni", "subdirectory": "embodied_navigator", "commit": "78ef297d342d1f44bb15975e36555f8abee18448", "included_in_public_table": true},
+    {"name": "NavHarness: Towards Lifelong Embodied Navigation", "repository": "https://github.com/billzhao1030/NavHarness", "commit": "9a4c12f820631b6a17576651180a5cbddd079264", "included_in_public_table": true},
+    {"name": "OmniVLA", "repository": "https://github.com/NHirose/OmniVLA", "commit": "5182600cb4a9ee07684e17cdd2a6cbafc56b8a68", "included_in_public_table": true},
+    {"name": "FARM", "repository": "https://github.com/GoldenGait/FARM-Project", "commit": "2fcaf8602e741341a70ca980133f7ff05cfc83a2", "included_in_public_table": true}
+  ],
+  "excluded_from_public_table": [
+    {"name": "Mem2Ego", "reason": "No official core repository established after title/author/repository searches; paper-only evidence."},
+    {"name": "MemClaw-RAG", "reason": "No code link in public paper; same-name unrelated projects; conflicting author metadata retained as unresolved."},
+    {"name": "sensVLA", "reason": "No confirmed official implementation; paper is retained as an IMU-to-VLM precedent."},
+    {"name": "SpaMEM", "reason": "Public Hugging Face data subset is not core generation/evaluation code; no confirmed core repository."},
+    {"name": "Concept-Guided Exploration", "reason": "RoboComp/CORTEX is a framework, not confirmed paper-specific implementation; no public data."},
+    {"name": "Motion-MLLM", "reason": "Relevant IMU-to-VLM paper-level precedent, but no confirmed official core implementation/release in this audit."}
+  ],
+  "source_location": "C:/Users/helele/AppData/Local/Temp/opencode/spatial-memory-audit-20261027",
+  "limitations": [
+    "Static source inspection does not establish runnability or paper-result reproduction.",
+    "Some appendices and complete streaming/deployment paths remain uninspected.",
+    "No external repository code was executed."
+  ]
+}

@@ -1,5 +1,7 @@
 # 科研复现状态
 
+指定10篇论文全文＋官方核心代码联合核查已完成（2026-10-27），见reports/spatial-memory-paper-code-audit.md及provenance JSON。确认5个实质公开仓库并入主表：CROSS、Embodied-Navigator（Embodied-Omni子目录）、NavHarness、OmniVLA、FARM；各自commit固定。另5项因未确认官方核心代码排除：Mem2Ego、MemClaw-RAG、sensVLA、SpaMEM、Concept-Guided；框架或HF数据不冒充论文实现。结论仅限已核实范围：未发现“带不确定性惯性信息直接进入VLM→跨时间地点推理→可更新双层导航记忆→长期重定位”的完整公开闭环；Motion-MLLM与sensVLA仍是IMU→VLM论文层先例，不能称首次。最接近组合为Navigator网络侧＋NavHarness记忆侧＋CROSS定位侧，不是任何单篇现成基线。未运行第三方代码、未下载权重、未启动实验。
+
 最新目标进一步收窄为地点／位移／朝向／定位中心的长期记忆，由VLM承担主要空间推理、可用IMU，不以具体物品为中心。调研见reports/place-centric-vlm-imu-memory-neighbors.md：确认Motion-MLLM的IMU→VLM融合先例、CROSS的跨会话拓扑定位、VLG-Loc的VLM观测→全局定位（三台120°相机）、NavMind的VLM认知地图；各有明显缺项，尚未确认全部目标同一方法覆盖，也未宣称空白。注意CROSS当前项目传感模式／榜单与论文v2不同；未启动任何新实验或部署。
 
 最新目标澄清：先确认“生成式VLM空间推理+几何定位／空间记忆”的已有方法，再决定鲁棒性或方法创新。已核查GraphEQA（Hydra/TSDF位姿依赖+VLM层级规划）、ConceptGraphs（posed RGB-D关联+LVLM描述/LLM关系）、Mobility VLA（COLMAP/PnP支撑拓扑图+长上下文VLM目标选择），并补充无需执行导航的GraphPad实例。详见reports/vlm-spatial-reasoning-geometric-dependency.md。明确该组合已有先例，不以未找到为由声称空白；IMU不是所有方法的必要输入。未启动实验；GraphEQA语义资产限制及Mobility VLA/GraphPad未确认完整官方代码均保留。
