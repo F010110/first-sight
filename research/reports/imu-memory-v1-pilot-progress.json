@@ -1,0 +1,428 @@
+{
+  "expectedRuns": 9,
+  "finished": 6,
+  "scope": "Online memory-side pure-IMU pose intervention. RGB-D rendering, TSDF and pathfinder use GT. Not full noisy navigation or VIO.",
+  "executions": [
+    {
+      "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+      "profile": "gt",
+      "seed": 0,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 633.358065909,
+      "answers": [
+        {
+          "question_id": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+          "answer": "Paper should go in the recycling bin."
+        }
+      ],
+      "prediction": "Paper should go in the recycling bin.",
+      "process": {
+        "observations": 22,
+        "associationFrames": 17,
+        "decisionCount": 4,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 2,
+            "snapshots": 2
+          },
+          {
+            "step": 1,
+            "objects": 6,
+            "snapshots": 3
+          },
+          {
+            "step": 2,
+            "objects": 9,
+            "snapshots": 5
+          },
+          {
+            "step": 3,
+            "objects": 13,
+            "snapshots": 7
+          },
+          {
+            "step": 4,
+            "objects": 17,
+            "snapshots": 9
+          },
+          {
+            "step": 5,
+            "objects": 18,
+            "snapshots": 9
+          }
+        ],
+        "matchedDetections": 23,
+        "unmatchedDetections": 18,
+        "simulatedSeconds": 56.24956731037701,
+        "finalPositionErrorM": 0.0,
+        "maxPositionErrorM": 0.0,
+        "finalRotationErrorDeg": 0.0,
+        "maxRotationErrorDeg": 0.0
+      },
+      "judge": {
+        "score": 3,
+        "normalizedMatch": 50.0,
+        "output": "3",
+        "returnedModel": "qwen3.7-plus-2026-05-26",
+        "usage": {
+          "prompt_tokens": 206,
+          "total_tokens": 696,
+          "completion_tokens": 490,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "text_tokens": 206
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 486,
+            "text_tokens": 490
+          }
+        }
+      }
+    },
+    {
+      "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+      "profile": "bmi_like",
+      "seed": 0,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 452.45366837000006,
+      "answers": [],
+      "prediction": null,
+      "process": {
+        "observations": 13,
+        "associationFrames": 8,
+        "decisionCount": 3,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 2,
+            "snapshots": 2
+          },
+          {
+            "step": 1,
+            "objects": 10,
+            "snapshots": 5
+          },
+          {
+            "step": 2,
+            "objects": 17,
+            "snapshots": 7
+          }
+        ],
+        "matchedDetections": 1,
+        "unmatchedDetections": 17,
+        "simulatedSeconds": 27.527726415173692,
+        "finalPositionErrorM": 2.3555820182882607,
+        "maxPositionErrorM": 2.3555820182882607,
+        "finalRotationErrorDeg": 0.0178214403258309,
+        "maxRotationErrorDeg": 0.07969267704179321
+      },
+      "judge": {
+        "score": 0,
+        "normalizedMatch": 0.0,
+        "reason": "No answer; retained in denominator"
+      }
+    },
+    {
+      "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+      "profile": "mpu_like",
+      "seed": 0,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 497.444829001,
+      "answers": [],
+      "prediction": null,
+      "process": {
+        "observations": 16,
+        "associationFrames": 11,
+        "decisionCount": 4,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 3,
+            "snapshots": 3
+          },
+          {
+            "step": 1,
+            "objects": 11,
+            "snapshots": 6
+          },
+          {
+            "step": 2,
+            "objects": 18,
+            "snapshots": 8
+          },
+          {
+            "step": 3,
+            "objects": 13,
+            "snapshots": 6
+          }
+        ],
+        "matchedDetections": 0,
+        "unmatchedDetections": 27,
+        "simulatedSeconds": 37.32806603746784,
+        "finalPositionErrorM": 3.032276281575796,
+        "maxPositionErrorM": 3.032276281575796,
+        "finalRotationErrorDeg": 0.1401118162536584,
+        "maxRotationErrorDeg": 0.1401118162536584
+      },
+      "judge": {
+        "score": 0,
+        "normalizedMatch": 0.0,
+        "reason": "No answer; retained in denominator"
+      }
+    },
+    {
+      "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+      "profile": "gt",
+      "seed": 0,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 919.32924697,
+      "answers": [
+        {
+          "question_id": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+          "answer": "You can get a drink of water in the kitchen, either from the refrigerator (which typically has a water dispenser) or from the kitchen sink on the counter."
+        }
+      ],
+      "prediction": "You can get a drink of water in the kitchen, either from the refrigerator (which typically has a water dispenser) or from the kitchen sink on the counter.",
+      "process": {
+        "observations": 43,
+        "associationFrames": 37,
+        "decisionCount": 11,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 12,
+            "snapshots": 4
+          },
+          {
+            "step": 1,
+            "objects": 16,
+            "snapshots": 6
+          },
+          {
+            "step": 2,
+            "objects": 20,
+            "snapshots": 8
+          },
+          {
+            "step": 3,
+            "objects": 19,
+            "snapshots": 8
+          },
+          {
+            "step": 4,
+            "objects": 22,
+            "snapshots": 8
+          },
+          {
+            "step": 5,
+            "objects": 22,
+            "snapshots": 8
+          },
+          {
+            "step": 6,
+            "objects": 22,
+            "snapshots": 8
+          },
+          {
+            "step": 7,
+            "objects": 23,
+            "snapshots": 9
+          },
+          {
+            "step": 8,
+            "objects": 23,
+            "snapshots": 9
+          },
+          {
+            "step": 9,
+            "objects": 23,
+            "snapshots": 9
+          },
+          {
+            "step": 10,
+            "objects": 25,
+            "snapshots": 11
+          },
+          {
+            "step": 11,
+            "objects": 29,
+            "snapshots": 10
+          },
+          {
+            "step": 12,
+            "objects": 35,
+            "snapshots": 12
+          }
+        ],
+        "matchedDetections": 63,
+        "unmatchedDetections": 39,
+        "simulatedSeconds": 127.08891274620838,
+        "finalPositionErrorM": 0.0,
+        "maxPositionErrorM": 0.0,
+        "finalRotationErrorDeg": 0.0,
+        "maxRotationErrorDeg": 0.0
+      },
+      "judge": {
+        "score": 4,
+        "normalizedMatch": 75.0,
+        "output": "4",
+        "returnedModel": "qwen3.7-plus-2026-05-26",
+        "usage": {
+          "prompt_tokens": 231,
+          "total_tokens": 659,
+          "completion_tokens": 428,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "text_tokens": 231
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 424,
+            "text_tokens": 428
+          }
+        }
+      }
+    },
+    {
+      "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+      "profile": "bmi_like",
+      "seed": 0,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 437.19889082200007,
+      "answers": [
+        {
+          "question_id": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+          "answer": "You can get a drink of water in the kitchen, which is the open room at the end of the hallway containing the island/counter and bar stools — the kitchen sink is located there."
+        }
+      ],
+      "prediction": "You can get a drink of water in the kitchen, which is the open room at the end of the hallway containing the island/counter and bar stools — the kitchen sink is located there.",
+      "process": {
+        "observations": 16,
+        "associationFrames": 13,
+        "decisionCount": 2,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 14,
+            "snapshots": 5
+          },
+          {
+            "step": 1,
+            "objects": 19,
+            "snapshots": 8
+          },
+          {
+            "step": 2,
+            "objects": 21,
+            "snapshots": 10
+          },
+          {
+            "step": 3,
+            "objects": 14,
+            "snapshots": 5
+          }
+        ],
+        "matchedDetections": 8,
+        "unmatchedDetections": 29,
+        "simulatedSeconds": 35.89224924370768,
+        "finalPositionErrorM": 7.387785355088424,
+        "maxPositionErrorM": 7.387785355088424,
+        "finalRotationErrorDeg": 0.13224724457450088,
+        "maxRotationErrorDeg": 0.14574060687119986
+      },
+      "judge": {
+        "score": 2,
+        "normalizedMatch": 25.0,
+        "output": "2",
+        "returnedModel": "qwen3.7-plus-2026-05-26",
+        "usage": {
+          "prompt_tokens": 237,
+          "total_tokens": 810,
+          "completion_tokens": 573,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "text_tokens": 237
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 569,
+            "text_tokens": 573
+          }
+        }
+      }
+    },
+    {
+      "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+      "profile": "mpu_like",
+      "seed": 0,
+      "exitCode": 1,
+      "status": "process_failed",
+      "seconds": 653.0506094269999,
+      "answers": [],
+      "prediction": null,
+      "process": {
+        "observations": 28,
+        "associationFrames": 23,
+        "decisionCount": 4,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 12,
+            "snapshots": 4
+          },
+          {
+            "step": 1,
+            "objects": 17,
+            "snapshots": 7
+          },
+          {
+            "step": 2,
+            "objects": 18,
+            "snapshots": 8
+          },
+          {
+            "step": 3,
+            "objects": 12,
+            "snapshots": 6
+          },
+          {
+            "step": 4,
+            "objects": 21,
+            "snapshots": 9
+          },
+          {
+            "step": 5,
+            "objects": 31,
+            "snapshots": 12
+          },
+          {
+            "step": 6,
+            "objects": 39,
+            "snapshots": 14
+          },
+          {
+            "step": 7,
+            "objects": 13,
+            "snapshots": 5
+          }
+        ],
+        "matchedDetections": 10,
+        "unmatchedDetections": 60,
+        "simulatedSeconds": 72.18474596780368,
+        "finalPositionErrorM": 29.404923932389064,
+        "maxPositionErrorM": 29.404923932389064,
+        "finalRotationErrorDeg": 0.2570612790817859,
+        "maxRotationErrorDeg": 0.2570612790817859
+      },
+      "judge": {
+        "score": 0,
+        "normalizedMatch": 0.0,
+        "reason": "No answer; retained in denominator"
+      }
+    }
+  ]
+}

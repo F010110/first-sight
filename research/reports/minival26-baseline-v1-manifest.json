@@ -1,0 +1,58 @@
+{
+  "questions": [
+    "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+    "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+    "1fcfa31c-43d6-4c9a-acb6-21f019956e1c",
+    "2449be8f-1320-4061-beb0-2797f5766c73",
+    "297ec2f6-52fe-4dd2-a325-587510d53de7",
+    "3321cf87-c5fe-46cc-90c2-33d114503de6",
+    "36ad6cce-7cd1-429e-b75a-581dc6849603",
+    "41db3bb6-0bb5-4fcb-95b1-f19a32be4184",
+    "438e8c6f-f27d-4d3d-b13d-6f41c2981c2a",
+    "4decde3d-5ab8-43db-893c-c3f3f80bcc76",
+    "5a8b3936-43e0-4474-ac15-efaf488265a1",
+    "6bff2ba3-5b68-4d77-a302-1640cc06dd15",
+    "7f15d867-8ba6-47fa-9bca-9d9ae64046b7",
+    "8471794d-32cd-4989-8cec-91118eb43b67",
+    "95762878-541e-4f5c-b071-abe79a0393f3",
+    "991967d0-f7ba-4b8e-af60-16c7b9ca00a5",
+    "9b4a7fbb-680d-4e39-8d60-7b1e521f3108",
+    "a4d9802f-5339-4b61-8c9a-42256441b86d",
+    "a86ef102-5500-4fbf-8fae-cdbeb20a3b7b",
+    "af709fd8-dca2-4697-9548-07aa9d157d8e",
+    "b38045c3-cf3d-43e3-8fee-a085b89a4d3a",
+    "d0165de2-29aa-44d1-8689-ff13cd573c79",
+    "d5b18be3-2d0c-4653-9706-7c33159de7a9",
+    "d843b020-4415-4efd-95e7-903f96d4eb26",
+    "e87b90d9-77d5-4f99-b44a-ad1d11480334",
+    "fa7906e8-12fb-4511-9b6d-9b514a3e63f9"
+  ],
+  "count": 26,
+  "runtime": "/mnt/d/Projects/Projects2026/VLM/research/runs/3dmem-minival-runtime-v1",
+  "sourceChanges": {
+    "src/const.py": {
+      "upstreamSha256": "bf34d0ea0d9624d2ef2c8119460551eb9d17062ead763fc717c65ef45f871091",
+      "runtimeSha256": "49e919dc2ae54d8609fcda3080f70b2b8b8060db761689f7b6ee1243ba7b0e09"
+    },
+    "src/eval_utils_gpt_aeqa.py": {
+      "upstreamSha256": "38e8f093778421a654593272060ec01103f146fa624ff125004b0ca9422b6847",
+      "runtimeSha256": "0106a0cfccf0fba816ac21d295d5ad42cc47c3ee2b4ea3e0b9bf132b0b023ef2"
+    },
+    "src/habitat.py": {
+      "upstreamSha256": "ab0db1261ee1a806ec36ba8d1419de24f1156673a18a0c28fb133d8976f97f23",
+      "runtimeSha256": "a52cf118835f4647434c2ac177acf6d58a5a250298826087c3836edd650ab9dd"
+    },
+    "src/scene_aeqa.py": {
+      "upstreamSha256": "0fb2f021c002e9d4dfe912fd399f79dd1402f726c515d38a841bf7e966f4dc7d",
+      "runtimeSha256": "6b104bb0802b9905c1ee245af2612369e30602730aa54502019af2e41a7dd5fd"
+    }
+  },
+  "conditions": "GT simulator poses, no IMU/pose noise, no question-specific changes",
+  "model": "qwen3.8-flash",
+  "navigationStepsPerQuestion": 50,
+  "apiRequestsPerQuestionMax": 110,
+  "maxOutputTokensPerRequest": 4096,
+  "timeoutSecondsPerQuestion": 3600,
+  "sdkRetries": 0,
+  "scoring": "Execution status != answer score; retain all 26 question denominator; scoring pending"
+}

@@ -1,0 +1,366 @@
+{
+  "expectedQuestions": 26,
+  "finished": 26,
+  "scoringPending": true,
+  "executions": [
+    {
+      "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 433.72,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+          "answer": "Put paper in the recycling bin."
+        }
+      ]
+    },
+    {
+      "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 560.88,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+          "answer": "You can get a drink of water in the kitchen at the end of the hallway, either from the refrigerator (which has a water dispenser) or from the sink at the counter."
+        }
+      ]
+    },
+    {
+      "questionId": "1fcfa31c-43d6-4c9a-acb6-21f019956e1c",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 416.9,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "1fcfa31c-43d6-4c9a-acb6-21f019956e1c",
+          "answer": "No, there is no space for another pillow on the back of the bench. The bench already has two pillows placed side by side in the center, with decorative floral arrangements occupying the remaining space at each end, so there is no room for an additional pillow."
+        }
+      ]
+    },
+    {
+      "questionId": "2449be8f-1320-4061-beb0-2797f5766c73",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 411.6,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "2449be8f-1320-4061-beb0-2797f5766c73",
+          "answer": "No, the kitchen bar chairs are not tucked in; they are pulled out and positioned away from the table."
+        }
+      ]
+    },
+    {
+      "questionId": "297ec2f6-52fe-4dd2-a325-587510d53de7",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 478.28,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "297ec2f6-52fe-4dd2-a325-587510d53de7",
+          "answer": "The door to the balcony is open."
+        }
+      ]
+    },
+    {
+      "questionId": "3321cf87-c5fe-46cc-90c2-33d114503de6",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 665.49,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "3321cf87-c5fe-46cc-90c2-33d114503de6",
+          "answer": "A potted plant is in the corner of the dining room."
+        }
+      ]
+    },
+    {
+      "questionId": "36ad6cce-7cd1-429e-b75a-581dc6849603",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 753.87,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "36ad6cce-7cd1-429e-b75a-581dc6849603",
+          "answer": "The trim around the mirror is gold."
+        }
+      ]
+    },
+    {
+      "questionId": "41db3bb6-0bb5-4fcb-95b1-f19a32be4184",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 452.75,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "41db3bb6-0bb5-4fcb-95b1-f19a32be4184",
+          "answer": "The lamp that is switched on is the one sitting on top of the dresser (the dark chest of drawers against the wall with the small framed pictures above it) \u2013 you can see its warm yellow glow. The bedside lamp on the nightstand next to the bed is off."
+        }
+      ]
+    },
+    {
+      "questionId": "438e8c6f-f27d-4d3d-b13d-6f41c2981c2a",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 445.6,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "438e8c6f-f27d-4d3d-b13d-6f41c2981c2a",
+          "answer": "Reasoning: The garage floor visible in the snapshots and the egocentric view shows a continuous, smooth slab with a brownish-gray tone, surface stains, and the characteristic texture of poured concrete typical of a garage. Snapshot 1 provides a clear view of this concrete surface."
+        }
+      ]
+    },
+    {
+      "questionId": "4decde3d-5ab8-43db-893c-c3f3f80bcc76",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 349.03,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "4decde3d-5ab8-43db-893c-c3f3f80bcc76",
+          "answer": "The yellow object hanging on the wall is a picture (a framed painting/artwork)."
+        }
+      ]
+    },
+    {
+      "questionId": "5a8b3936-43e0-4474-ac15-efaf488265a1",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 1678.15,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "5a8b3936-43e0-4474-ac15-efaf488265a1",
+          "answer": "The umbrella is in the bedroom, located on the right side next to the bed."
+        }
+      ]
+    },
+    {
+      "questionId": "6bff2ba3-5b68-4d77-a302-1640cc06dd15",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 412.52,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "6bff2ba3-5b68-4d77-a302-1640cc06dd15",
+          "answer": "The kitchen cabinets are red."
+        }
+      ]
+    },
+    {
+      "questionId": "7f15d867-8ba6-47fa-9bca-9d9ae64046b7",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 677.18,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "7f15d867-8ba6-47fa-9bca-9d9ae64046b7",
+          "answer": "The vehicle parked in the garage is a dark blue four\u2011door sedan."
+        }
+      ]
+    },
+    {
+      "questionId": "8471794d-32cd-4989-8cec-91118eb43b67",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 485.88,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "8471794d-32cd-4989-8cec-91118eb43b67",
+          "answer": "You can use a mirror to check your appearance."
+        }
+      ]
+    },
+    {
+      "questionId": "95762878-541e-4f5c-b071-abe79a0393f3",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 342.31,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "95762878-541e-4f5c-b071-abe79a0393f3",
+          "answer": "The mirror is on top of the drawer."
+        }
+      ]
+    },
+    {
+      "questionId": "991967d0-f7ba-4b8e-af60-16c7b9ca00a5",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 431.66,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "991967d0-f7ba-4b8e-af60-16c7b9ca00a5",
+          "answer": "The pink object on the bed is a pillow."
+        }
+      ]
+    },
+    {
+      "questionId": "9b4a7fbb-680d-4e39-8d60-7b1e521f3108",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 354.4,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "9b4a7fbb-680d-4e39-8d60-7b1e521f3108",
+          "answer": "A green storage box and a white bag/rolled item are sitting on the top shelf on the right-hand wall of the garage."
+        }
+      ]
+    },
+    {
+      "questionId": "a4d9802f-5339-4b61-8c9a-42256441b86d",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 258.78,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "a4d9802f-5339-4b61-8c9a-42256441b86d",
+          "answer": "Yes, the floor is tiled and can be cleaned with a mop."
+        }
+      ]
+    },
+    {
+      "questionId": "a86ef102-5500-4fbf-8fae-cdbeb20a3b7b",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 492.25,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "a86ef102-5500-4fbf-8fae-cdbeb20a3b7b",
+          "answer": "The car is dark blue (grayish-blue) in color."
+        }
+      ]
+    },
+    {
+      "questionId": "af709fd8-dca2-4697-9548-07aa9d157d8e",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 385.77,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "af709fd8-dca2-4697-9548-07aa9d157d8e",
+          "answer": "Yes, there is a small table/nightstand positioned between the two beds, providing a surface where a glass of water could be placed."
+        }
+      ]
+    },
+    {
+      "questionId": "b38045c3-cf3d-43e3-8fee-a085b89a4d3a",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 638.32,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "b38045c3-cf3d-43e3-8fee-a085b89a4d3a",
+          "answer": "The paper towels are on the bathroom vanity counter."
+        }
+      ]
+    },
+    {
+      "questionId": "d0165de2-29aa-44d1-8689-ff13cd573c79",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 274.32,
+      "answerFilePresent": true,
+      "answers": []
+    },
+    {
+      "questionId": "d5b18be3-2d0c-4653-9706-7c33159de7a9",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 760.78,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "d5b18be3-2d0c-4653-9706-7c33159de7a9",
+          "answer": "The picture depicts a person (a human figure rendered in a light silhouette against the gold/yellow background)."
+        }
+      ]
+    },
+    {
+      "questionId": "d843b020-4415-4efd-95e7-903f96d4eb26",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 370.37,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "d843b020-4415-4efd-95e7-903f96d4eb26",
+          "answer": "The chairs to sit are in the living room at the end of the hallway, near the seating area."
+        }
+      ]
+    },
+    {
+      "questionId": "e87b90d9-77d5-4f99-b44a-ad1d11480334",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 299.16,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "e87b90d9-77d5-4f99-b44a-ad1d11480334",
+          "answer": "The bed frame is white."
+        }
+      ]
+    },
+    {
+      "questionId": "fa7906e8-12fb-4511-9b6d-9b514a3e63f9",
+      "answerScore": null,
+      "exitCode": 0,
+      "status": "process_completed",
+      "seconds": 447.39,
+      "answerFilePresent": true,
+      "answers": [
+        {
+          "question_id": "fa7906e8-12fb-4511-9b6d-9b514a3e63f9",
+          "answer": "The downstairs closet door (the white double doors) is closed."
+        }
+      ]
+    }
+  ]
+}

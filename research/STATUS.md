@@ -1,0 +1,76 @@
+# 科研复现状态
+
+最新运行状态：IMU先导已尝试6/9（5个进程正常结束，第6个即第2题MPU-like进程失败），主控按保护规则停止，余3次未启动。该失败末帧纯惯导位置误差约29.4m，尚未诊断具体异常；不将进程失败等同VLM答错，也不把结果视为正常VIO性能。当前无继续运行的先导任务，未自动重跑。全部原始文件保留。研究工作改在research/3dmem-imu-noise分支提交，其他已有仓库改动不混入。
+
+当前已启动IMU噪声先导：独立3dmem-imu-memory-runtime-v1，首3题按ID顺序×GT/BMI-like/MPU-like共9运行，种子0，GPU串行。BMI-like(.014deg/s/√Hz,175ug/√Hz)、MPU-like(.005,400)，附较小假设残余bias，测量级注入后纯惯导积分；对象融合／快照用估计pose，TSDF导航保留GT。此为纯IMU记忆侧诊断，不是VIO或完整噪声导航。3个数值自检已通过；原26题与源码冻结不变。过程保存原始IMU、pose、原生匹配／融合后对象与快照、VLM选择及图像hash。见reports/imu-memory-v1-pilot-plan.md、reports/imu-memory-v1-protocol.json；进度reports/imu-memory-v1-pilot-progress.json。首轮尚未完成，不宣称已获噪声结果。
+
+最新决定（覆盖下方R4优先）：用户排除未开源方法。继续使用冻结3D-Mem，恢复真实传感器噪声实验方向，不等待R4代码、不自行重写R4。补查开源候选：Pred-EQA A-EQA53.3（8B）、56.3（32B），较52.6并非巨大正确性跃升；Prune-Then-Plan严格视觉grounded评分29.2→34.3，需token概率及单独校准，不能同原Match直接混比；SAGE有开源代码、报告60.2，但依赖RL训练专用小VLM，与当前不部署本地小VLM／通用Qwen API约束不兼容，不能宣称不存在更强开源方法。当前未启动新噪声运行。详见reports/stronger-aeqa-baseline-audit.md补充。
+
+最新用户条件决策：查到R4（CVPR2026）正式论文A-EQA HM3D74.00；其单智能体184题对照72.82，明显高于引用的3D-Mem52.6。此前“无明显更强方法”的判断撤回。优先目标转为R4单智能体复现可行性审计，暂不启动噪声。阻塞：尚未找到可确认官方代码／完整执行配置；不以自写近似冒充完整复现。继续遵守Qwen API、不部署本地小VLM。见reports/stronger-aeqa-baseline-audit.md，正式论文PDF已保存。3D-Mem冻结结果全部保留。
+
+最新评分：Flash原始26题回答不变，改用可用的qwen3.7-plus-2026-05-26裁判、官方同提示。25/26项相同（非空24/25）；唯一3→4，Plus归一化59.62 vs Flash58.65。主要错题不因换裁判消失。已检查低分题所选快照及日志，诊断见reports/minival26-plus-scoring-and-errors.md；存在目标视角／实例指认、缺证据仍作答和一例frontier失败，个别宽泛位置题有参考歧义。当前仍无新误差实验。
+
+26题基础运行和Qwen裁判评分已完成：26进程退出0，25题有回答，12题裁判满分；固定26分母归一化Match58.65/100（有答100*(raw-1)/4，缺答0），不是准确率或原论文可比成绩。无答案题因第0步frontier area=0失败。推理成功API136次、记录447178总token；评分用量另计。完整总结reports/minival26-baseline-results.md；人工视觉抽查与SPL尚未完成。保持复现优先，未开始新误差实验。
+
+26题基础运行已完成：26/26进程正常退出，累计3.688小时；这不是答对率。正在用上游mmbench评分提示及qwen3.8-flash评分（最多每个已有回答1请求，无重试），固定26题并保留空答／评分失败。此为同模型族裁判适配，不是论文GPT-4评分复现；人工复核待做。输出reports/minival26-qwen-judge-v1.json。无误差实验。
+
+当前执行：用户要求复现优先、不针对错题额外处理，已冻结26题基础运行并启动后台。与上游逐文件比较仅src/const.py、eval_utils_gpt_aeqa.py、habitat.py、scene_aeqa.py四处适配；主循环／对象融合／快照／提示不改。冻结差异见reports/minival26-runtime-diff.txt，配置／预算见reports/minival26-baseline-v1-manifest.json。每题50步、110请求上限、4096输出token/请求、无SDK重试、3600秒超时；全部26题各运行一次，失败不删、不自动重跑。进度reports/minival26-baseline-v1-progress.json，结果尚未评分。不注入误差；不以完成率代答题分数。
+
+当前优先级（用户明确）：暂停噪声／VIO注入／三摄实验，先复现基础方法。已阅读论文v2 §4.1/7/9.1并检查首题快照：起始0-view_3可见黄盖大桶，最终选择1-view_0为另一侧杂物，回答蓝色桶。需追踪检测→融合→快照→预筛→最终输入，尚不能断言单一根因。Success1/1源码仅表示到达所选快照，不是答题正确。完整审计 reports/minival-pilot-failure-audit.md。
+
+完整3D-Mem API首题试跑退出0，融合、去噪／合并、快照探索到回答链路均运行。题目问纸应放哪个桶，GT黄盖、预测蓝色回收桶；不能视作答对。日志Success1/1仅流程完成，尚无正式问答分数。已取得官方A-EQA评分工具，发现其过滤缺失答案，正式汇总需固定26题分母。详情 reports/minival-first-pilot-result.md。后续关闭端点INFO日志，SDK重试=0并增加usage记账。
+
+完整入口--help导入预检已通过，尚不代表任务运行成功。已启动首题端到端API试跑，保留官方融合／快照／探索，模型qwen3.8-flash；API总请求上限6、每请求最多4096输出token、无自动付费重试，Windows凭据仅通过WSLENV传入进程，不写入文件或日志。入口scripts/run_3dmem_minival_pilot.sh，日志reports/3dmem-minival-pilot-*.log。此阶段不跑全26题、不报告正式分数。
+
+minival复测：wxyz修正后7/7场景和26/26题目起点渲染检查全部通过，不删题。已生成独立完整3D-Mem适配副本runs/3dmem-minival-runtime-v1，上游源码不改；保留原融合／快照／规划，修改raw GLB路径、重建navmesh、EGL及Qwen API后端，默认单题试跑总API上限6次、无自动付费重试。正在执行--help导入预检（零API）；首轮60秒前台超时，已改后台运行。尚无完整任务成绩。适配hash见reports/3dmem-minival-runtime-adaptation.json。
+
+minival验证首轮完成：7/7场景navmesh重建成功，26/26原始起点可导航；两场景仅因有效深度阈值未过而标false。复查发现验证脚本把A-EQA wxyz误按Habitat列表xyzw输入，原报告渲染诊断不可用于删题／判定资产缺陷。已改为numpy-quaternion的wxyz构造（同上游get_pts_angle_aeqa约定），重跑v2-wxyz，独立保存新报告，旧报告保留。尚无任务分数。
+
+## 最新数据决定
+
+用户提供hm3d-minival-glb-v0.2.tar并确认先在现有数据上评测。已安全解压10个GLB，冻结官方184题交集26题／7场景；已启动本地网格生成、原始起点和RGB-D检查，无API上传。raw GLB非basis、无官方navmesh／语义标注，适配细节和完整评测范围见 reports/hm3d-minival-evaluation-protocol.md。旧文“等待HM3D”的阻塞已改为现有资产适配验证，尚未得到完整任务成绩。
+
+## 重要更正（优先于下述旧摘要）
+
+复查发现此前关联脚本匹配后未融合对象／更新特征，也未运行周期去噪／合并及快照检索，所以ARI0.325、对象31→67等数字仅为简化关联诊断，不是完整3D-Mem结果；旧摘要关于“排除稀疏采样假象”等措辞不能当作完整方法结论。下一步必须恢复原生完整链路并报告任务得分。传感器误差改为真实／估计器参数失配及初始状态误差，不以固定轨迹漂移代替。详见 reports/full-evaluation-and-sensor-errors.md。HM3D本人授权及资产仍待确认。
+
+## 当前（2026-10-26）
+
+已完成：环境、GPU、API冒烟；OpenVINS构建与18组噪声试跑；3D-Mem原生映射函数在ReplicaCAD上的位姿误差关联实验（含真实OpenVINS估计位姿注入）。
+
+关键结果（详见 `reports/3dmem-pose-association-results.md`，无API调用）：
+
+- 恒定yaw 1°使3D-Mem对象关联ARI从1.0降至0.73，地图对象28→34；yaw 2°降至0.54，28→45；主效应为过度拆分。
+- 48帧密集采样复核，效应仍存在（yaw1 ARI 0.72），排除稀疏采样假象。
+- 恒定平移1/3/10cm无影响，属于正确的负对照（全局刚性移动）；只有逐帧漂移造成变化。
+- 真实OpenVINS估计位姿注入（39帧，位置均值0.276m／最大0.394m，朝向均值0.411°／最大0.828°）：ARI 0.325，地图对象31→67，20/31参照簇被拆。同帧纯0.5°／1°朝向对照为0.970／0.688。
+
+尚未完成：
+
+- 下游检索或任务分数（“关联退化是否改变最终得分”未知）。
+- HM3D原版A-EQA／GOAT：需用户本人签署学术许可，未下载、未代签。
+- 三摄对照。
+- 完整RGB-VIO：当前OpenVINS使用合成视觉特征，相机—IMU外参设为单位阵。
+
+## 已知限制
+
+1. ReplicaCAD场景，不是HM3D；结果不是官方benchmark分数。
+2. OpenVINS视觉输入为合成特征，非渲染RGB；只能说明“该轨迹上的VIO误差注入后的影响”。
+3. GT初始化，未测初始化失败／重定位／跟踪丢失恢复。
+4. 单场景、单轨迹；无重复种子统计。
+5. ARI以GT位姿关联为参照，不是绝对物体ID准确率。
+
+## 运行环境
+
+- `research/envs/findingdory`：Python3.9，Habitat-Sim 0.3.1，torch 2.5.1+cu124。
+- `research/envs/3dmem`：Python3.9，Habitat-Sim 0.2.5 headless（无Bullet），torch 2.0.1+cu118，PyTorch3D 0.7.4。
+- `research/envs/openvins`：Ceres 2.1（CPU）、Eigen 3.4、SuiteSparse 5.10.1；无ROS构建，`research/runs/openvins-build`。
+- GPU：RTX 4060 Laptop 8GB；D3D12 EGL需要 `GALLIUM_DRIVER=d3d12 MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA` 与 `--egl-default-device`。
+- headless+Bullet版Habitat-Sim在此WSL渲染段错误，已改用无Bullet；ReplicaCAD改用移除可动家具的静态场景实例。
+
+## 历史记录（按时间）
+
+- OpenVINS最初60秒、特征距离5–7m配置在慢速小范围轨迹上发散，末端位置误差约14m；保留为失败记录。
+- 40秒、特征距离2–5m配置稳定，位置RMSE 0.30m（该次整体统计）。
+- 噪声试跑：在线标定开启时0.5/1/1.25倍噪声平均RMSE为0.404/0.350/0.327m，非单调，seed影响大；固定标定后为0.0118/0.0145/0.0152m。说明结果强依赖标定设置，不能把误差归因于小噪声。详见 `reports/openvins-noise-pilot-summary.md`。
+- 构建过程中遇到并记录：Ceres默认依赖nvcc、SuiteSparse 5/7头文件混装、Eigen版本不符；均通过锁版本解决，未跳过检查。

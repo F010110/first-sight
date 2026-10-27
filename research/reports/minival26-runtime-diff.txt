@@ -1,0 +1,121 @@
+--- src/eval_utils_gpt_aeqa.py-upstream
++++ src/eval_utils_gpt_aeqa.py-runtime
+@@ -1,3 +1,4 @@
++_research_calls = 0
+ import openai
+ from openai import OpenAI
+ from PIL import Image
+@@ -7,13 +8,19 @@
+ import time
+ from typing import Optional
+ import logging
++import json
++import hashlib
++from pathlib import Path
+ from src.const import *
+ 
+ 
+ client = OpenAI(
++    max_retries=0,
+     base_url=END_POINT,
+     api_key=OPENAI_KEY,
+ )
++logging.getLogger('httpx').setLevel(logging.WARNING)
++logging.getLogger('httpcore').setLevel(logging.WARNING)
+ 
+ 
+ def format_content(contents):
+@@ -35,17 +42,29 @@
+ 
+ # send information to openai
+ def call_openai_api(sys_prompt, contents) -> Optional[str]:
+-    max_tries = 5
++    global _research_calls
++    _research_calls += 1
++    if _research_calls > int(os.environ.get("RESEARCH_API_MAX_CALLS", "6")):
++        raise RuntimeError("Pilot API call budget exhausted")
++    max_tries = 1  # pilot: no automatic paid retries
+     retry_count = 0
+     formated_content = format_content(contents)
+     message_text = [
+         {"role": "system", "content": sys_prompt},
+         {"role": "user", "content": formated_content},
+     ]
++    audit_path = os.environ.get('RESEARCH_API_AUDIT_FILE')
++    if audit_path:
++        images = [base64.b64decode(c[1]) for c in contents if len(c) == 2]
++        with Path(audit_path).open('a', encoding='utf-8') as handle:
++            handle.write(json.dumps({'call': _research_calls,
++                                     'promptSha256': hashlib.sha256(json.dumps(message_text).encode()).hexdigest(),
++                                     'imageSha256': [hashlib.sha256(image).hexdigest() for image in images],
++                                     'imageCount': len(images)}) + '\n')
+     while retry_count < max_tries:
+         try:
+             completion = client.chat.completions.create(
+-                model="gpt-4o",  # model = "deployment_name"
++                model=os.environ.get("RESEARCH_VLM_MODEL", "qwen3.8-flash"),  # model = "deployment_name"
+                 messages=message_text,
+                 temperature=0.7,
+                 max_tokens=4096,
+@@ -53,6 +72,11 @@
+                 frequency_penalty=0,
+                 presence_penalty=0,
+             )
++            usage_path = os.environ.get('RESEARCH_API_USAGE_FILE')
++            if usage_path:
++                with Path(usage_path).open('a', encoding='utf-8') as handle:
++                    handle.write(json.dumps({'call': _research_calls, 'model': completion.model,
++                                             'usage': completion.usage.model_dump() if completion.usage else None}) + '\n')
+             return completion.choices[0].message.content
+         except openai.RateLimitError as e:
+             print("Rate limit error, waiting for 60s")
+@@ -60,7 +84,7 @@
+             retry_count += 1
+             continue
+         except Exception as e:
+-            print("Error: ", e)
++            print("API error type:", type(e).__name__)
+             time.sleep(60)
+             retry_count += 1
+             continue
+--- src/habitat.py-upstream
++++ src/habitat.py-runtime
+@@ -47,6 +47,7 @@
+     # simulator backend
+     sim_cfg = habitat_sim.SimulatorConfiguration()
+     sim_cfg.scene_id = settings["scene"]
++    sim_cfg.gpu_device_id = -1
+     sim_cfg.scene_dataset_config_file = settings["scene_dataset_config_file"]
+     sim_cfg.load_semantic_mesh = True
+ 
+@@ -91,6 +92,7 @@
+     # simulator backend
+     sim_cfg = habitat_sim.SimulatorConfiguration()
+     sim_cfg.scene_id = settings["scene"]
++    sim_cfg.gpu_device_id = -1
+     sim_cfg.scene_dataset_config_file = settings["scene_dataset_config_file"]
+ 
+     # agent
+--- src/scene_aeqa.py-upstream
++++ src/scene_aeqa.py-runtime
+@@ -75,16 +75,11 @@
+         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+ 
+         # about the loading the scene
+-        split = "train" if int(scene_id.split("-")[0]) < 800 else "val"
++        split = ""  # provided minival archive layout
+         scene_mesh_path = os.path.join(
+-            cfg.scene_data_path, split, scene_id, scene_id.split("-")[1] + ".basis.glb"
+-        )
+-        navmesh_path = os.path.join(
+-            cfg.scene_data_path,
+-            split,
+-            scene_id,
+-            scene_id.split("-")[1] + ".basis.navmesh",
+-        )
++            cfg.scene_data_path, split, scene_id, scene_id.split("-")[1] + ".glb"
++        )
++        navmesh_path = str(cfg.regenerated_navmesh_dir) + "/" + scene_id + ".navmesh"
+         semantic_texture_path = os.path.join(
+             cfg.scene_data_path,
+             split,

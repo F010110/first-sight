@@ -1,0 +1,18 @@
+vendor/
+envs/
+data/
+runs/
+cache/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+
+# Generated installation logs, downloaded papers, and bulky metadata.
+reports/*.log
+reports/*.pdf
+reports/*-pip-*.txt
+reports/*-conda-*.txt
+reports/*-solve-*.json
+reports/dataset-metadata-*.json

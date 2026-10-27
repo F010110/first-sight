@@ -1,0 +1,657 @@
+[
+  {
+    "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+    "question": "Which bin should I put paper in?",
+    "reference": "The bin with the yellow lid.",
+    "prediction": "Put paper in the recycling bin.",
+    "executionStatus": "process_completed",
+    "score": 3,
+    "judgeOutput": "3",
+    "usage": {
+      "prompt_tokens": 256,
+      "total_tokens": 519,
+      "completion_tokens": 263,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 256
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 260,
+        "text_tokens": 263
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00802-wcojb4TFT35",
+    "events": [
+      "Question id 025257b6-8b7e-4f6f-aacc-1788069cbfad initialization successful!",
+      "00:02:27 - Step 0, update snapshots, 2 objects, 2 snapshots",
+      "00:02:42 - Prefiltering selected classes: ['bucket']",
+      "00:02:42 - Prefiltering snapshot: 2 -> 1",
+      "00:02:46 - Response: [frontier 0]",
+      "Reason: [I should move forward to get closer to the bins at the end of the garage so I can identify which bin is for paper.]",
+      "00:03:01 - Step 1, update snapshots, 6 objects, 3 snapshots",
+      "00:03:17 - Prefiltering selected classes: ['bucket']",
+      "00:03:17 - Prefiltering snapshot: 3 -> 1",
+      "00:03:23 - Response: [frontier 2]",
+      "Reason: [I need to locate a recycling bin or a bin designated for paper. The bins are clustered near the back of the garage by the door, so moving forward toward that area should let me inspect them and identify which one is meant for paper.]",
+      "00:03:37 - Step 2, update snapshots, 9 objects, 5 snapshots",
+      "00:03:47 - Prefiltering selected classes: ['box', 'bucket']",
+      "00:03:47 - Prefiltering snapshot: 5 -> 2",
+      "00:04:18 - Response: [frontier 2]",
+      "Reason: [The paper/recycling bins are at the far end of the garage, but from my current position I cannot read any labels or clearly see the contents of the brown wheeled bin versus the red cart. Moving through this frontier brings me closer to that cluster of bins (the red cart and brown bin appear larger/nearer), which should let me inspect which container is designated for paper.]",
+      "00:04:32 - Step 3, update snapshots, 13 objects, 7 snapshots",
+      "00:04:41 - Prefiltering selected classes: ['recycling bin']",
+      "00:04:41 - Prefiltering snapshot: 7 -> 1",
+      "00:04:43 - Response: [snapshot 0]",
+      "Reason: [Put paper in the recycling bin.]",
+      "00:04:43 - Next choice Snapshot of 3-view_0.png",
+      "00:04:56 - Step 4, update snapshots, 17 objects, 9 snapshots",
+      "00:05:11 - Step 5, update snapshots, 18 objects, 9 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\025257b6-8b7e-4f6f-aacc-1788069cbfad\\output\\baseline\\025257b6-8b7e-4f6f-aacc-1788069cbfad\\chosen_snapshot\\snapshot_3-view_0.png"
+    ],
+    "snapshotCountOnDisk": 22
+  },
+  {
+    "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+    "question": "Where can I get a drink of water?",
+    "reference": "From the water dispenser in the fridge",
+    "prediction": "You can get a drink of water in the kitchen at the end of the hallway, either from the refrigerator (which has a water dispenser) or from the sink at the counter.",
+    "executionStatus": "process_completed",
+    "score": 4,
+    "judgeOutput": "4",
+    "usage": {
+      "prompt_tokens": 286,
+      "total_tokens": 690,
+      "completion_tokens": 404,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 286
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 400,
+        "text_tokens": 404
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00808-y9hTuugGdiq",
+    "events": [
+      "Question id 13d097e7-12c7-48e0-92c4-9667fc7f9c60 initialization successful!",
+      "00:02:30 - Step 0, update snapshots, 12 objects, 4 snapshots",
+      "00:02:40 - Prefiltering selected classes: ['cabinet']",
+      "00:02:40 - Prefiltering snapshot: 4 -> 1",
+      "00:02:47 - Response: [frontier 0]",
+      "Reason: [The current room and the bedroom shown in Snapshot 0 contain no water source (no sink, kitchen, or dispenser), so I cannot answer the question from the available snapshots. Frontier 0 shows a corridor leading through a doorway into another room where I can glimpse a dark cabinet and a white fixture, suggesting a possible bathroom or kitchen area. Since a bathroom sink or kitchen is the most likely place to get a drink of water, I will explore this direction to confirm whether a water source is present.]",
+      "00:02:59 - Step 1, update snapshots, 16 objects, 6 snapshots",
+      "00:03:25 - Prefiltering selected classes: ['bathtub', 'washing machine', 'cabinet', 'towel', 'mirror']",
+      "00:03:25 - Prefiltering snapshot: 6 -> 5",
+      "00:04:46 - Response: [frontier 1]",
+      "Reason: [The doorway on the right opens into a bathroom, where I can see a vanity and mirror indicating a sink that would provide drinking water. The laundry room on the left only has a washing machine, so the bathroom is the nearest water source. Moving toward this doorway (which centers the bathroom opening) will let me confirm and access the sink.]",
+      "00:04:57 - Step 2, update snapshots, 20 objects, 8 snapshots",
+      "00:05:19 - Prefiltering selected classes: ['cabinet', 'bathtub', 'washing machine']",
+      "00:05:19 - Prefiltering snapshot: 8 -> 4",
+      "00:05:35 - Response: [frontier 1]",
+      "Reason: [I see a hallway leading toward an open area with counters/cabinets that likely contains the kitchen sink, so exploring this direction may reveal where I can get a drink of water.]",
+      "00:05:47 - Step 3, update snapshots, 19 objects, 8 snapshots",
+      "00:05:56 - Prefiltering selected classes: ['bathtub', 'washing machine', 'cabinet']",
+      "00:05:56 - Prefiltering snapshot: 8 -> 4",
+      "00:06:18 - Response: [frontier 3]",
+      "Reason: [I need to locate a sink or faucet to get a drink of water, and none of the current snapshots clearly show one (the laundry room only has washing machines, and the visible bathroom area only shows a bathtub). The hallway straight ahead leads toward the open kitchen area—counters and an island are visible in the distance—which is the most likely place to find a kitchen sink with drinking water. Exploring this direction should let me confirm the location of a water source.]",
+      "00:06:29 - Step 4, update snapshots, 20 objects, 9 snapshots",
+      "00:06:41 - Prefiltering selected classes: ['refrigerator', 'cabinet']",
+      "00:06:41 - Prefiltering snapshot: 9 -> 4",
+      "00:06:48 - Response: [snapshot 3]",
+      "Reason: [You can get a drink of water in the kitchen at the end of the hallway, either from the refrigerator (which has a water dispenser) or from the sink at the counter.]",
+      "00:06:48 - Next choice Snapshot of 4-view_2.png",
+      "00:07:04 - Step 5, update snapshots, 25 objects, 10 snapshots",
+      "00:07:20 - Step 6, update snapshots, 31 objects, 12 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\13d097e7-12c7-48e0-92c4-9667fc7f9c60\\output\\baseline\\13d097e7-12c7-48e0-92c4-9667fc7f9c60\\chosen_snapshot\\snapshot_4-view_2.png"
+    ],
+    "snapshotCountOnDisk": 25
+  },
+  {
+    "questionId": "2449be8f-1320-4061-beb0-2797f5766c73",
+    "question": "Are the kitchen bar chairs tucked in?",
+    "reference": "Yes.",
+    "prediction": "No, the kitchen bar chairs are not tucked in; they are pulled out and positioned away from the table.",
+    "executionStatus": "process_completed",
+    "score": 1,
+    "judgeOutput": "1",
+    "usage": {
+      "prompt_tokens": 266,
+      "total_tokens": 344,
+      "completion_tokens": 78,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 266
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 74,
+        "text_tokens": 78
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00807-rsggHU7g7dh",
+    "events": [
+      "Question id 2449be8f-1320-4061-beb0-2797f5766c73 initialization successful!",
+      "00:03:10 - Step 0, update snapshots, 26 objects, 5 snapshots",
+      "00:03:36 - Prefiltering selected classes: ['stool', 'plate', 'cushion']",
+      "00:03:36 - Prefiltering snapshot: 5 -> 4",
+      "00:03:58 - Response: [frontier 0]",
+      "Reason: [The kitchen island and its bar stools are only visible in the far background of the current snapshots, making it impossible to tell whether the bar chairs are tucked in. Moving toward the dining/kitchen area in this direction will bring me closer to the kitchen bar so I can clearly observe the position of the stools.]",
+      "00:04:15 - Step 1, update snapshots, 26 objects, 5 snapshots",
+      "00:04:47 - Prefiltering selected classes: ['stool']",
+      "00:04:47 - Prefiltering snapshot: 5 -> 1",
+      "00:04:54 - Response: [snapshot 0]",
+      "Reason: [No, the kitchen bar chairs are not tucked in; they are pulled out and positioned away from the table.]",
+      "00:04:54 - Next choice Snapshot of 0-view_3.png"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\2449be8f-1320-4061-beb0-2797f5766c73\\output\\baseline\\2449be8f-1320-4061-beb0-2797f5766c73\\chosen_snapshot\\snapshot_0-view_3.png"
+    ],
+    "snapshotCountOnDisk": 10
+  },
+  {
+    "questionId": "41db3bb6-0bb5-4fcb-95b1-f19a32be4184",
+    "question": "where is the lamp that is switched on?",
+    "reference": "in the bedroom on the above floor`",
+    "prediction": "The lamp that is switched on is the one sitting on top of the dresser (the dark chest of drawers against the wall with the small framed pictures above it) – you can see its warm yellow glow. The bedside lamp on the nightstand next to the bed is off.",
+    "executionStatus": "process_completed",
+    "score": 3,
+    "judgeOutput": "3",
+    "usage": {
+      "prompt_tokens": 306,
+      "total_tokens": 1688,
+      "completion_tokens": 1382,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 306
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 1378,
+        "text_tokens": 1382
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00801-HaxA7YrQdEC",
+    "events": [
+      "Question id 41db3bb6-0bb5-4fcb-95b1-f19a32be4184 initialization successful!",
+      "00:02:36 - Step 0, update snapshots, 12 objects, 4 snapshots",
+      "00:03:55 - Prefiltering selected classes: ['lamp', 'nightstand', 'desk', 'bed', 'chair']",
+      "00:03:55 - Prefiltering snapshot: 4 -> 3",
+      "00:05:07 - Response: [snapshot 2]",
+      "Reason: [The lamp that is switched on is the one sitting on top of the dresser (the dark chest of drawers against the wall with the small framed pictures above it) – you can see its warm yellow glow. The bedside lamp on the nightstand next to the bed is off.]",
+      "00:05:07 - Next choice Snapshot of 0-view_0.png",
+      "00:05:22 - Step 1, update snapshots, 15 objects, 4 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\41db3bb6-0bb5-4fcb-95b1-f19a32be4184\\output\\baseline\\41db3bb6-0bb5-4fcb-95b1-f19a32be4184\\chosen_snapshot\\snapshot_0-view_0.png"
+    ],
+    "snapshotCountOnDisk": 10
+  },
+  {
+    "questionId": "4decde3d-5ab8-43db-893c-c3f3f80bcc76",
+    "question": "What is the yellow object hanging on the wall?",
+    "reference": "A painting depicting a man",
+    "prediction": "The yellow object hanging on the wall is a picture (a framed painting/artwork).",
+    "executionStatus": "process_completed",
+    "score": 3,
+    "judgeOutput": "3",
+    "usage": {
+      "prompt_tokens": 266,
+      "total_tokens": 506,
+      "completion_tokens": 240,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 266
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 236,
+        "text_tokens": 240
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00807-rsggHU7g7dh",
+    "events": [
+      "Question id 4decde3d-5ab8-43db-893c-c3f3f80bcc76 initialization successful!",
+      "00:03:01 - Step 0, update snapshots, 26 objects, 5 snapshots",
+      "00:03:23 - Prefiltering selected classes: ['picture', 'lamp', 'plate']",
+      "00:03:23 - Prefiltering snapshot: 5 -> 4",
+      "00:03:26 - Response: [snapshot 0]",
+      "Reason: [The yellow object hanging on the wall is a picture (a framed painting/artwork).]",
+      "00:03:26 - Next choice Snapshot of 0-view_3.png",
+      "00:03:44 - Step 1, update snapshots, 26 objects, 5 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\4decde3d-5ab8-43db-893c-c3f3f80bcc76\\output\\baseline\\4decde3d-5ab8-43db-893c-c3f3f80bcc76\\chosen_snapshot\\snapshot_0-view_3.png"
+    ],
+    "snapshotCountOnDisk": 10
+  },
+  {
+    "questionId": "5a8b3936-43e0-4474-ac15-efaf488265a1",
+    "question": "Where is the umbrella?",
+    "reference": "On the balcony outside",
+    "prediction": "The umbrella is in the bedroom, located on the right side next to the bed.",
+    "executionStatus": "process_completed",
+    "score": 1,
+    "judgeOutput": "1",
+    "usage": {
+      "prompt_tokens": 260,
+      "total_tokens": 343,
+      "completion_tokens": 83,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 260
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 80,
+        "text_tokens": 83
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00808-y9hTuugGdiq",
+    "events": [
+      "Question id 5a8b3936-43e0-4474-ac15-efaf488265a1 initialization successful!",
+      "00:02:57 - Step 0, update snapshots, 12 objects, 4 snapshots",
+      "00:03:47 - Prefiltering selected classes: ['cabinet', 'couch', 'bed', 'pillow', 'towel', 'radiator', 'bathtub']",
+      "00:03:47 - Prefiltering snapshot: 4 -> 3",
+      "00:04:17 - Response: [frontier 0]",
+      "Reason: [I don't see an umbrella clearly in any of the current snapshots or the egocentric view. The only unexplored/transition area is the hallway leading toward the bathroom (where a closed umbrella is commonly stored near the doorway or threshold, and there's an ambiguous object on the floor near the door in the bathroom view). I'll move into this hallway to get a clearer look at that area and locate the umbrella.]",
+      "00:04:33 - Step 1, update snapshots, 16 objects, 6 snapshots",
+      "00:05:28 - Prefiltering selected classes: ['cabinet', 'couch', 'bed', 'trash bin', 'washing machine']",
+      "00:05:28 - Prefiltering snapshot: 6 -> 4",
+      "00:05:55 - Response: [frontier 3]",
+      "Reason: [None of the current snapshots show an umbrella, and the view I have is limited to the hallway, laundry room, and bedroom. The hallway opens into a larger living/dining area (with the desk and bright window) that I haven't explored yet, and an umbrella is most likely to be found in such a common/entry space (e.g., near the front door or in a stand). I will move toward Frontier 3 to look for it there.]",
+      "00:06:06 - Step 2, update snapshots, 16 objects, 6 snapshots",
+      "00:06:17 - Prefiltering selected classes: ['cabinet', 'couch', 'bed']",
+      "00:06:17 - Prefiltering snapshot: 6 -> 3",
+      "00:06:57 - Response: [frontier 3]",
+      "Reason: [The bedroom and laundry areas have already been observed in the snapshots and contain no umbrella, and the kitchen/living space straight ahead has only been seen from a distance. Moving forward into that open area may bring an umbrella (for example, in a stand near the entrance or on a counter) into clear view.]",
+      "00:07:12 - Step 3, update snapshots, 18 objects, 7 snapshots",
+      "00:07:24 - Prefiltering selected classes: ['cabinet', 'couch', 'bed', 'pillow', 'bathtub', 'towel', 'trash bin']",
+      "00:07:24 - Prefiltering snapshot: 7 -> 5",
+      "00:07:51 - Response: [frontier 4]",
+      "Reason: [None of the explored snapshots (kitchen, bedroom, hallway, laundry) show an umbrella. The umbrella is most likely placed near an entryway or in the living/dining area visible at the far end of the current view, which has not yet been entered. Moving forward into that open area will let me search near the doors/windows where an umbrella would typically be stored.]",
+      "00:08:07 - Step 4, update snapshots, 26 objects, 9 snapshots",
+      "00:08:22 - Prefiltering selected classes: ['cabinet', 'chair', 'couch', 'bed', 'dining table']",
+      "00:08:22 - Prefiltering snapshot: 9 -> 4",
+      "00:08:37 - Response: [frontier 1]",
+      "Reason: [None of the current snapshots or the egocentric view show an umbrella (the kitchen, dining area, and bedroom/hallway only contain appliances, furniture, and wall art). The corridor visible in Frontier 1 leads toward an entryway/laundry nook with a door at the end, which is a typical place where an umbrella would be stored or hung. Exploring this unexplored direction is the most promising way to locate the umbrella.]",
+      "00:08:52 - Step 5, update snapshots, 30 objects, 10 snapshots",
+      "00:09:57 - Prefiltering selected classes: ['cabinet', 'chair', 'couch', 'bed', 'dining table', 'pillow', 'radiator', 'sink', 'bathtub', 'towel']",
+      "00:09:57 - Prefiltering snapshot: 10 -> 6",
+      "00:11:30 - Response: [frontier 2]",
+      "Reason: [I don't see an umbrella in the current view or any snapshot, so I will explore the living/dining/entry area because umbrellas are often kept near entryways or in living rooms, and this direction may reveal it.]",
+      "00:11:46 - Step 6, update snapshots, 31 objects, 11 snapshots",
+      "00:13:14 - Prefiltering selected classes: ['cabinet', 'chair', 'couch', 'bed', 'light switch', 'sink', 'towel', 'bathtub', 'dining table']",
+      "00:13:14 - Prefiltering snapshot: 11 -> 6",
+      "00:13:50 - Response: [frontier 4]",
+      "Reason: [The bedroom, kitchen, and laundry‑hallway areas have already been captured in the existing snapshots, and none of them show an umbrella. The only region not yet observed is the living/dining space straight ahead (past the dining table and toward the windows/balcony doors), which is exactly the direction of this frontier. Since an umbrella is typically kept near an entrance or a seating area, moving forward into this unexplored living area is the most promising way to locate it.]",
+      "00:14:06 - Step 7, update snapshots, 34 objects, 11 snapshots",
+      "00:15:05 - Prefiltering selected classes: ['cabinet', 'chair', 'couch', 'dining table', 'stool', 'mirror', 'trash bin', 'light switch', 'picture']",
+      "00:15:05 - Prefiltering snapshot: 11 -> 9",
+      "00:17:21 - Response: [frontier 0]",
+      "Reason: [I do not see an umbrella in the current view or in the available snapshots; the bedroom/closet area is a likely place where an umbrella could be stored, so exploring that direction may reveal it.]",
+      "00:17:37 - Step 8, update snapshots, 36 objects, 13 snapshots",
+      "00:18:23 - Prefiltering selected classes: ['chair', 'couch', 'bed', 'cabinet', 'dining table', 'stool']",
+      "00:18:23 - Prefiltering snapshot: 13 -> 9",
+      "00:18:56 - Response: [frontier 2]",
+      "Reason: [I don’t see an umbrella in the current view or in the available snapshots. This frontier continues down the hallway past the kitchen, which is a likely place to find an umbrella stored near a closet or entryway, so exploring this direction may reveal it.]",
+      "00:19:10 - Step 9, update snapshots, 36 objects, 13 snapshots",
+      "00:19:26 - Prefiltering selected classes: ['cabinet', 'chair', 'couch', 'bed', 'dining table', 'stool', 'sink', 'bathtub', 'towel', 'mirror']",
+      "00:19:26 - Prefiltering snapshot: 13 -> 10",
+      "00:19:49 - Response: [frontier 1]",
+      "Reason: [None of the available snapshots (kitchen, dining/living room, bedroom, or bathroom) show an umbrella, so I need to explore further. Frontier 1 opens onto a small junction with two unexplored doorways — a laundry/utility room on the left and another small room or closet on the right — which are exactly the kinds of spaces where a stored umbrella would typically be kept. Moving through this frontier gives the best chance of locating the umbrella.]",
+      "00:20:02 - Step 10, update snapshots, 36 objects, 12 snapshots",
+      "00:20:38 - Prefiltering selected classes: ['cabinet', 'chair', 'couch', 'stool', 'dining table', 'bed', 'trash bin']",
+      "00:20:38 - Prefiltering snapshot: 12 -> 7",
+      "00:23:09 - Response: [frontier 1]",
+      "Reason: [The snapshots I have already cover the kitchen, living room, and bedrooms, and none of them clearly shows an umbrella. An umbrella is typically kept near the apartment's entrance, which would be in the unexplored hallway/laundry area visible in this direction. Exploring this frontier will let me check the entryway and any umbrella stand there.]",
+      "00:23:24 - Step 11, update snapshots, 33 objects, 13 snapshots",
+      "00:23:50 - Prefiltering selected classes: ['cabinet', 'chair', 'couch', 'bed', 'sink', 'bathtub', 'mirror', 'towel']",
+      "00:23:50 - Prefiltering snapshot: 13 -> 8",
+      "00:24:04 - Response: [snapshot 6]",
+      "Reason: [The umbrella is in the bedroom, located on the right side next to the bed.]",
+      "00:24:04 - Next choice Snapshot of 0-view_2.png",
+      "00:24:17 - Step 12, update snapshots, 34 objects, 13 snapshots",
+      "00:24:30 - Step 13, update snapshots, 36 objects, 14 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\5a8b3936-43e0-4474-ac15-efaf488265a1\\output\\baseline\\5a8b3936-43e0-4474-ac15-efaf488265a1\\chosen_snapshot\\snapshot_0-view_2.png"
+    ],
+    "snapshotCountOnDisk": 46
+  },
+  {
+    "questionId": "6bff2ba3-5b68-4d77-a302-1640cc06dd15",
+    "question": "What color are the kitchen cabinets?",
+    "reference": "Grey",
+    "prediction": "The kitchen cabinets are red.",
+    "executionStatus": "process_completed",
+    "score": 1,
+    "judgeOutput": "1",
+    "usage": {
+      "prompt_tokens": 248,
+      "total_tokens": 299,
+      "completion_tokens": 51,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 248
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 47,
+        "text_tokens": 51
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00807-rsggHU7g7dh",
+    "events": [
+      "Question id 6bff2ba3-5b68-4d77-a302-1640cc06dd15 initialization successful!",
+      "00:03:33 - Step 0, update snapshots, 26 objects, 6 snapshots",
+      "00:03:52 - Prefiltering selected classes: ['plate', 'stool']",
+      "00:03:52 - Prefiltering snapshot: 6 -> 2",
+      "00:04:12 - Response: [snapshot 0]",
+      "Reason: [The kitchen cabinets are red.]",
+      "00:04:12 - Next choice Snapshot of 0-view_5.png",
+      "00:04:30 - Step 1, update snapshots, 27 objects, 6 snapshots",
+      "00:04:48 - Step 2, update snapshots, 27 objects, 6 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\6bff2ba3-5b68-4d77-a302-1640cc06dd15\\output\\baseline\\6bff2ba3-5b68-4d77-a302-1640cc06dd15\\chosen_snapshot\\snapshot_0-view_5.png"
+    ],
+    "snapshotCountOnDisk": 13
+  },
+  {
+    "questionId": "8471794d-32cd-4989-8cec-91118eb43b67",
+    "question": "What can I use to check my appearance?",
+    "reference": "The mirror above the wooden table near the kitchen.",
+    "prediction": "You can use a mirror to check your appearance.",
+    "executionStatus": "process_completed",
+    "score": 4,
+    "judgeOutput": "4",
+    "usage": {
+      "prompt_tokens": 263,
+      "total_tokens": 942,
+      "completion_tokens": 679,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 263
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 675,
+        "text_tokens": 679
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00807-rsggHU7g7dh",
+    "events": [
+      "Question id 8471794d-32cd-4989-8cec-91118eb43b67 initialization successful!",
+      "00:03:07 - Step 0, update snapshots, 26 objects, 6 snapshots",
+      "00:03:25 - Prefiltering selected classes: ['picture', 'plate', 'coffee table']",
+      "00:03:25 - Prefiltering snapshot: 6 -> 4",
+      "00:03:56 - Response: [frontier 1]",
+      "Reason: [I see a hallway and entryway area in this direction that I haven't fully explored yet; mirrors are commonly placed near entryways or along hallways, so exploring this frontier may reveal a mirror I could use to check my appearance.]",
+      "00:04:13 - Step 1, update snapshots, 28 objects, 8 snapshots",
+      "00:04:30 - Prefiltering selected classes: ['picture', 'plate', 'lamp', 'coffee table', 'fireplace']",
+      "00:04:30 - Prefiltering snapshot: 8 -> 5",
+      "00:05:15 - Response: [snapshot 1]",
+      "Reason: [You can use a mirror to check your appearance.]",
+      "00:05:15 - Next choice Snapshot of 0-view_3.png",
+      "00:05:30 - Step 2, update snapshots, 28 objects, 8 snapshots",
+      "00:05:48 - Step 3, update snapshots, 24 objects, 8 snapshots",
+      "00:06:02 - Step 4, update snapshots, 26 objects, 10 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\8471794d-32cd-4989-8cec-91118eb43b67\\output\\baseline\\8471794d-32cd-4989-8cec-91118eb43b67\\chosen_snapshot\\snapshot_0-view_3.png"
+    ],
+    "snapshotCountOnDisk": 19
+  },
+  {
+    "questionId": "95762878-541e-4f5c-b071-abe79a0393f3",
+    "question": "what is on top of the drawer in the bedroom",
+    "reference": "a TV",
+    "prediction": "The mirror is on top of the drawer.",
+    "executionStatus": "process_completed",
+    "score": 1,
+    "judgeOutput": "1",
+    "usage": {
+      "prompt_tokens": 255,
+      "total_tokens": 398,
+      "completion_tokens": 143,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 255
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 140,
+        "text_tokens": 143
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00805-SUHsP6z2gcJ",
+    "events": [
+      "Question id 95762878-541e-4f5c-b071-abe79a0393f3 initialization successful!",
+      "00:02:04 - Step 0, update snapshots, 2 objects, 2 snapshots",
+      "00:02:11 - Prefiltering selected classes: ['picture']",
+      "00:02:11 - Prefiltering snapshot: 2 -> 1",
+      "00:02:18 - Response: [frontier 0]",
+      "Reason: [The current view only shows a closed door and a hallway; I cannot yet see a bedroom drawer. The open doorway on the right leads into a room that may contain the bedroom and its drawer, so I will move down the hallway to explore that room and look for the drawer and what rests on top of it.]",
+      "00:02:32 - Step 1, update snapshots, 5 objects, 3 snapshots",
+      "00:02:40 - Prefiltering selected classes: ['picture', 'mirror']",
+      "00:02:40 - Prefiltering snapshot: 3 -> 2",
+      "00:03:27 - Response: [snapshot 0]",
+      "Reason: [The mirror is on top of the drawer.]",
+      "00:03:27 - Next choice Snapshot of 1-view_0.png",
+      "00:03:39 - Step 2, update snapshots, 11 objects, 5 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\95762878-541e-4f5c-b071-abe79a0393f3\\output\\baseline\\95762878-541e-4f5c-b071-abe79a0393f3\\chosen_snapshot\\snapshot_1-view_0.png"
+    ],
+    "snapshotCountOnDisk": 13
+  },
+  {
+    "questionId": "9b4a7fbb-680d-4e39-8d60-7b1e521f3108",
+    "question": "What is on the top shelf to the right side of the garage?",
+    "reference": "An ice cooler",
+    "prediction": "A green storage box and a white bag/rolled item are sitting on the top shelf on the right-hand wall of the garage.",
+    "executionStatus": "process_completed",
+    "score": 1,
+    "judgeOutput": "1",
+    "usage": {
+      "prompt_tokens": 277,
+      "total_tokens": 648,
+      "completion_tokens": 371,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 277
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 367,
+        "text_tokens": 371
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00802-wcojb4TFT35",
+    "events": [
+      "Question id 9b4a7fbb-680d-4e39-8d60-7b1e521f3108 initialization successful!",
+      "00:02:19 - Step 0, update snapshots, 2 objects, 2 snapshots",
+      "00:03:08 - Prefiltering selected classes: ['bucket', 'bag']",
+      "00:03:08 - Prefiltering snapshot: 2 -> 2",
+      "00:03:28 - Response: [snapshot 1]",
+      "Reason: [A green storage box and a white bag/rolled item are sitting on the top shelf on the right-hand wall of the garage.]",
+      "00:03:28 - Next choice Snapshot of 0-view_1.png",
+      "00:03:44 - Step 1, update snapshots, 6 objects, 4 snapshots",
+      "00:03:56 - Step 2, update snapshots, 7 objects, 4 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\9b4a7fbb-680d-4e39-8d60-7b1e521f3108\\output\\baseline\\9b4a7fbb-680d-4e39-8d60-7b1e521f3108\\chosen_snapshot\\snapshot_0-view_1.png"
+    ],
+    "snapshotCountOnDisk": 13
+  },
+  {
+    "questionId": "b38045c3-cf3d-43e3-8fee-a085b89a4d3a",
+    "question": "Where are the paper towels?",
+    "reference": "Above the dishwasher",
+    "prediction": "The paper towels are on the bathroom vanity counter.",
+    "executionStatus": "process_completed",
+    "score": 1,
+    "judgeOutput": "1",
+    "usage": {
+      "prompt_tokens": 253,
+      "total_tokens": 358,
+      "completion_tokens": 105,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 253
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 102,
+        "text_tokens": 105
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00808-y9hTuugGdiq",
+    "events": [
+      "Question id b38045c3-cf3d-43e3-8fee-a085b89a4d3a initialization successful!",
+      "00:02:54 - Step 0, update snapshots, 12 objects, 4 snapshots",
+      "00:03:04 - Prefiltering selected classes: ['cabinet', 'towel', 'bathtub']",
+      "00:03:04 - Prefiltering snapshot: 4 -> 3",
+      "00:04:39 - Response: [frontier 0]",
+      "Reason: [The doorway ahead leads into a bathroom (I can see the yellow tile floor and a washing machine inside), and paper towels are commonly stored in bathrooms near the sink/counter, which isn't fully visible from my current position. Moving into this bathroom should let me spot the paper towels, so I'll explore this direction.]",
+      "00:04:51 - Step 1, update snapshots, 16 objects, 6 snapshots",
+      "00:05:03 - Prefiltering selected classes: ['cabinet', 'towel', 'trash bin', 'washing machine', 'bathtub', 'mirror']",
+      "00:05:03 - Prefiltering snapshot: 6 -> 5",
+      "00:06:04 - Response: [frontier 1]",
+      "Reason: [I can see a bathroom vanity through the doorway on the right, but I can't clearly tell whether paper towels are on that counter from this distance. I'll move forward toward that doorway to look inside the bathroom and check the counter/vanity area, since that's the most likely place for paper towels in this scene.]",
+      "00:06:19 - Step 2, update snapshots, 20 objects, 8 snapshots",
+      "00:06:28 - Prefiltering selected classes: ['cabinet', 'trash bin', 'towel']",
+      "00:06:28 - Prefiltering snapshot: 8 -> 5",
+      "00:07:34 - Response: [frontier 2]",
+      "Reason: [I see doorways along this hallway leading into the bathroom (left, with mirror and vanity) and a room with dark cabinets and a counter (right, likely the kitchen). Paper towels are most commonly stored in the kitchen or bathroom, but from my current position I cannot see clearly inside either room to confirm their location. Moving forward will give me a better vantage point to look into these rooms and locate the paper towels.]",
+      "00:07:48 - Step 3, update snapshots, 26 objects, 10 snapshots",
+      "00:08:03 - Prefiltering selected classes: ['cabinet', 'towel', 'washing machine', 'trash bin']",
+      "00:08:03 - Prefiltering snapshot: 10 -> 6",
+      "00:08:04 - Response: [snapshot 1]",
+      "Reason: [The paper towels are on the bathroom vanity counter.]",
+      "00:08:04 - Next choice Snapshot of 0-view_0.png",
+      "00:08:19 - Step 4, update snapshots, 28 objects, 11 snapshots",
+      "00:08:34 - Step 5, update snapshots, 29 objects, 10 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\b38045c3-cf3d-43e3-8fee-a085b89a4d3a\\output\\baseline\\b38045c3-cf3d-43e3-8fee-a085b89a4d3a\\chosen_snapshot\\snapshot_0-view_0.png"
+    ],
+    "snapshotCountOnDisk": 22
+  },
+  {
+    "questionId": "d0165de2-29aa-44d1-8689-ff13cd573c79",
+    "question": "Where is the toy car?",
+    "reference": "To the left of the television in the first bedroom.",
+    "prediction": null,
+    "executionStatus": "process_completed",
+    "score": 0,
+    "reason": "missing prediction",
+    "scene": "00806-tQ5s4ShP627",
+    "events": [
+      "Question id d0165de2-29aa-44d1-8689-ff13cd573c79 initialization successful!",
+      "00:02:36 - Step 0, update snapshots, 4 objects, 1 snapshots",
+      "00:02:36 - Warning! Update frontier map failed!",
+      "00:02:36 - Question id d0165de2-29aa-44d1-8689-ff13cd573c79 invalid: update_frontier_map failed!"
+    ],
+    "selectedImages": [],
+    "snapshotCountOnDisk": 7
+  },
+  {
+    "questionId": "d5b18be3-2d0c-4653-9706-7c33159de7a9",
+    "question": "What is the picture seen from the kitchen depict?",
+    "reference": "A man and a child, looking at something, standing in between trees",
+    "prediction": "The picture depicts a person (a human figure rendered in a light silhouette against the gold/yellow background).",
+    "executionStatus": "process_completed",
+    "score": 2,
+    "judgeOutput": "2",
+    "usage": {
+      "prompt_tokens": 279,
+      "total_tokens": 593,
+      "completion_tokens": 314,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 279
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 310,
+        "text_tokens": 314
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00807-rsggHU7g7dh",
+    "events": [
+      "Question id d5b18be3-2d0c-4653-9706-7c33159de7a9 initialization successful!",
+      "00:03:02 - Step 0, update snapshots, 26 objects, 5 snapshots",
+      "00:03:13 - Prefiltering selected classes: ['picture']",
+      "00:03:13 - Prefiltering snapshot: 5 -> 2",
+      "00:05:38 - Response: [frontier 0]",
+      "Reason: [My current views are all taken from the living‑room area, so I cannot yet see the kitchen or the picture as it appears from that vantage point. In this direction I can see a dining table and an open‑plan area that very likely contains the kitchen, so moving to this frontier will bring me into the kitchen, where I will be able to observe the picture seen from there and determine what it depicts.]",
+      "00:05:54 - Step 1, update snapshots, 26 objects, 5 snapshots",
+      "00:06:20 - Prefiltering selected classes: ['picture']",
+      "00:06:20 - Prefiltering snapshot: 5 -> 2",
+      "00:06:32 - Response: [frontier 0]",
+      "Reason: [The current egocentric view and snapshots only show the living room walls (yellow and blue/white paintings) but do not reveal the kitchen's location or its line of sight. Frontier 0 looks toward the open floor area and passage on the right, which is the most likely direction of the kitchen. Moving there will let me see the kitchen and identify which picture on the wall is visible from that vantage point.]",
+      "00:06:48 - Step 2, update snapshots, 29 objects, 6 snapshots",
+      "00:06:58 - Prefiltering selected classes: ['picture']",
+      "00:06:58 - Prefiltering snapshot: 6 -> 2",
+      "00:07:25 - Response: [frontier 1]",
+      "Reason: [The current snapshots and egocentric view only show the living‑room seating area; none of them represent the kitchen viewpoint, so I cannot yet tell which picture is visible from the kitchen. Frontier 1 looks toward the dining area and the opening that leads into the kitchen, so exploring this direction should bring me to the kitchen and reveal the picture on the wall as seen from there.]",
+      "00:07:41 - Step 3, update snapshots, 24 objects, 5 snapshots",
+      "00:09:35 - Prefiltering selected classes: ['picture']",
+      "00:09:35 - Prefiltering snapshot: 5 -> 2",
+      "00:10:17 - Response: [snapshot 0]",
+      "Reason: [The picture depicts a person (a human figure rendered in a light silhouette against the gold/yellow background).]",
+      "00:10:17 - Next choice Snapshot of 0-view_3.png",
+      "00:10:30 - Step 4, update snapshots, 28 objects, 6 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\d5b18be3-2d0c-4653-9706-7c33159de7a9\\output\\baseline\\d5b18be3-2d0c-4653-9706-7c33159de7a9\\chosen_snapshot\\snapshot_0-view_3.png"
+    ],
+    "snapshotCountOnDisk": 19
+  },
+  {
+    "questionId": "d843b020-4415-4efd-95e7-903f96d4eb26",
+    "question": "where are chairs to sit",
+    "reference": "on the balcony",
+    "prediction": "The chairs to sit are in the living room at the end of the hallway, near the seating area.",
+    "executionStatus": "process_completed",
+    "score": 1,
+    "judgeOutput": "1",
+    "usage": {
+      "prompt_tokens": 263,
+      "total_tokens": 376,
+      "completion_tokens": 113,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "text_tokens": 263
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 109,
+        "text_tokens": 113
+      }
+    },
+    "returnedModel": "qwen3.8-flash",
+    "scene": "00805-SUHsP6z2gcJ",
+    "events": [
+      "Question id d843b020-4415-4efd-95e7-903f96d4eb26 initialization successful!",
+      "00:02:36 - Step 0, update snapshots, 2 objects, 2 snapshots",
+      "00:02:44 - Prefiltering selected classes: ['picture']",
+      "00:02:44 - Prefiltering snapshot: 2 -> 1",
+      "00:03:33 - Response: [snapshot 0]",
+      "Reason: [The chairs to sit are in the living room at the end of the hallway, near the seating area.]",
+      "00:03:33 - Next choice Snapshot of 0-view_5.png",
+      "00:03:49 - Step 1, update snapshots, 5 objects, 3 snapshots",
+      "00:04:03 - Step 2, update snapshots, 6 objects, 4 snapshots"
+    ],
+    "selectedImages": [
+      "runs\\minival26-baseline-v1\\d843b020-4415-4efd-95e7-903f96d4eb26\\output\\baseline\\d843b020-4415-4efd-95e7-903f96d4eb26\\chosen_snapshot\\snapshot_0-view_5.png"
+    ],
+    "snapshotCountOnDisk": 13
+  }
+]

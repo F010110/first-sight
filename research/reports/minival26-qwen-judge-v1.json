@@ -1,0 +1,595 @@
+{
+  "scope": "Official match prompt, qwen3.8-flash substituted for GPT-4; same-family judge, not paper score reproduction",
+  "denominator": 26,
+  "judgeModel": "qwen3.8-flash",
+  "rows": [
+    {
+      "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+      "question": "Which bin should I put paper in?",
+      "reference": "The bin with the yellow lid.",
+      "prediction": "Put paper in the recycling bin.",
+      "executionStatus": "process_completed",
+      "score": 3,
+      "judgeOutput": "3",
+      "usage": {
+        "prompt_tokens": 256,
+        "total_tokens": 519,
+        "completion_tokens": 263,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 256
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 260,
+          "text_tokens": 263
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+      "question": "Where can I get a drink of water?",
+      "reference": "From the water dispenser in the fridge",
+      "prediction": "You can get a drink of water in the kitchen at the end of the hallway, either from the refrigerator (which has a water dispenser) or from the sink at the counter.",
+      "executionStatus": "process_completed",
+      "score": 4,
+      "judgeOutput": "4",
+      "usage": {
+        "prompt_tokens": 286,
+        "total_tokens": 690,
+        "completion_tokens": 404,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 286
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 400,
+          "text_tokens": 404
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "1fcfa31c-43d6-4c9a-acb6-21f019956e1c",
+      "question": "Is there space for another pillow on the back of the bench with the coat hangers?",
+      "reference": "No",
+      "prediction": "No, there is no space for another pillow on the back of the bench. The bench already has two pillows placed side by side in the center, with decorative floral arrangements occupying the remaining space at each end, so there is no room for an additional pillow.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 305,
+        "total_tokens": 389,
+        "completion_tokens": 84,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 305
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 81,
+          "text_tokens": 84
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "2449be8f-1320-4061-beb0-2797f5766c73",
+      "question": "Are the kitchen bar chairs tucked in?",
+      "reference": "Yes.",
+      "prediction": "No, the kitchen bar chairs are not tucked in; they are pulled out and positioned away from the table.",
+      "executionStatus": "process_completed",
+      "score": 1,
+      "judgeOutput": "1",
+      "usage": {
+        "prompt_tokens": 266,
+        "total_tokens": 344,
+        "completion_tokens": 78,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 266
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 74,
+          "text_tokens": 78
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "297ec2f6-52fe-4dd2-a325-587510d53de7",
+      "question": "is the door to the balcony open or closed",
+      "reference": "open",
+      "prediction": "The door to the balcony is open.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 252,
+        "total_tokens": 331,
+        "completion_tokens": 79,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 252
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 76,
+          "text_tokens": 79
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "3321cf87-c5fe-46cc-90c2-33d114503de6",
+      "question": "What is in the corner of the dining room?",
+      "reference": "a plant",
+      "prediction": "A potted plant is in the corner of the dining room.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 259,
+        "total_tokens": 317,
+        "completion_tokens": 58,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 259
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 54,
+          "text_tokens": 58
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "36ad6cce-7cd1-429e-b75a-581dc6849603",
+      "question": "What color is the trim around the mirror?",
+      "reference": "Gold",
+      "prediction": "The trim around the mirror is gold.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 252,
+        "total_tokens": 322,
+        "completion_tokens": 70,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 252
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 66,
+          "text_tokens": 70
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "41db3bb6-0bb5-4fcb-95b1-f19a32be4184",
+      "question": "where is the lamp that is switched on?",
+      "reference": "in the bedroom on the above floor`",
+      "prediction": "The lamp that is switched on is the one sitting on top of the dresser (the dark chest of drawers against the wall with the small framed pictures above it) – you can see its warm yellow glow. The bedside lamp on the nightstand next to the bed is off.",
+      "executionStatus": "process_completed",
+      "score": 3,
+      "judgeOutput": "3",
+      "usage": {
+        "prompt_tokens": 306,
+        "total_tokens": 1688,
+        "completion_tokens": 1382,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 306
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1378,
+          "text_tokens": 1382
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "438e8c6f-f27d-4d3d-b13d-6f41c2981c2a",
+      "question": "What material is the floor?",
+      "reference": "concrete",
+      "prediction": "Reasoning: The garage floor visible in the snapshots and the egocentric view shows a continuous, smooth slab with a brownish-gray tone, surface stains, and the characteristic texture of poured concrete typical of a garage. Snapshot 1 provides a clear view of this concrete surface.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 297,
+        "total_tokens": 364,
+        "completion_tokens": 67,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 297
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 63,
+          "text_tokens": 67
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "4decde3d-5ab8-43db-893c-c3f3f80bcc76",
+      "question": "What is the yellow object hanging on the wall?",
+      "reference": "A painting depicting a man",
+      "prediction": "The yellow object hanging on the wall is a picture (a framed painting/artwork).",
+      "executionStatus": "process_completed",
+      "score": 3,
+      "judgeOutput": "3",
+      "usage": {
+        "prompt_tokens": 266,
+        "total_tokens": 506,
+        "completion_tokens": 240,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 266
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 236,
+          "text_tokens": 240
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "5a8b3936-43e0-4474-ac15-efaf488265a1",
+      "question": "Where is the umbrella?",
+      "reference": "On the balcony outside",
+      "prediction": "The umbrella is in the bedroom, located on the right side next to the bed.",
+      "executionStatus": "process_completed",
+      "score": 1,
+      "judgeOutput": "1",
+      "usage": {
+        "prompt_tokens": 260,
+        "total_tokens": 343,
+        "completion_tokens": 83,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 260
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 80,
+          "text_tokens": 83
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "6bff2ba3-5b68-4d77-a302-1640cc06dd15",
+      "question": "What color are the kitchen cabinets?",
+      "reference": "Grey",
+      "prediction": "The kitchen cabinets are red.",
+      "executionStatus": "process_completed",
+      "score": 1,
+      "judgeOutput": "1",
+      "usage": {
+        "prompt_tokens": 248,
+        "total_tokens": 299,
+        "completion_tokens": 51,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 248
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 47,
+          "text_tokens": 51
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "7f15d867-8ba6-47fa-9bca-9d9ae64046b7",
+      "question": "What type of car is in the garage?",
+      "reference": "A sedan",
+      "prediction": "The vehicle parked in the garage is a dark blue four‑door sedan.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 260,
+        "total_tokens": 347,
+        "completion_tokens": 87,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 260
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 84,
+          "text_tokens": 87
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "8471794d-32cd-4989-8cec-91118eb43b67",
+      "question": "What can I use to check my appearance?",
+      "reference": "The mirror above the wooden table near the kitchen.",
+      "prediction": "You can use a mirror to check your appearance.",
+      "executionStatus": "process_completed",
+      "score": 4,
+      "judgeOutput": "4",
+      "usage": {
+        "prompt_tokens": 263,
+        "total_tokens": 942,
+        "completion_tokens": 679,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 263
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 675,
+          "text_tokens": 679
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "95762878-541e-4f5c-b071-abe79a0393f3",
+      "question": "what is on top of the drawer in the bedroom",
+      "reference": "a TV",
+      "prediction": "The mirror is on top of the drawer.",
+      "executionStatus": "process_completed",
+      "score": 1,
+      "judgeOutput": "1",
+      "usage": {
+        "prompt_tokens": 255,
+        "total_tokens": 398,
+        "completion_tokens": 143,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 255
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 140,
+          "text_tokens": 143
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "991967d0-f7ba-4b8e-af60-16c7b9ca00a5",
+      "question": "what is the pink object on the bed",
+      "reference": "a pillow",
+      "prediction": "The pink object on the bed is a pillow.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 254,
+        "total_tokens": 329,
+        "completion_tokens": 75,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 254
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 72,
+          "text_tokens": 75
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "9b4a7fbb-680d-4e39-8d60-7b1e521f3108",
+      "question": "What is on the top shelf to the right side of the garage?",
+      "reference": "An ice cooler",
+      "prediction": "A green storage box and a white bag/rolled item are sitting on the top shelf on the right-hand wall of the garage.",
+      "executionStatus": "process_completed",
+      "score": 1,
+      "judgeOutput": "1",
+      "usage": {
+        "prompt_tokens": 277,
+        "total_tokens": 648,
+        "completion_tokens": 371,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 277
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 367,
+          "text_tokens": 371
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "a4d9802f-5339-4b61-8c9a-42256441b86d",
+      "question": "can I clean the floor with a mop?",
+      "reference": "yes",
+      "prediction": "Yes, the floor is tiled and can be cleaned with a mop.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 258,
+        "total_tokens": 423,
+        "completion_tokens": 165,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 258
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 162,
+          "text_tokens": 165
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "a86ef102-5500-4fbf-8fae-cdbeb20a3b7b",
+      "question": "What color is the car?",
+      "reference": "Blue",
+      "prediction": "The car is dark blue (grayish-blue) in color.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 254,
+        "total_tokens": 866,
+        "completion_tokens": 612,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 254
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 608,
+          "text_tokens": 612
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "af709fd8-dca2-4697-9548-07aa9d157d8e",
+      "question": "is there an area between the beds to place a glass of water",
+      "reference": "yes",
+      "prediction": "Yes, there is a small table/nightstand positioned between the two beds, providing a surface where a glass of water could be placed.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 276,
+        "total_tokens": 379,
+        "completion_tokens": 103,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 276
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 99,
+          "text_tokens": 103
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "b38045c3-cf3d-43e3-8fee-a085b89a4d3a",
+      "question": "Where are the paper towels?",
+      "reference": "Above the dishwasher",
+      "prediction": "The paper towels are on the bathroom vanity counter.",
+      "executionStatus": "process_completed",
+      "score": 1,
+      "judgeOutput": "1",
+      "usage": {
+        "prompt_tokens": 253,
+        "total_tokens": 358,
+        "completion_tokens": 105,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 253
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 102,
+          "text_tokens": 105
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "d0165de2-29aa-44d1-8689-ff13cd573c79",
+      "question": "Where is the toy car?",
+      "reference": "To the left of the television in the first bedroom.",
+      "prediction": null,
+      "executionStatus": "process_completed",
+      "score": 0,
+      "reason": "missing prediction"
+    },
+    {
+      "questionId": "d5b18be3-2d0c-4653-9706-7c33159de7a9",
+      "question": "What is the picture seen from the kitchen depict?",
+      "reference": "A man and a child, looking at something, standing in between trees",
+      "prediction": "The picture depicts a person (a human figure rendered in a light silhouette against the gold/yellow background).",
+      "executionStatus": "process_completed",
+      "score": 2,
+      "judgeOutput": "2",
+      "usage": {
+        "prompt_tokens": 279,
+        "total_tokens": 593,
+        "completion_tokens": 314,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 279
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 310,
+          "text_tokens": 314
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "d843b020-4415-4efd-95e7-903f96d4eb26",
+      "question": "where are chairs to sit",
+      "reference": "on the balcony",
+      "prediction": "The chairs to sit are in the living room at the end of the hallway, near the seating area.",
+      "executionStatus": "process_completed",
+      "score": 1,
+      "judgeOutput": "1",
+      "usage": {
+        "prompt_tokens": 263,
+        "total_tokens": 376,
+        "completion_tokens": 113,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 263
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 109,
+          "text_tokens": 113
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "e87b90d9-77d5-4f99-b44a-ad1d11480334",
+      "question": "What color is the bed frame?",
+      "reference": "White",
+      "prediction": "The bed frame is white.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 248,
+        "total_tokens": 310,
+        "completion_tokens": 62,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 248
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 58,
+          "text_tokens": 62
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    },
+    {
+      "questionId": "fa7906e8-12fb-4511-9b6d-9b514a3e63f9",
+      "question": "Is the downstairs closet door open or closed?",
+      "reference": "closed",
+      "prediction": "The downstairs closet door (the white double doors) is closed.",
+      "executionStatus": "process_completed",
+      "score": 5,
+      "judgeOutput": "5",
+      "usage": {
+        "prompt_tokens": 257,
+        "total_tokens": 344,
+        "completion_tokens": 87,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 257
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 83,
+          "text_tokens": 87
+        }
+      },
+      "returnedModel": "qwen3.8-flash"
+    }
+  ],
+  "finished": 26,
+  "unscored": 0,
+  "scoreMeanRaw": 3.3076923076923075,
+  "manualReviewPending": true
+}

@@ -1,0 +1,26 @@
+{
+  "questions": 26,
+  "processCompleted": 26,
+  "answersPresent": 25,
+  "histogramRaw": {
+    "3": 3,
+    "4": 2,
+    "5": 12,
+    "1": 7,
+    "0": 1,
+    "2": 1
+  },
+  "normalizedMatch": 58.65384615384615,
+  "normalization": "100*(raw-1)/4 for answers; missing answer=0; fixed denominator=26",
+  "perfectMatchCountJudge": 12,
+  "hours": 3.688155555555556,
+  "inferenceSuccessfulApiCalls": 136,
+  "inferenceTokens": {
+    "prompt_tokens": 116702,
+    "completion_tokens": 330476,
+    "total_tokens": 447178
+  },
+  "judgeBackend": "qwen3.8-flash",
+  "manualVisualReviewComplete": false,
+  "caveat": "Adapted raw-GLB minival subset + Qwen inference/judge; not official paper reproduction; no SPL or perturbation comparison yet"
+}
