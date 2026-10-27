@@ -1,0 +1,1072 @@
+{
+  "scope": "Pilot diagnostic, seed 0. Native fusion counts are not instance accuracy. Trajectories may diverge.",
+  "rows": [
+    {
+      "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+      "profile": "gt",
+      "process": {
+        "observations": 22,
+        "associationFrames": 17,
+        "decisionCount": 4,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 2,
+            "snapshots": 2
+          },
+          {
+            "step": 1,
+            "objects": 6,
+            "snapshots": 3
+          },
+          {
+            "step": 2,
+            "objects": 9,
+            "snapshots": 5
+          },
+          {
+            "step": 3,
+            "objects": 13,
+            "snapshots": 7
+          },
+          {
+            "step": 4,
+            "objects": 17,
+            "snapshots": 9
+          },
+          {
+            "step": 5,
+            "objects": 18,
+            "snapshots": 9
+          }
+        ],
+        "matchedDetections": 23,
+        "unmatchedDetections": 18,
+        "simulatedSeconds": 56.24956731037701,
+        "finalPositionErrorM": 0.0,
+        "maxPositionErrorM": 0.0,
+        "finalRotationErrorDeg": 0.0,
+        "maxRotationErrorDeg": 0.0
+      },
+      "prediction": "Paper should go in the recycling bin.",
+      "judge": {
+        "score": 3,
+        "normalizedMatch": 50.0,
+        "output": "3",
+        "returnedModel": "qwen3.7-plus-2026-05-26",
+        "usage": {
+          "prompt_tokens": 206,
+          "total_tokens": 696,
+          "completion_tokens": 490,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "text_tokens": 206
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 486,
+            "text_tokens": 490
+          }
+        }
+      },
+      "sameImageFramesAsGt": [
+        "0-view_0.png",
+        "0-view_1.png",
+        "0-view_2.png",
+        "0-view_3.png",
+        "0-view_4.png",
+        "0-view_5.png",
+        "0-view_6.png",
+        "1-view_0.png",
+        "1-view_1.png",
+        "1-view_2.png",
+        "2-view_0.png",
+        "2-view_1.png",
+        "2-view_2.png",
+        "3-view_0.png",
+        "3-view_1.png",
+        "3-view_2.png",
+        "4-view_0.png",
+        "4-view_1.png",
+        "4-view_2.png",
+        "5-view_0.png",
+        "5-view_1.png",
+        "5-view_2.png"
+      ],
+      "firstDifferentImageFrame": null,
+      "sameImageStepMemoryComparisons": [
+        {
+          "step": 0,
+          "objectCount": 2,
+          "gtObjectCount": 2,
+          "snapshots": 2,
+          "gtSnapshots": 2,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.5617830291099801
+        },
+        {
+          "step": 1,
+          "objectCount": 6,
+          "gtObjectCount": 6,
+          "snapshots": 3,
+          "gtSnapshots": 3,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.6361883847821792
+        },
+        {
+          "step": 2,
+          "objectCount": 9,
+          "gtObjectCount": 9,
+          "snapshots": 5,
+          "gtSnapshots": 5,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.5072654818470772
+        },
+        {
+          "step": 3,
+          "objectCount": 13,
+          "gtObjectCount": 13,
+          "snapshots": 7,
+          "gtSnapshots": 7,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.6837235609834547
+        },
+        {
+          "step": 4,
+          "objectCount": 17,
+          "gtObjectCount": 17,
+          "snapshots": 9,
+          "gtSnapshots": 9,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.5976973686816709
+        },
+        {
+          "step": 5,
+          "objectCount": 18,
+          "gtObjectCount": 18,
+          "snapshots": 9,
+          "gtSnapshots": 9,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.5870028566591836
+        }
+      ],
+      "decisions": [
+        {
+          "step": 0,
+          "choiceType": "Frontier",
+          "image": "0_0.png",
+          "answer": "The current snapshots only show a bag and a bucket against the wall, neither of which indicates a paper recycling bin. The distant cluttered area visible straight ahead contains trash/recycling containers, so moving forward toward them will let me inspect the bins closely and identify which one is designated for paper.",
+          "filteredSnapshots": 2,
+          "totalSnapshots": 2,
+          "frontiers": 1
+        },
+        {
+          "step": 1,
+          "choiceType": "Frontier",
+          "image": "1_2.png",
+          "answer": "I see a tall dark bin in the middle of the garage near the stacked boxes, and I need to move closer to determine whether it is labeled for paper/recycling, so I will explore this direction.",
+          "filteredSnapshots": 1,
+          "totalSnapshots": 3,
+          "frontiers": 3
+        },
+        {
+          "step": 2,
+          "choiceType": "Frontier",
+          "image": "2_2.png",
+          "answer": "The snapshots only cover the right‑wall shelves and floor clutter, and no clearly labeled paper/recycling bin is visible there. The trash and recycling bins sit at the back of the garage near the window, and the back‑left region (workbench side) with those bins has not been examined up close. I'll move in this direction to get a clearer look at the bins near the window and determine which one is designated for paper.",
+          "filteredSnapshots": 2,
+          "totalSnapshots": 5,
+          "frontiers": 3
+        },
+        {
+          "step": 3,
+          "choiceType": "SnapShot",
+          "image": "3-view_0.png",
+          "answer": "Paper should go in the recycling bin.",
+          "filteredSnapshots": 1,
+          "totalSnapshots": 7,
+          "frontiers": 3
+        }
+      ]
+    },
+    {
+      "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+      "profile": "bmi_like",
+      "process": {
+        "observations": 13,
+        "associationFrames": 8,
+        "decisionCount": 3,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 2,
+            "snapshots": 2
+          },
+          {
+            "step": 1,
+            "objects": 10,
+            "snapshots": 5
+          },
+          {
+            "step": 2,
+            "objects": 17,
+            "snapshots": 7
+          }
+        ],
+        "matchedDetections": 1,
+        "unmatchedDetections": 17,
+        "simulatedSeconds": 27.527726415173692,
+        "finalPositionErrorM": 2.3555820182882607,
+        "maxPositionErrorM": 2.3555820182882607,
+        "finalRotationErrorDeg": 0.0178214403258309,
+        "maxRotationErrorDeg": 0.07969267704179321
+      },
+      "prediction": null,
+      "judge": {
+        "score": 0,
+        "normalizedMatch": 0.0,
+        "reason": "No answer; retained in denominator"
+      },
+      "sameImageFramesAsGt": [
+        "0-view_0.png",
+        "0-view_1.png",
+        "0-view_2.png",
+        "0-view_3.png",
+        "0-view_4.png",
+        "0-view_5.png",
+        "0-view_6.png",
+        "1-view_0.png",
+        "1-view_1.png",
+        "1-view_2.png",
+        "2-view_0.png",
+        "2-view_1.png",
+        "2-view_2.png"
+      ],
+      "firstDifferentImageFrame": null,
+      "sameImageStepMemoryComparisons": [
+        {
+          "step": 0,
+          "objectCount": 2,
+          "gtObjectCount": 2,
+          "snapshots": 2,
+          "gtSnapshots": 2,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.5950903527969957
+        },
+        {
+          "step": 1,
+          "objectCount": 10,
+          "gtObjectCount": 6,
+          "snapshots": 5,
+          "gtSnapshots": 3,
+          "categoryCountDelta": {
+            "bag": 2,
+            "bucket": 2
+          },
+          "medianObjectExtentM": 0.5689297238547758
+        },
+        {
+          "step": 2,
+          "objectCount": 17,
+          "gtObjectCount": 9,
+          "snapshots": 7,
+          "gtSnapshots": 5,
+          "categoryCountDelta": {
+            "bicycle": 2,
+            "box": 1,
+            "bag": 3,
+            "bucket": 2
+          },
+          "medianObjectExtentM": 0.553587608200417
+        }
+      ],
+      "decisions": [
+        {
+          "step": 0,
+          "choiceType": "Frontier",
+          "image": "0_0.png",
+          "answer": "I need to move forward down the garage to inspect the boxes and bins ahead, since they may contain labels or clues indicating which bin is for paper.",
+          "filteredSnapshots": 2,
+          "totalSnapshots": 2,
+          "frontiers": 1
+        },
+        {
+          "step": 1,
+          "choiceType": "Frontier",
+          "image": "1_2.png",
+          "answer": "I can see a cart and several bins at the far end of the garage, but from here I cannot read any labels or identify which container is designated for paper. Moving forward toward that storage area will bring me closer to the bins so I can check for a paper/recycling label and determine the correct bin.",
+          "filteredSnapshots": 4,
+          "totalSnapshots": 5,
+          "frontiers": 3
+        },
+        {
+          "step": 2,
+          "choiceType": "SnapShot",
+          "image": "2-view_0.png",
+          "answer": "The green bin (the one with the white recycling/paper symbol on the shelf); the black bin is a general trash bin with a bag, so paper belongs in the green recycling bin.",
+          "filteredSnapshots": 6,
+          "totalSnapshots": 7,
+          "frontiers": 3
+        }
+      ]
+    },
+    {
+      "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+      "profile": "mpu_like",
+      "process": {
+        "observations": 16,
+        "associationFrames": 11,
+        "decisionCount": 4,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 3,
+            "snapshots": 3
+          },
+          {
+            "step": 1,
+            "objects": 11,
+            "snapshots": 6
+          },
+          {
+            "step": 2,
+            "objects": 18,
+            "snapshots": 8
+          },
+          {
+            "step": 3,
+            "objects": 13,
+            "snapshots": 6
+          }
+        ],
+        "matchedDetections": 0,
+        "unmatchedDetections": 27,
+        "simulatedSeconds": 37.32806603746784,
+        "finalPositionErrorM": 3.032276281575796,
+        "maxPositionErrorM": 3.032276281575796,
+        "finalRotationErrorDeg": 0.1401118162536584,
+        "maxRotationErrorDeg": 0.1401118162536584
+      },
+      "prediction": null,
+      "judge": {
+        "score": 0,
+        "normalizedMatch": 0.0,
+        "reason": "No answer; retained in denominator"
+      },
+      "sameImageFramesAsGt": [
+        "0-view_0.png",
+        "0-view_1.png",
+        "0-view_2.png",
+        "0-view_3.png",
+        "0-view_4.png",
+        "0-view_5.png",
+        "0-view_6.png",
+        "1-view_0.png",
+        "1-view_1.png",
+        "1-view_2.png",
+        "2-view_0.png",
+        "2-view_1.png",
+        "2-view_2.png"
+      ],
+      "firstDifferentImageFrame": "3-view_0.png",
+      "sameImageStepMemoryComparisons": [
+        {
+          "step": 0,
+          "objectCount": 3,
+          "gtObjectCount": 2,
+          "snapshots": 3,
+          "gtSnapshots": 2,
+          "categoryCountDelta": {
+            "bucket": 1
+          },
+          "medianObjectExtentM": 0.40207047820546926
+        },
+        {
+          "step": 1,
+          "objectCount": 11,
+          "gtObjectCount": 6,
+          "snapshots": 6,
+          "gtSnapshots": 3,
+          "categoryCountDelta": {
+            "bag": 2,
+            "bucket": 3
+          },
+          "medianObjectExtentM": 0.5539103819388855
+        },
+        {
+          "step": 2,
+          "objectCount": 18,
+          "gtObjectCount": 9,
+          "snapshots": 8,
+          "gtSnapshots": 5,
+          "categoryCountDelta": {
+            "bicycle": 2,
+            "box": 1,
+            "bag": 3,
+            "bucket": 3
+          },
+          "medianObjectExtentM": 0.532119957113763
+        }
+      ],
+      "decisions": [
+        {
+          "step": 0,
+          "choiceType": "Frontier",
+          "image": "0_0.png",
+          "answer": "I don't see a clearly labeled paper recycling bin in the current view—only buckets and miscellaneous containers along the garage walls. Moving forward down the garage aisle may reveal recycling/trash bins near the far end or an exit door, which would help identify the correct bin for paper.",
+          "filteredSnapshots": 2,
+          "totalSnapshots": 3,
+          "frontiers": 1
+        },
+        {
+          "step": 1,
+          "choiceType": "Frontier",
+          "image": "1_2.png",
+          "answer": "The bins are only visible in the far distance of the garage, and from the current viewpoint I cannot tell which one is the recycling/paper bin versus the regular trash bin (no labels or distinguishing features are readable at this range). Moving forward down the center of the garage toward that cluster of bins will bring me close enough to read any markings or inspect their contents, so I choose this frontier to gather the information needed to answer the question.",
+          "filteredSnapshots": 4,
+          "totalSnapshots": 6,
+          "frontiers": 3
+        },
+        {
+          "step": 2,
+          "choiceType": "Frontier",
+          "image": "2_1.png",
+          "answer": "Frontier 1",
+          "filteredSnapshots": 7,
+          "totalSnapshots": 8,
+          "frontiers": 3
+        },
+        {
+          "step": 3,
+          "choiceType": "SnapShot",
+          "image": "3-view_1.png",
+          "answer": "Paper should go in the recycling bin — the wheeled cart that carries the recycling label/symbol — rather than the black trash cart. Since the recycling bin is already clearly visible in this snapshot, no further exploration is needed.",
+          "filteredSnapshots": 2,
+          "totalSnapshots": 6,
+          "frontiers": 3
+        }
+      ]
+    },
+    {
+      "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+      "profile": "gt",
+      "process": {
+        "observations": 43,
+        "associationFrames": 37,
+        "decisionCount": 11,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 12,
+            "snapshots": 4
+          },
+          {
+            "step": 1,
+            "objects": 16,
+            "snapshots": 6
+          },
+          {
+            "step": 2,
+            "objects": 20,
+            "snapshots": 8
+          },
+          {
+            "step": 3,
+            "objects": 19,
+            "snapshots": 8
+          },
+          {
+            "step": 4,
+            "objects": 22,
+            "snapshots": 8
+          },
+          {
+            "step": 5,
+            "objects": 22,
+            "snapshots": 8
+          },
+          {
+            "step": 6,
+            "objects": 22,
+            "snapshots": 8
+          },
+          {
+            "step": 7,
+            "objects": 23,
+            "snapshots": 9
+          },
+          {
+            "step": 8,
+            "objects": 23,
+            "snapshots": 9
+          },
+          {
+            "step": 9,
+            "objects": 23,
+            "snapshots": 9
+          },
+          {
+            "step": 10,
+            "objects": 25,
+            "snapshots": 11
+          },
+          {
+            "step": 11,
+            "objects": 29,
+            "snapshots": 10
+          },
+          {
+            "step": 12,
+            "objects": 35,
+            "snapshots": 12
+          }
+        ],
+        "matchedDetections": 63,
+        "unmatchedDetections": 39,
+        "simulatedSeconds": 127.08891274620838,
+        "finalPositionErrorM": 0.0,
+        "maxPositionErrorM": 0.0,
+        "finalRotationErrorDeg": 0.0,
+        "maxRotationErrorDeg": 0.0
+      },
+      "prediction": "You can get a drink of water in the kitchen, either from the refrigerator (which typically has a water dispenser) or from the kitchen sink on the counter.",
+      "judge": {
+        "score": 4,
+        "normalizedMatch": 75.0,
+        "output": "4",
+        "returnedModel": "qwen3.7-plus-2026-05-26",
+        "usage": {
+          "prompt_tokens": 231,
+          "total_tokens": 659,
+          "completion_tokens": 428,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "text_tokens": 231
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 424,
+            "text_tokens": 428
+          }
+        }
+      },
+      "sameImageFramesAsGt": [
+        "0-view_0.png",
+        "0-view_1.png",
+        "0-view_2.png",
+        "0-view_3.png",
+        "0-view_4.png",
+        "0-view_5.png",
+        "0-view_6.png",
+        "1-view_0.png",
+        "1-view_1.png",
+        "1-view_2.png",
+        "2-view_0.png",
+        "2-view_1.png",
+        "2-view_2.png",
+        "3-view_0.png",
+        "3-view_1.png",
+        "3-view_2.png",
+        "4-view_0.png",
+        "4-view_1.png",
+        "4-view_2.png",
+        "5-view_0.png",
+        "5-view_1.png",
+        "5-view_2.png",
+        "6-view_0.png",
+        "6-view_1.png",
+        "6-view_2.png",
+        "7-view_0.png",
+        "7-view_1.png",
+        "7-view_2.png",
+        "8-view_0.png",
+        "8-view_1.png",
+        "8-view_2.png",
+        "9-view_0.png",
+        "9-view_1.png",
+        "9-view_2.png",
+        "10-view_0.png",
+        "10-view_1.png",
+        "10-view_2.png",
+        "11-view_0.png",
+        "11-view_1.png",
+        "11-view_2.png",
+        "12-view_0.png",
+        "12-view_1.png",
+        "12-view_2.png"
+      ],
+      "firstDifferentImageFrame": null,
+      "sameImageStepMemoryComparisons": [
+        {
+          "step": 0,
+          "objectCount": 12,
+          "gtObjectCount": 12,
+          "snapshots": 4,
+          "gtSnapshots": 4,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.8850221977718042
+        },
+        {
+          "step": 1,
+          "objectCount": 16,
+          "gtObjectCount": 16,
+          "snapshots": 6,
+          "gtSnapshots": 6,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.8850221977718042
+        },
+        {
+          "step": 2,
+          "objectCount": 20,
+          "gtObjectCount": 20,
+          "snapshots": 8,
+          "gtSnapshots": 8,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.9233939344661939
+        },
+        {
+          "step": 3,
+          "objectCount": 19,
+          "gtObjectCount": 19,
+          "snapshots": 8,
+          "gtSnapshots": 8,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.9510490356504906
+        },
+        {
+          "step": 4,
+          "objectCount": 22,
+          "gtObjectCount": 22,
+          "snapshots": 8,
+          "gtSnapshots": 8,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 1.0106638596175999
+        },
+        {
+          "step": 5,
+          "objectCount": 22,
+          "gtObjectCount": 22,
+          "snapshots": 8,
+          "gtSnapshots": 8,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 1.0106638596175999
+        },
+        {
+          "step": 6,
+          "objectCount": 22,
+          "gtObjectCount": 22,
+          "snapshots": 8,
+          "gtSnapshots": 8,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 1.0106638596175999
+        },
+        {
+          "step": 7,
+          "objectCount": 23,
+          "gtObjectCount": 23,
+          "snapshots": 9,
+          "gtSnapshots": 9,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 1.0653976293727998
+        },
+        {
+          "step": 8,
+          "objectCount": 23,
+          "gtObjectCount": 23,
+          "snapshots": 9,
+          "gtSnapshots": 9,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 1.0653976293727998
+        },
+        {
+          "step": 9,
+          "objectCount": 23,
+          "gtObjectCount": 23,
+          "snapshots": 9,
+          "gtSnapshots": 9,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 1.0653976293727998
+        },
+        {
+          "step": 10,
+          "objectCount": 25,
+          "gtObjectCount": 25,
+          "snapshots": 11,
+          "gtSnapshots": 11,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 1.0653976293727998
+        },
+        {
+          "step": 11,
+          "objectCount": 29,
+          "gtObjectCount": 29,
+          "snapshots": 10,
+          "gtSnapshots": 10,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.9994633302784539
+        },
+        {
+          "step": 12,
+          "objectCount": 35,
+          "gtObjectCount": 35,
+          "snapshots": 12,
+          "gtSnapshots": 12,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.947133153393455
+        }
+      ],
+      "decisions": [
+        {
+          "step": 0,
+          "choiceType": "Frontier",
+          "image": "0_0.png",
+          "answer": "I see a hallway leading to another room that may contain a sink or bathroom, so exploring there could help find drinking water.",
+          "filteredSnapshots": 1,
+          "totalSnapshots": 4,
+          "frontiers": 2
+        },
+        {
+          "step": 1,
+          "choiceType": "Frontier",
+          "image": "1_1.png",
+          "answer": "The doorway on the right side of this view leads into a kitchen (white cabinets and counter visible), which is the most likely place to find a water source such as a sink or refrigerator, so I will explore in that direction.",
+          "filteredSnapshots": 2,
+          "totalSnapshots": 6,
+          "frontiers": 4
+        },
+        {
+          "step": 2,
+          "choiceType": "Frontier",
+          "image": "1_3.png",
+          "answer": "The current area only shows laundry machines and bedrooms, none of which provide drinking water. I need to locate a kitchen or bathroom sink. Frontier 1 leads down the hallway toward an open living/dining area where a kitchen counter and sink are most likely to be found, so exploring this direction gives the best chance of locating a water source.",
+          "filteredSnapshots": 4,
+          "totalSnapshots": 8,
+          "frontiers": 4
+        },
+        {
+          "step": 3,
+          "choiceType": "Frontier",
+          "image": "2_2.png",
+          "answer": "To get a drink of water I need to locate a sink, most likely in the kitchen or a bathroom. The available snapshots only show a bedroom, a laundry room (washer/dryer, no sink), and hallways, none of which clearly contain a drinking-water source. Frontier 1 reveals a doorway on the left that opens into a counter/kitchen area where a sink is likely present, making it the most promising direction to explore for finding a glass of water.",
+          "filteredSnapshots": 4,
+          "totalSnapshots": 8,
+          "frontiers": 4
+        },
+        {
+          "step": 4,
+          "choiceType": "Frontier",
+          "image": "3_3.png",
+          "answer": "The hallway in this direction opens into a larger living/kitchen area visible in the distance, which is the most likely place to find a sink or faucet where I can get a drink of water.",
+          "filteredSnapshots": 5,
+          "totalSnapshots": 8,
+          "frontiers": 3
+        },
+        {
+          "step": 5,
+          "choiceType": "Frontier",
+          "image": "4_2.png",
+          "answer": "To get a drink of water I need to find a sink, most likely in the kitchen or a bathroom. The doorway on the right side of this corridor opens into a room with a countertop and a window, which looks like it contains a sink, so I should explore this direction to reach a water source.",
+          "filteredSnapshots": 3,
+          "totalSnapshots": 8,
+          "frontiers": 3
+        },
+        {
+          "step": 6,
+          "choiceType": "Frontier",
+          "image": "3_3.png",
+          "answer": "I see a hallway leading toward an open living/kitchen area, which is likely to contain a sink or water source where I can get a drink of water.",
+          "filteredSnapshots": 5,
+          "totalSnapshots": 8,
+          "frontiers": 3
+        },
+        {
+          "step": 7,
+          "choiceType": "Frontier",
+          "image": "4_2.png",
+          "answer": "The current snapshots do not clearly show a sink or water source. Frontier 1 shows a hallway with a doorway into what looks like a bathroom/vanity area, which is a likely place to find a sink for getting a drink of water.",
+          "filteredSnapshots": 7,
+          "totalSnapshots": 9,
+          "frontiers": 3
+        },
+        {
+          "step": 8,
+          "choiceType": "Frontier",
+          "image": "7_2.png",
+          "answer": "I don't see any clear water source (sink, faucet, or water dispenser) in the current hallway or the visible rooms (bedroom, laundry). The hallway in this frontier leads toward a room with dark cabinets and what looks like a kitchen island/counter, which is the most likely place to find a sink for drinking water, so I want to explore that direction.",
+          "filteredSnapshots": 5,
+          "totalSnapshots": 9,
+          "frontiers": 3
+        },
+        {
+          "step": 9,
+          "choiceType": "Frontier",
+          "image": "9_2.png",
+          "answer": "The hallway ahead leads into the open kitchen area, where I can see the island and counters. A kitchen sink is the most reliable place to get a drink of water, so I should move forward down this corridor to reach the kitchen.",
+          "filteredSnapshots": 5,
+          "totalSnapshots": 9,
+          "frontiers": 3
+        },
+        {
+          "step": 10,
+          "choiceType": "SnapShot",
+          "image": "10-view_2.png",
+          "answer": "You can get a drink of water in the kitchen, either from the refrigerator (which typically has a water dispenser) or from the kitchen sink on the counter.",
+          "filteredSnapshots": 5,
+          "totalSnapshots": 11,
+          "frontiers": 3
+        }
+      ]
+    },
+    {
+      "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+      "profile": "bmi_like",
+      "process": {
+        "observations": 16,
+        "associationFrames": 13,
+        "decisionCount": 2,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 14,
+            "snapshots": 5
+          },
+          {
+            "step": 1,
+            "objects": 19,
+            "snapshots": 8
+          },
+          {
+            "step": 2,
+            "objects": 21,
+            "snapshots": 10
+          },
+          {
+            "step": 3,
+            "objects": 14,
+            "snapshots": 5
+          }
+        ],
+        "matchedDetections": 8,
+        "unmatchedDetections": 29,
+        "simulatedSeconds": 35.89224924370768,
+        "finalPositionErrorM": 7.387785355088424,
+        "maxPositionErrorM": 7.387785355088424,
+        "finalRotationErrorDeg": 0.13224724457450088,
+        "maxRotationErrorDeg": 0.14574060687119986
+      },
+      "prediction": "You can get a drink of water in the kitchen, which is the open room at the end of the hallway containing the island/counter and bar stools — the kitchen sink is located there.",
+      "judge": {
+        "score": 2,
+        "normalizedMatch": 25.0,
+        "output": "2",
+        "returnedModel": "qwen3.7-plus-2026-05-26",
+        "usage": {
+          "prompt_tokens": 237,
+          "total_tokens": 810,
+          "completion_tokens": 573,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "text_tokens": 237
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 569,
+            "text_tokens": 573
+          }
+        }
+      },
+      "sameImageFramesAsGt": [
+        "0-view_0.png",
+        "0-view_1.png",
+        "0-view_2.png",
+        "0-view_3.png",
+        "0-view_4.png",
+        "0-view_5.png",
+        "0-view_6.png",
+        "1-view_0.png",
+        "1-view_1.png",
+        "1-view_2.png"
+      ],
+      "firstDifferentImageFrame": "2-view_0.png",
+      "sameImageStepMemoryComparisons": [
+        {
+          "step": 0,
+          "objectCount": 14,
+          "gtObjectCount": 12,
+          "snapshots": 5,
+          "gtSnapshots": 4,
+          "categoryCountDelta": {
+            "picture": 2
+          },
+          "medianObjectExtentM": 0.8999356929205732
+        },
+        {
+          "step": 1,
+          "objectCount": 19,
+          "gtObjectCount": 16,
+          "snapshots": 8,
+          "gtSnapshots": 6,
+          "categoryCountDelta": {
+            "bathtub": 1,
+            "picture": 2
+          },
+          "medianObjectExtentM": 0.9233852525477245
+        }
+      ],
+      "decisions": [
+        {
+          "step": 0,
+          "choiceType": "Frontier",
+          "image": "0_0.png",
+          "answer": "I need to find a sink or faucet to get a drink of water. The hallway in this frontier leads into the bathroom area (tile floor, washing machine visible), which is the most likely place to contain a sink. I'll explore this direction to locate the water source.",
+          "filteredSnapshots": 2,
+          "totalSnapshots": 5,
+          "frontiers": 2
+        },
+        {
+          "step": 1,
+          "choiceType": "SnapShot",
+          "image": "1-view_1.png",
+          "answer": "You can get a drink of water in the kitchen, which is the open room at the end of the hallway containing the island/counter and bar stools — the kitchen sink is located there.",
+          "filteredSnapshots": 6,
+          "totalSnapshots": 8,
+          "frontiers": 4
+        }
+      ]
+    },
+    {
+      "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+      "profile": "mpu_like",
+      "process": {
+        "observations": 28,
+        "associationFrames": 23,
+        "decisionCount": 4,
+        "snapshotHistory": [
+          {
+            "step": 0,
+            "objects": 12,
+            "snapshots": 4
+          },
+          {
+            "step": 1,
+            "objects": 17,
+            "snapshots": 7
+          },
+          {
+            "step": 2,
+            "objects": 18,
+            "snapshots": 8
+          },
+          {
+            "step": 3,
+            "objects": 12,
+            "snapshots": 6
+          },
+          {
+            "step": 4,
+            "objects": 21,
+            "snapshots": 9
+          },
+          {
+            "step": 5,
+            "objects": 31,
+            "snapshots": 12
+          },
+          {
+            "step": 6,
+            "objects": 39,
+            "snapshots": 14
+          },
+          {
+            "step": 7,
+            "objects": 13,
+            "snapshots": 5
+          }
+        ],
+        "matchedDetections": 10,
+        "unmatchedDetections": 60,
+        "simulatedSeconds": 72.18474596780368,
+        "finalPositionErrorM": 29.404923932389064,
+        "maxPositionErrorM": 29.404923932389064,
+        "finalRotationErrorDeg": 0.2570612790817859,
+        "maxRotationErrorDeg": 0.2570612790817859
+      },
+      "prediction": null,
+      "judge": {
+        "score": 0,
+        "normalizedMatch": 0.0,
+        "reason": "No answer; retained in denominator"
+      },
+      "sameImageFramesAsGt": [
+        "0-view_0.png",
+        "0-view_1.png",
+        "0-view_2.png",
+        "0-view_3.png",
+        "0-view_4.png",
+        "0-view_5.png",
+        "0-view_6.png",
+        "1-view_0.png",
+        "1-view_1.png",
+        "1-view_2.png"
+      ],
+      "firstDifferentImageFrame": "2-view_0.png",
+      "sameImageStepMemoryComparisons": [
+        {
+          "step": 0,
+          "objectCount": 12,
+          "gtObjectCount": 12,
+          "snapshots": 4,
+          "gtSnapshots": 4,
+          "categoryCountDelta": {},
+          "medianObjectExtentM": 0.9082820545052174
+        },
+        {
+          "step": 1,
+          "objectCount": 17,
+          "gtObjectCount": 16,
+          "snapshots": 7,
+          "gtSnapshots": 6,
+          "categoryCountDelta": {
+            "bathtub": 1
+          },
+          "medianObjectExtentM": 0.9208252757288173
+        }
+      ],
+      "decisions": [
+        {
+          "step": 0,
+          "choiceType": "Frontier",
+          "image": "0_0.png",
+          "answer": "The current bedroom view shows no kitchen, sink, or faucet where I could get a drink of water. The open door leads toward a tiled room (visible washing machine and tile floor), which is most likely a bathroom or laundry area that would typically contain a sink with running water. Exploring this direction is the best way to find a water source, so I will move forward into that corridor.",
+          "filteredSnapshots": 3,
+          "totalSnapshots": 4,
+          "frontiers": 2
+        },
+        {
+          "step": 1,
+          "choiceType": "Frontier",
+          "image": "1_3.png",
+          "answer": "I see a long hallway leading toward an open kitchen/living area in the distance, where a sink or other water source would typically be located. Since the current view only shows a laundry room and a bathroom doorway (no clear drinking-water source confirmed), exploring down this corridor toward the kitchen is the most promising direction to find a place to get a drink of water.",
+          "filteredSnapshots": 4,
+          "totalSnapshots": 7,
+          "frontiers": 4
+        },
+        {
+          "step": 2,
+          "choiceType": "Frontier",
+          "image": "2_3.png",
+          "answer": "The view ahead shows an open kitchen area with a counter/island in the distance, which is the most likely place to find a sink or water source. I'll move forward into the kitchen to look for a place to get a drink of water.",
+          "filteredSnapshots": 4,
+          "totalSnapshots": 8,
+          "frontiers": 4
+        },
+        {
+          "step": 3,
+          "choiceType": "SnapShot",
+          "image": "3-view_2.png",
+          "answer": "You can get a drink of water from the water dispenser built into the door of the stainless steel refrigerator in the kitchen.",
+          "filteredSnapshots": 3,
+          "totalSnapshots": 6,
+          "frontiers": 5
+        }
+      ]
+    }
+  ]
+}

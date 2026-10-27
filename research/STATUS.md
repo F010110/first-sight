@@ -1,5 +1,7 @@
 # 科研复现状态
 
+最新异常已定位：第2题MPU-like第7步清理将49对象降为13并删除冰箱对象33；planner.max_point仍引用第3步旧快照cluster=[33]，agent_step可视化访问objects[33]抛KeyError。不是休眠／OOM／网络。该运行已生成接近参考的饮水机候选答案，未正式交付；第1题两噪声运行同样生成过文本但因目标导航失败未写正式输出，不能说VLM没作答。第1题BMI-like前13帧RGB-D与GT相同，第2步末对象GT9 vs BMI17、快照5 vs7，提供同图融合退化证据。分析与过程曲线见reports/imu-memory-v1-pilot-findings.md、reports/imu-memory-v1-process/。仍暂停，未修复重跑；2题1种子纯惯导米级误差不外推正常VIO。
+
 最新运行状态：IMU先导已尝试6/9（5个进程正常结束，第6个即第2题MPU-like进程失败），主控按保护规则停止，余3次未启动。该失败末帧纯惯导位置误差约29.4m，尚未诊断具体异常；不将进程失败等同VLM答错，也不把结果视为正常VIO性能。当前无继续运行的先导任务，未自动重跑。全部原始文件保留。研究工作改在research/3dmem-imu-noise分支提交，其他已有仓库改动不混入。
 
 当前已启动IMU噪声先导：独立3dmem-imu-memory-runtime-v1，首3题按ID顺序×GT/BMI-like/MPU-like共9运行，种子0，GPU串行。BMI-like(.014deg/s/√Hz,175ug/√Hz)、MPU-like(.005,400)，附较小假设残余bias，测量级注入后纯惯导积分；对象融合／快照用估计pose，TSDF导航保留GT。此为纯IMU记忆侧诊断，不是VIO或完整噪声导航。3个数值自检已通过；原26题与源码冻结不变。过程保存原始IMU、pose、原生匹配／融合后对象与快照、VLM选择及图像hash。见reports/imu-memory-v1-pilot-plan.md、reports/imu-memory-v1-protocol.json；进度reports/imu-memory-v1-pilot-progress.json。首轮尚未完成，不宣称已获噪声结果。
