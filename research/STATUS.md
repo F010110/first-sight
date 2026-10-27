@@ -1,5 +1,7 @@
 # 科研复现状态
 
+新增用户任务：IMU鲁棒性文献与无3D强VLM对照。核查VINSEval、OpenVINS、VIO-IPNet、TLIO、mi-VINS、ORB-SLAM3及CVPR2022 EMQA等，见reports/imu-robustness-related-work.md；不再把加IMU噪声本身视为新算法。Direct全历史图像问答先导已后台启动准备：前2题GT轨迹截至最后实际VLM查询，360px无标注RGB，Flash与Max各一次、Plus裁判，不给pose/对象表/参考答案。首准备遇外层超时，旧目录保留，独立retry1目录重新生成，尚未宣称推理完成；重渲染非字节同图限制已写协议。见reports/direct-vlm-v1-protocol.md。
+
 V2真实图像VIO smoke三条件已完成：统一原生静止初始化后537/601有效相机时刻，低噪／BMI-like／MPU-like位置RMSE分别0.0561／0.6131／0.2833m；末帧0.0709／0.3899／0.3253m。MPU-like中断后的独立重跑已完成，旧部分文件保留，无后台任务。MPU-like不必比BMI-like差（陀螺白噪声更低，且仅1种子），不能据此排列实物档位。下一步为同图完整3D-Mem回放，当前仍无V2下游得分。
 
 真实图像VIO smoke进展：601图／6010IMU每条件已生成。原配置v1因纯旋转阶段动态初始化退化（低噪参考都发散）被判不可用于下游并保留。统一启用原生启动ZUPT／静止初始化后，低噪参考位置RMSE5.61cm、BMI-like61.31cm，首有效3.2秒、537/601有效时刻，未补GT。MPU-like首次被外层工具120秒时限中断，部分csv/log已保留，后台仅重跑此条件；不是传感器/VIO异常。尚无V2的3D-Mem结果。见reports/image-vio-v2-initialization-audit.md、image-vio-v2-smoke-static-init-v2-results.json。
