@@ -1,5 +1,7 @@
 # 科研复现状态
 
+最新目标澄清：先确认“生成式VLM空间推理+几何定位／空间记忆”的已有方法，再决定鲁棒性或方法创新。已核查GraphEQA（Hydra/TSDF位姿依赖+VLM层级规划）、ConceptGraphs（posed RGB-D关联+LVLM描述/LLM关系）、Mobility VLA（COLMAP/PnP支撑拓扑图+长上下文VLM目标选择），并补充无需执行导航的GraphPad实例。详见reports/vlm-spatial-reasoning-geometric-dependency.md。明确该组合已有先例，不以未找到为由声称空白；IMU不是所有方法的必要输入。未启动实验；GraphEQA语义资产限制及Mobility VLA/GraphPad未确认完整官方代码均保留。
+
 空间／情景记忆方向重审：见reports/spatial-memory-and-direct-vlm-comparators.md。Direct的主对手改为图像检索、视频RAG、事件／摘要记忆和自适应视频搜索；3D-Mem保留为IMU漂移下空间建模的独立支线，不再用精确导航交付判定Direct胜负。报告区分全历史Direct与分批穷举，核对ReMEmbR、两篇不同VideoAgent、VideoTree、EgoLife与候选数据；Direct的细节／动态／事后新问题优势均为待验证假设。未启动新实验、未更换数据集；数据下载及多摄可用性未确认。
 
 Direct强VLM先导4次生成／Plus评分已完成，非26题结论：纸桶题3D-Mem+Flash3、Direct+Flash1、Direct+Max5；喝水题对应4、1、1。后一题Direct都回答水槽而非参考冰箱饮水机；不能凭2题认定结构或模型必胜，且重渲染原图非字节一致、缺3D-Mem+Max配对。原始结果reports/direct-vlm-pilot-v1-results.json，输入manifest单独保存。IMU文献进一步核查见reports/vinseval-and-ipnet-critical-review.md：VINSEval是FlightGoggles仿真评估，IPNet是EuRoC/TUM-VI等bias先验方法，两者不是同一工作。
