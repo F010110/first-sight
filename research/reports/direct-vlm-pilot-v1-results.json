@@ -1,0 +1,181 @@
+{
+  "scope": "Offline all-history QA on two GT exploration trajectories; not independent exploration or full26 score",
+  "rows": [
+    {
+      "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+      "model": "qwen3.8-flash",
+      "imageCount": 16,
+      "allRawRgbMatchSource": false,
+      "generation": {
+        "text": "I cannot determine the answer. None of the bins visible in the garage (the brown trash cans, the maroon round container, the teal bin, or the black bucket) show any label, symbol, or marking that identifies one specifically as a paper/recycling bin, so there is no visual evidence to indicate which one paper should go into.",
+        "returnedModel": "qwen3.8-flash",
+        "usage": {
+          "prompt_tokens": 2158,
+          "total_tokens": 3270,
+          "completion_tokens": 1112,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "image_tokens": 1968,
+            "text_tokens": 190
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 1039,
+            "text_tokens": 72
+          }
+        },
+        "seconds": 12.345565807000014
+      },
+      "judge": {
+        "text": "1",
+        "returnedModel": "qwen3.7-plus-2026-05-26",
+        "usage": {
+          "prompt_tokens": 267,
+          "total_tokens": 490,
+          "completion_tokens": 223,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "text_tokens": 267
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 220,
+            "text_tokens": 223
+          }
+        },
+        "seconds": 4.433191139000002,
+        "score": 1
+      }
+    },
+    {
+      "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+      "model": "qwen3.8-max-0902",
+      "imageCount": 16,
+      "allRawRgbMatchSource": false,
+      "generation": {
+        "text": "The wheeled bin with the yellow lid — i.e., the recycling bin standing at the far end of the garage next to the darker trash can — is the one for paper.",
+        "returnedModel": "qwen3.8-max-0902",
+        "usage": {
+          "prompt_tokens": 2120,
+          "total_tokens": 5912,
+          "completion_tokens": 3792,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "image_tokens": 1968,
+            "text_tokens": 152
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 3752,
+            "text_tokens": 39
+          }
+        },
+        "seconds": 72.568152991
+      },
+      "judge": {
+        "text": "5",
+        "returnedModel": "qwen3.7-plus-2026-05-26",
+        "usage": {
+          "prompt_tokens": 234,
+          "total_tokens": 551,
+          "completion_tokens": 317,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "text_tokens": 234
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 313,
+            "text_tokens": 317
+          }
+        },
+        "seconds": 5.779503857000009,
+        "score": 5
+      }
+    },
+    {
+      "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+      "model": "qwen3.8-flash",
+      "imageCount": 37,
+      "allRawRgbMatchSource": false,
+      "generation": {
+        "text": "The kitchen. In the later observations (e.g., 35 and 37) you can see the kitchen counters with a sink and faucet, which is where you'd get a drink of water.",
+        "returnedModel": "qwen3.8-flash",
+        "usage": {
+          "prompt_tokens": 4847,
+          "total_tokens": 5208,
+          "completion_tokens": 361,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "image_tokens": 4551,
+            "text_tokens": 296
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 315,
+            "text_tokens": 45
+          }
+        },
+        "seconds": 4.629040959000008
+      },
+      "judge": {
+        "text": "1",
+        "returnedModel": "qwen3.7-plus-2026-05-26",
+        "usage": {
+          "prompt_tokens": 241,
+          "total_tokens": 710,
+          "completion_tokens": 469,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "text_tokens": 241
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 465,
+            "text_tokens": 469
+          }
+        },
+        "seconds": 9.183499463000032,
+        "score": 1
+      }
+    },
+    {
+      "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+      "model": "qwen3.8-max-0902",
+      "imageCount": 37,
+      "allRawRgbMatchSource": false,
+      "generation": {
+        "text": "In the kitchen — at the sink in the open kitchen area (dark cabinets, stainless refrigerator) at the end of the hallway, seen in the final observations (e.g., Obs. 35–37).",
+        "returnedModel": "qwen3.8-max-0902",
+        "usage": {
+          "prompt_tokens": 4809,
+          "total_tokens": 7563,
+          "completion_tokens": 2754,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "image_tokens": 4551,
+            "text_tokens": 258
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 2706,
+            "text_tokens": 47
+          }
+        },
+        "seconds": 54.54586172899997
+      },
+      "judge": {
+        "text": "1",
+        "returnedModel": "qwen3.7-plus-2026-05-26",
+        "usage": {
+          "prompt_tokens": 243,
+          "total_tokens": 403,
+          "completion_tokens": 160,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "text_tokens": 243
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 156,
+            "text_tokens": 160
+          }
+        },
+        "seconds": 3.2157202490000145,
+        "score": 1
+      }
+    }
+  ]
+}

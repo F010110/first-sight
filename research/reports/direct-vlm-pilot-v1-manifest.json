@@ -1,0 +1,538 @@
+{
+  "scope": "Offline all-history QA on two GT exploration trajectories; not independent exploration or full26 score",
+  "answerModels": [
+    "qwen3.8-flash",
+    "qwen3.8-max-0902"
+  ],
+  "judgeModel": "qwen3.7-plus-2026-05-26",
+  "maxOutputTokens": 4096,
+  "temperature": 0.7,
+  "sdkRetries": 0,
+  "questions": [
+    {
+      "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+      "question": "Which bin should I put paper in?",
+      "cutoffStep": 3,
+      "images": [
+        {
+          "frame": "0-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/0-view_0.png",
+          "sha256": "27c29c7a3ab45c51a88ca42ad3bf000735ad138945d0d12c7f5d65d55c8ddb85",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/0-view_1.png",
+          "sha256": "24b2b31c2ce0b6f838dd36238c5f3dd75bbd959bd76680dc8e63143203e1c49e",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/0-view_2.png",
+          "sha256": "8fa2b2518ca7c4d64494ccb194d5d9393dac1e3d43ca6b3bd2f56c84e741f79d",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_3.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/0-view_3.png",
+          "sha256": "c791de92d62a72d3bae549f2528d759d594a140b54b07ba35bd73511c734d4bb",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_4.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/0-view_4.png",
+          "sha256": "e17278ccd39f01c764acfef004170d957cf13bfc13d831b14ab6e5b279c2aecb",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_5.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/0-view_5.png",
+          "sha256": "e3629fa220ab1bd6c2fbb1fe67591eedc751ed7ed3ef7cdd14eff0427b6f71a6",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_6.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/0-view_6.png",
+          "sha256": "9b8adb0ab32d174fd7b071d64809b38460dfc2f428736218c2854e5a53e63102",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "1-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/1-view_0.png",
+          "sha256": "dc7d4707f8993375f2771f0422d8d394c55f770c71a6b9c5e09d51bd5d1caba8",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "1-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/1-view_1.png",
+          "sha256": "602b8747772b9e7e8570ae15dd8644facc4f33ff7d7115133c7590667b30c5d7",
+          "rawRgbMatchesSource": true
+        },
+        {
+          "frame": "1-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/1-view_2.png",
+          "sha256": "b2cecb9cd13a6ab5bc91f142ff648e377725f3e88f95317aa5609e38f6e5e0b9",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "2-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/2-view_0.png",
+          "sha256": "5574e96f6e640a1973a331f7bf7a222285506af71a4b8898db111abc30b7fc4e",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "2-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/2-view_1.png",
+          "sha256": "00e716b84a48ac4ca14cf737d7bc8921febde629aaffb074c5302754627e2abb",
+          "rawRgbMatchesSource": true
+        },
+        {
+          "frame": "2-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/2-view_2.png",
+          "sha256": "885bf024bbe7fd073ebbb734712ec77f2b459ba498351da789db7be2fee2656c",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "3-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/3-view_0.png",
+          "sha256": "bc948e355756af026c910f326efbc64d427081b9950137d183d684f1ee1d2663",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "3-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/3-view_1.png",
+          "sha256": "6599fb70049d60e043a11ecd8fa2170a4a73799bfe31046ae198b2aa8aa5302c",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "3-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/025257b6-8b7e-4f6f-aacc-1788069cbfad/3-view_2.png",
+          "sha256": "6206b504b52c79710975cdc715a09824f018f161b9859bd6d0557e4a4ccfff49",
+          "rawRgbMatchesSource": false
+        }
+      ],
+      "baseline3DMemFlash": {
+        "questionId": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+        "profile": "gt",
+        "seed": 0,
+        "exitCode": 0,
+        "status": "process_completed",
+        "seconds": 633.358065909,
+        "answers": [
+          {
+            "question_id": "025257b6-8b7e-4f6f-aacc-1788069cbfad",
+            "answer": "Paper should go in the recycling bin."
+          }
+        ],
+        "prediction": "Paper should go in the recycling bin.",
+        "process": {
+          "observations": 22,
+          "associationFrames": 17,
+          "decisionCount": 4,
+          "snapshotHistory": [
+            {
+              "step": 0,
+              "objects": 2,
+              "snapshots": 2
+            },
+            {
+              "step": 1,
+              "objects": 6,
+              "snapshots": 3
+            },
+            {
+              "step": 2,
+              "objects": 9,
+              "snapshots": 5
+            },
+            {
+              "step": 3,
+              "objects": 13,
+              "snapshots": 7
+            },
+            {
+              "step": 4,
+              "objects": 17,
+              "snapshots": 9
+            },
+            {
+              "step": 5,
+              "objects": 18,
+              "snapshots": 9
+            }
+          ],
+          "matchedDetections": 23,
+          "unmatchedDetections": 18,
+          "simulatedSeconds": 56.24956731037701,
+          "finalPositionErrorM": 0.0,
+          "maxPositionErrorM": 0.0,
+          "finalRotationErrorDeg": 0.0,
+          "maxRotationErrorDeg": 0.0
+        },
+        "judge": {
+          "score": 3,
+          "normalizedMatch": 50.0,
+          "output": "3",
+          "returnedModel": "qwen3.7-plus-2026-05-26",
+          "usage": {
+            "prompt_tokens": 206,
+            "total_tokens": 696,
+            "completion_tokens": 490,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 206
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 486,
+              "text_tokens": 490
+            }
+          }
+        }
+      },
+      "allRawRgbMatchSource": false
+    },
+    {
+      "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+      "question": "Where can I get a drink of water?",
+      "cutoffStep": 10,
+      "images": [
+        {
+          "frame": "0-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/0-view_0.png",
+          "sha256": "12f6bc3f6f8dc74d74d040dcab267088944b5a43c0025db3c2dcbbfa3eca5d88",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/0-view_1.png",
+          "sha256": "cb8228e1a4ea689c021656c23abedf05a40ade53dca4e64660b4b493dc7ac551",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/0-view_2.png",
+          "sha256": "344925a4d00ccd40b1257715036e1ea0beac80c1469005bea4a3a07e0e0ad063",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_3.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/0-view_3.png",
+          "sha256": "2103901fddfe1e779f919a449aef7dc45a2e69332e16a30df3d43d5e5eaedbd4",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_4.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/0-view_4.png",
+          "sha256": "70190c074cc5829755f6fa5814ec68e72e1b1cd636d27d69af79b04b2add58d2",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_5.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/0-view_5.png",
+          "sha256": "45a2fbf8093881bb8f550e47b9516eb57e84b70dc42df81088a3f984da67fdbd",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "0-view_6.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/0-view_6.png",
+          "sha256": "06d912274150011ad91613ebf3667d320a229b4b1cc8a2a5cecefa43cf3ba029",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "1-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/1-view_0.png",
+          "sha256": "2dba423ff379301cf0328ca4269e088a36d5e4c0276e7a0296fc960b97b88a73",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "1-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/1-view_1.png",
+          "sha256": "f2c2d8f77364b79fb5872e776d4d9008ae37c610948d4ef9f8d6cb07d89a6c85",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "1-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/1-view_2.png",
+          "sha256": "4b9aa44708b630313dfcb90c9fc868d094e3fc42074bf19548b9c93cb2a80aa7",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "2-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/2-view_0.png",
+          "sha256": "eb95fd01738ed0f8309ffe304bd85b24e4236056da64446d2beff91d7cd96803",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "2-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/2-view_1.png",
+          "sha256": "fc8601c341262b70845afe1f489ff469a9651943c4a862fec4d780a3fb95c0db",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "2-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/2-view_2.png",
+          "sha256": "78aa8b26938227cdfd036382537b2c7679dadfafc9811c2fc1be62436af3135a",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "3-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/3-view_0.png",
+          "sha256": "7be774dc93ba6c858b77773266c11f54bdacb484f18c2b87b8ae42a7a2c0bc31",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "3-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/3-view_1.png",
+          "sha256": "829214726ed8f2d45f1ade2653e231e1b793a35574f140e3ca7554d2687a44e5",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "3-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/3-view_2.png",
+          "sha256": "a90d84ec05fe789c1bec4e85621426eedd6629466d70182394679990e41f9937",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "4-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/4-view_0.png",
+          "sha256": "5503cb6eb804d9cb7e64d8f13014d991de89a1caffaa7eb06c1303d4cbe4d500",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "4-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/4-view_1.png",
+          "sha256": "74af623dfa44f8357ee567564e31f85e966a2b06d2d926dbd03daeb28d94b8eb",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "4-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/4-view_2.png",
+          "sha256": "be6357863a01a06be82f0e8a16e5759cf193951eb9cb42cd2b5bdd8bca539d0e",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "5-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/5-view_0.png",
+          "sha256": "c1139703e1bed96e54523c462916969dfa8ee47b399024547fc98401a2ee93d1",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "5-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/5-view_1.png",
+          "sha256": "ef9203c1c05b9b90f563eee977a61b5123c78cdfeef69a87e2d8889c31541bd1",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "5-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/5-view_2.png",
+          "sha256": "6a3c4c62ab386f5a01b1c6b77a0713b982a55f3437031e43ab5128f4c3df6a05",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "6-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/6-view_0.png",
+          "sha256": "23baa5fc5f2a064bdc9d82f93edd47c3d7aabbb931956dbb86841a723b588553",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "6-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/6-view_1.png",
+          "sha256": "86cc81af18917f74ebbceb8573181fad831f191105f0618b2209e6f1a1a85da5",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "6-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/6-view_2.png",
+          "sha256": "6b942da43a125bda9d33361c9f4a47bf901228175f4e98a3616f965de11df390",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "7-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/7-view_0.png",
+          "sha256": "0638db046d8628ddac29dddd8256b985ea444b731c7b37839a171890dbf2dd10",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "7-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/7-view_1.png",
+          "sha256": "e023ebcaf5effe632bc3f100b5ad278c366556181137319cb5f5e4221e972fcb",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "7-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/7-view_2.png",
+          "sha256": "cfa33a6c3a75b6ad78ebfa082ff13d67350157f008411b6a20c6c130fe718a63",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "8-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/8-view_0.png",
+          "sha256": "e9e44635fc172d8ccdcfba587fc1b10861e4349a697144fdb4874a21ea063681",
+          "rawRgbMatchesSource": true
+        },
+        {
+          "frame": "8-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/8-view_1.png",
+          "sha256": "bb8c4773fa7abc3e8e78a003fb200f849cd11869c32c63b76e2c44e3fea42cbd",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "8-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/8-view_2.png",
+          "sha256": "84206f642d54afc1aecaa32607f7f7f1f31a3506e9598f04b5148a0023fe7b6e",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "9-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/9-view_0.png",
+          "sha256": "4f13d18924ad0ebfddb106607053043ecd895f7a6901d26b1f7f227ab0ee4b6e",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "9-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/9-view_1.png",
+          "sha256": "b26d1b7f29fad0a6cdc6d7107eabfc1fa2f8e68d9f7ef8e4d5c704e0ecfb8760",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "9-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/9-view_2.png",
+          "sha256": "8f804430d24b414b9ec2686f48c582cb77d4215eb43b753847f703c083e32d78",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "10-view_0.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/10-view_0.png",
+          "sha256": "c57b8571dd48b2b6ffb72d1b42ab4571c1b72dd4b93bdfc56f223e89e7baf0cb",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "10-view_1.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/10-view_1.png",
+          "sha256": "116aa4dac608050f7a95643bdf77419bd7a08406ac2c1f8a60da7bc23441dd63",
+          "rawRgbMatchesSource": false
+        },
+        {
+          "frame": "10-view_2.png",
+          "path": "/mnt/d/Projects/Projects2026/VLM/research/runs/direct-vlm-pilot-v1-preparation-retry1/13d097e7-12c7-48e0-92c4-9667fc7f9c60/10-view_2.png",
+          "sha256": "7882f6ed8d81e0838992d98e8a2de36acc5f0ce59b1a9846ff754b7390b16660",
+          "rawRgbMatchesSource": false
+        }
+      ],
+      "baseline3DMemFlash": {
+        "questionId": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+        "profile": "gt",
+        "seed": 0,
+        "exitCode": 0,
+        "status": "process_completed",
+        "seconds": 919.32924697,
+        "answers": [
+          {
+            "question_id": "13d097e7-12c7-48e0-92c4-9667fc7f9c60",
+            "answer": "You can get a drink of water in the kitchen, either from the refrigerator (which typically has a water dispenser) or from the kitchen sink on the counter."
+          }
+        ],
+        "prediction": "You can get a drink of water in the kitchen, either from the refrigerator (which typically has a water dispenser) or from the kitchen sink on the counter.",
+        "process": {
+          "observations": 43,
+          "associationFrames": 37,
+          "decisionCount": 11,
+          "snapshotHistory": [
+            {
+              "step": 0,
+              "objects": 12,
+              "snapshots": 4
+            },
+            {
+              "step": 1,
+              "objects": 16,
+              "snapshots": 6
+            },
+            {
+              "step": 2,
+              "objects": 20,
+              "snapshots": 8
+            },
+            {
+              "step": 3,
+              "objects": 19,
+              "snapshots": 8
+            },
+            {
+              "step": 4,
+              "objects": 22,
+              "snapshots": 8
+            },
+            {
+              "step": 5,
+              "objects": 22,
+              "snapshots": 8
+            },
+            {
+              "step": 6,
+              "objects": 22,
+              "snapshots": 8
+            },
+            {
+              "step": 7,
+              "objects": 23,
+              "snapshots": 9
+            },
+            {
+              "step": 8,
+              "objects": 23,
+              "snapshots": 9
+            },
+            {
+              "step": 9,
+              "objects": 23,
+              "snapshots": 9
+            },
+            {
+              "step": 10,
+              "objects": 25,
+              "snapshots": 11
+            },
+            {
+              "step": 11,
+              "objects": 29,
+              "snapshots": 10
+            },
+            {
+              "step": 12,
+              "objects": 35,
+              "snapshots": 12
+            }
+          ],
+          "matchedDetections": 63,
+          "unmatchedDetections": 39,
+          "simulatedSeconds": 127.08891274620838,
+          "finalPositionErrorM": 0.0,
+          "maxPositionErrorM": 0.0,
+          "finalRotationErrorDeg": 0.0,
+          "maxRotationErrorDeg": 0.0
+        },
+        "judge": {
+          "score": 4,
+          "normalizedMatch": 75.0,
+          "output": "4",
+          "returnedModel": "qwen3.7-plus-2026-05-26",
+          "usage": {
+            "prompt_tokens": 231,
+            "total_tokens": 659,
+            "completion_tokens": 428,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "text_tokens": 231
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 424,
+              "text_tokens": 428
+            }
+          }
+        }
+      },
+      "allRawRgbMatchSource": false
+    }
+  ]
+}

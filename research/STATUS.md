@@ -1,5 +1,7 @@
 # 科研复现状态
 
+Direct强VLM先导4次生成／Plus评分已完成，非26题结论：纸桶题3D-Mem+Flash3、Direct+Flash1、Direct+Max5；喝水题对应4、1、1。后一题Direct都回答水槽而非参考冰箱饮水机；不能凭2题认定结构或模型必胜，且重渲染原图非字节一致、缺3D-Mem+Max配对。原始结果reports/direct-vlm-pilot-v1-results.json，输入manifest单独保存。IMU文献进一步核查见reports/vinseval-and-ipnet-critical-review.md：VINSEval是FlightGoggles仿真评估，IPNet是EuRoC/TUM-VI等bias先验方法，两者不是同一工作。
+
 新增用户任务：IMU鲁棒性文献与无3D强VLM对照。核查VINSEval、OpenVINS、VIO-IPNet、TLIO、mi-VINS、ORB-SLAM3及CVPR2022 EMQA等，见reports/imu-robustness-related-work.md；不再把加IMU噪声本身视为新算法。Direct全历史图像问答先导已后台启动准备：前2题GT轨迹截至最后实际VLM查询，360px无标注RGB，Flash与Max各一次、Plus裁判，不给pose/对象表/参考答案。首准备遇外层超时，旧目录保留，独立retry1目录重新生成，尚未宣称推理完成；重渲染非字节同图限制已写协议。见reports/direct-vlm-v1-protocol.md。
 
 V2真实图像VIO smoke三条件已完成：统一原生静止初始化后537/601有效相机时刻，低噪／BMI-like／MPU-like位置RMSE分别0.0561／0.6131／0.2833m；末帧0.0709／0.3899／0.3253m。MPU-like中断后的独立重跑已完成，旧部分文件保留，无后台任务。MPU-like不必比BMI-like差（陀螺白噪声更低，且仅1种子），不能据此排列实物档位。下一步为同图完整3D-Mem回放，当前仍无V2下游得分。
