@@ -2,6 +2,8 @@
 
 日期：2026-10-27。状态：设计草案，未采集新数据，未开展视障用户研究，不代表已达到真实辅助使用标准。
 
+优先参考调整：LightMem-Ego已公开实现流式生活采集、current/short/long记忆、带证据找物与自然语言回答，应作为直接生活记忆参考和候选基线，而非继续从机器人任务倒推产品。核查见`research/reports/lightmem-ego-product-reference-audit.md`。其在线原型评测为5视频/约45.7分钟/27查询，不能代替多日视障使用验证；端到端评测数据完整公开情况未确认。
+
 补充设计与来源核查见`research/reports/ego4d-vcn-spamem-evonav-assistive-data-design.md`：以Ego4D最后所见证据定位、VCN历史空间上下文、SpaMEM分层诊断、EvoNav视野外局部变化为参考。主数据采用需求来源＋自然多日经历＋独立受控挑战三层；Tartan/仿真只作工程辅助。重点新增非视觉可用地标、用户已有策略、无答案自然请求、实际检查负担；不将通用第一人称或机器人轨迹冒称视障生活数据。
 
 ## 1. 目标改为用户生活，而非benchmark任务
