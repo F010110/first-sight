@@ -1,5 +1,7 @@
 # 科研复现状态
 
+空间／情景记忆方向重审：见reports/spatial-memory-and-direct-vlm-comparators.md。Direct的主对手改为图像检索、视频RAG、事件／摘要记忆和自适应视频搜索；3D-Mem保留为IMU漂移下空间建模的独立支线，不再用精确导航交付判定Direct胜负。报告区分全历史Direct与分批穷举，核对ReMEmbR、两篇不同VideoAgent、VideoTree、EgoLife与候选数据；Direct的细节／动态／事后新问题优势均为待验证假设。未启动新实验、未更换数据集；数据下载及多摄可用性未确认。
+
 Direct强VLM先导4次生成／Plus评分已完成，非26题结论：纸桶题3D-Mem+Flash3、Direct+Flash1、Direct+Max5；喝水题对应4、1、1。后一题Direct都回答水槽而非参考冰箱饮水机；不能凭2题认定结构或模型必胜，且重渲染原图非字节一致、缺3D-Mem+Max配对。原始结果reports/direct-vlm-pilot-v1-results.json，输入manifest单独保存。IMU文献进一步核查见reports/vinseval-and-ipnet-critical-review.md：VINSEval是FlightGoggles仿真评估，IPNet是EuRoC/TUM-VI等bias先验方法，两者不是同一工作。
 
 新增用户任务：IMU鲁棒性文献与无3D强VLM对照。核查VINSEval、OpenVINS、VIO-IPNet、TLIO、mi-VINS、ORB-SLAM3及CVPR2022 EMQA等，见reports/imu-robustness-related-work.md；不再把加IMU噪声本身视为新算法。Direct全历史图像问答先导已后台启动准备：前2题GT轨迹截至最后实际VLM查询，360px无标注RGB，Flash与Max各一次、Plus裁判，不给pose/对象表/参考答案。首准备遇外层超时，旧目录保留，独立retry1目录重新生成，尚未宣称推理完成；重渲染非字节同图限制已写协议。见reports/direct-vlm-v1-protocol.md。
