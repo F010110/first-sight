@@ -1,5 +1,7 @@
 # 科研复现状态
 
+最新目标进一步收窄为地点／位移／朝向／定位中心的长期记忆，由VLM承担主要空间推理、可用IMU，不以具体物品为中心。调研见reports/place-centric-vlm-imu-memory-neighbors.md：确认Motion-MLLM的IMU→VLM融合先例、CROSS的跨会话拓扑定位、VLG-Loc的VLM观测→全局定位（三台120°相机）、NavMind的VLM认知地图；各有明显缺项，尚未确认全部目标同一方法覆盖，也未宣称空白。注意CROSS当前项目传感模式／榜单与论文v2不同；未启动任何新实验或部署。
+
 最新目标澄清：先确认“生成式VLM空间推理+几何定位／空间记忆”的已有方法，再决定鲁棒性或方法创新。已核查GraphEQA（Hydra/TSDF位姿依赖+VLM层级规划）、ConceptGraphs（posed RGB-D关联+LVLM描述/LLM关系）、Mobility VLA（COLMAP/PnP支撑拓扑图+长上下文VLM目标选择），并补充无需执行导航的GraphPad实例。详见reports/vlm-spatial-reasoning-geometric-dependency.md。明确该组合已有先例，不以未找到为由声称空白；IMU不是所有方法的必要输入。未启动实验；GraphEQA语义资产限制及Mobility VLA/GraphPad未确认完整官方代码均保留。
 
 空间／情景记忆方向重审：见reports/spatial-memory-and-direct-vlm-comparators.md。Direct的主对手改为图像检索、视频RAG、事件／摘要记忆和自适应视频搜索；3D-Mem保留为IMU漂移下空间建模的独立支线，不再用精确导航交付判定Direct胜负。报告区分全历史Direct与分批穷举，核对ReMEmbR、两篇不同VideoAgent、VideoTree、EgoLife与候选数据；Direct的细节／动态／事后新问题优势均为待验证假设。未启动新实验、未更换数据集；数据下载及多摄可用性未确认。
