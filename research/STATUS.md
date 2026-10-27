@@ -1,5 +1,7 @@
 # 科研复现状态
 
+新增四benchmark适配核查：见reports/benchmark-fit-for-language-route-memory.md。LMEE-Bench可作探索记忆/路线场景优先候选，FindingDory可作原生HL目标/重访顺序辅助，EMem-Bench偏动态状态/交互失败记忆；3DMem-Bench属于3DLLM-Mem，非此前26题，官方Code当前仅占位README，未确认完整评测发布。四者均未确认原生原始IMU或自然语言路线完整评分；需分原生能力轨与显式扩展轨，不把目标选择/QA分数当路线正确。未启动下载或运行。
+
 指定10篇论文全文＋官方核心代码联合核查已完成（2026-10-27），见reports/spatial-memory-paper-code-audit.md及provenance JSON。确认5个实质公开仓库并入主表：CROSS、Embodied-Navigator（Embodied-Omni子目录）、NavHarness、OmniVLA、FARM；各自commit固定。另5项因未确认官方核心代码排除：Mem2Ego、MemClaw-RAG、sensVLA、SpaMEM、Concept-Guided；框架或HF数据不冒充论文实现。结论仅限已核实范围：未发现“带不确定性惯性信息直接进入VLM→跨时间地点推理→可更新双层导航记忆→长期重定位”的完整公开闭环；Motion-MLLM与sensVLA仍是IMU→VLM论文层先例，不能称首次。最接近组合为Navigator网络侧＋NavHarness记忆侧＋CROSS定位侧，不是任何单篇现成基线。未运行第三方代码、未下载权重、未启动实验。
 
 最新目标进一步收窄为地点／位移／朝向／定位中心的长期记忆，由VLM承担主要空间推理、可用IMU，不以具体物品为中心。调研见reports/place-centric-vlm-imu-memory-neighbors.md：确认Motion-MLLM的IMU→VLM融合先例、CROSS的跨会话拓扑定位、VLG-Loc的VLM观测→全局定位（三台120°相机）、NavMind的VLM认知地图；各有明显缺项，尚未确认全部目标同一方法覆盖，也未宣称空白。注意CROSS当前项目传感模式／榜单与论文v2不同；未启动任何新实验或部署。
