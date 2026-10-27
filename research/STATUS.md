@@ -1,5 +1,7 @@
 # 科研复现状态
 
+V2构建更新：research_image_replay后台编译链接成功，入口用法检查通过；连续HM3D图像生成任务尚待完成通知。还没有真实图像VIO成功轨迹或V2下游得分。此前“构建未确认”已由本条更新。
+
 V2启动记录：新增openvins_image_replay.cpp与CMake目标，后台正在构建真实图像回放驱动；首次120秒构建超时，未宣称编译通过。另启动generate_hm3d_image_vio.py实际渲染第1题固定GT路线smoke序列（20Hz图像、200Hz三套IMU），生成器语法检查已通过。尚无VIO轨迹／V2下游得分，不调用VLM。
 
 主线切换V2图像VIO：用户明确要求位姿输入改用VIO或更强定位。保留3D-Mem，下游不换；旧纯惯导先导停止扩展。现有OpenVINS仿真使用理想特征／GT初始化，不作为真实图像主实验。新增无ROS实际图像＋IMU回放适配器openvins_image_replay.cpp，使用原生视觉惯性初始化与feed_measurement_camera，正在构建验证。连续HM3D序列、坐标校验、VIO输出和完整3D-Mem接入尚未完成，无V2得分。方案见reports/image-vio-v2-protocol.md。
