@@ -5,7 +5,8 @@
 - **大幅重构已开始，新独立空间主链首版落地**：`src/assistant/spatial-memory/{contracts,working-context,long-term-store,service,models}.ts`，不依赖Pi消息投影、旧fact-first finalize或最近5条来源适配器。独立提取两路并行；空间推理有序，每个工具续轮也要有显式当前assessment，最终必须输出new/known/unknown位置。尚在短期Context的地点可用明确contextRefs结合当前证据延续；已淘汰身份需长期取证，不要求每帧机械搜图。SQLite同事务保存最终空间状态及工作Context检查点，成功后才发布；归档/独立事实不因空间失败而删除。提供只读reader与版本/实际可用时间隔离，支持已检查旧观察重归属已有区域或撤为未知的追加修订，旧快照/事实不变。访问视图按版本重建，转移仅为观察顺序，不认证通行。
 - **独立运行入口**：`src/sim/evaluation/run-spatial-memory.ts`，只接公开输入、新输出目录和显式`--confirm-paid`，不读标注、不启动问答或裁判。本轮未付费调用、未切换8884/8894、未覆盖旧运行。两个阶段沿用审计Flash transport，业务记忆由应用维护。工作过期与大断档分段暂用60秒基线，不认证物理访问边界。
 - **独立问答只读视图已接上**：`src/assistant/spatial-memory/question-view.ts` 按固定空间版本和真实可用时间打开，只暴露summary/timeline/find/read/inspect/coverage；检索先返回候选，read/inspect必须使用已交付ID，最多3份历史三摄；没有commit/close等写入口。固定旧版本看不到后来提交或尚未可用的版本。
-- **压缩规则已按用户纠正写入架构**：短期Context总是要压缩，用户问题会话由空间记忆模块＋用户问题模块两个Context分别压缩；长期记忆不压缩、只按需检索。实施计划全文放在 [docs/active/03-implementation-plan.md](docs/active/03-implementation-plan.md)。
+- **全量就绪性确认（2026-11-02）**：新空间主链能跑观察与提交，但**现在不应直接开813全量**。已确认缺口：空间Agent尚未接Pi Session/Skill；非法JSON/缺assessment没有有界反馈，当前会中断整轮；服务内无待处理上限与429自适应；运行器无同会话恢复/完整性收据；真实模型协议未预检。以上已写入 [实施计划](docs/active/03-implementation-plan.md) §9.1 作为全量前P0；经历/事件/实体、merge/split、关系撤回、问答接入、网页/评测暂缓。
+- **Pi架构确认**：用户问题 harness 使用 Pi `AgentHarness`＋`JsonlSessionRepo`＋skill；**新空间主链没有**，目前是直接模型调用＋应用自有动作循环。Skill 可通过 `skills/first-sight/<name>/SKILL.md` 增删改并由 `loadSkills` 加载，但角色白名单/必需skill列表需同步调整，且检查点只记录当时hash；已把Pi Session/Skill补为P0。
 - **新主链验证**：全库531/531通过；其中新空间主链16项专项（机制/事务/恢复/修订/读取隔离/问答只读）通过。测试使用脚本模型/临时图片，不能当真实语义或性能结果。首次测试暴露“空间失败阻断后续独立归档”，已修复，失败输出保留在会话记录。
 - **尚未完成，不宣称完整恢复**：新只读视图尚未接正式用户问题Agent提示与对照网页；一般地点merge/split、实体/事件提取、关系撤回未实现，目前仅有版本化历史重归属/撤为未知。旧入口作为对照不删除。下一步接正式问答/展示并补语义能力，按授权做小样本真实验证，未获授权不跑付费全量。
 
