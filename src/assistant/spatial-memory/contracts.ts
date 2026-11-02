@@ -8,6 +8,9 @@ export type Relation={kind:'same-facility'|'different-region';referenceId:string
 export type SpatialRevision={observationId:string;location:Location};
 export type Assessment={location:Location;hypotheses:string[];unresolved:string[];relations:Relation[];revisions?:SpatialRevision[]};
 export type StoredState={version:number;observationId:string;atMs:number;availableAtMs:number;facts:Facts;assessment:Assessment;visitId:string|null};
+export type AgentCheckpoint={sessionId:string;tipId:string;skillVersions:Record<string,string>};
+export type JudgeInput={row:Observation;facts:Facts;context:WorkingContext;history:HistoryRecord[];inspect:(ids:string[])=>Promise<SpatialJsonImage[]>;commit:(assessment:Assessment,evidence:JudgeEvidence)=>Promise<StoredState>;feedback?:string|null};
+export interface SpatialReasoner{judge(input:JudgeInput):Promise<Assessment>;close():Promise<void>}
 export type HistoryRecord={observationId:string;atMs:number;facts:Facts;location:Location;version:number};
 export type WorkingContext={current:{id:string;atMs:number};location:Location|null;recent:StoredState[];anchors:StoredState[];retrieved:HistoryRecord[]};
 export type SpatialAction=
@@ -18,8 +21,9 @@ export type SpatialAction=
 export type ReasonInput={current:Observation;facts:Facts;context:WorkingContext;toolResult:unknown;inspectedIds:string[];remainingCalls:number;feedback:string|null};
 export interface SpatialModels{
  perceive(row:Observation):Promise<Facts>;
- reason(input:ReasonInput,images:SpatialJsonImage[]):Promise<SpatialAction>;
+ reason?(input:ReasonInput,images:SpatialJsonImage[]):Promise<SpatialAction>;
 }
+export type JudgeEvidence={inspected:Set<string>;delivered:Set<string>};
 export function validateFacts(value:Facts):Facts{
  if(!value||typeof value.summary!=='string'||!value.summary.trim()||value.summary.length>2400||!Array.isArray(value.details)||!value.details.length||value.details.length>24||value.details.some(s=>typeof s!=='string'||!s.trim()||s.length>1200))throw Error('Invalid independent facts');
  return structuredClone(value);

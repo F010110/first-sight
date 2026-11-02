@@ -7,6 +7,7 @@ import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {SpatialMemoryService} from './service.js';
 import {SpatialQuestionView} from './question-view.js';
+import {SpatialOutputProtocolError} from '../../agent/spatial-protocol-retry.js';
 import {SpatialLongTermStore} from './long-term-store.js';
 import {SpatialWorkingMemory} from './working-context.js';
 import type {Observation,SpatialModels,SpatialAction,Assessment} from './contracts.js';
@@ -137,5 +138,22 @@ test('question view on the real service reads history and images without changin
   const images=await view.inspect(['a']);assert.equal(images.images.length,3);
   assert.deepEqual(service.progress(),before);
   const locked:any=view;assert.equal(typeof locked.commit,'undefined');assert.equal(typeof locked.close,'undefined');
+ }finally{await service?.close();await f.cleanup();}
+});
+
+test('invalid model JSON is retried with bounded feedback; provider failures are not disguised as semantic retries',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(row){return facts(row);},async reason(input){calls++;if(calls===1)throw new SpatialOutputProtocolError('Model content is not valid JSON');assert.match(input.feedback??'',/not a valid spatial action/);return commit(assessment(input.current.id));}});
+  await service.observe(await f.row('a',0));await service.finishInput();assert.equal(calls,2);assert.equal(service.latest()!.state.version,1);
+ }finally{await service?.close();await f.cleanup();}
+});
+
+test('HTTP 429 cools extraction and retries without dropping the observation',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(row){calls++;if(calls===1)throw Error('Separated VLM HTTP 429');return facts(row);},async reason(input){return commit(assessment(input.current.id));}},{cooldownMs:0});
+  await service.observe(await f.row('a',0));await service.finishInput();assert.equal(calls,2);assert.equal(service.progress().spatialStates,1);
+  const db=new DatabaseSync(join(f.root,'spatial.sqlite'),{readOnly:true});try{assert.ok((db.prepare("SELECT COUNT(*) AS n FROM events WHERE kind='congestion-429'").get() as any).n>=1);}finally{db.close();}
  }finally{await service?.close();await f.cleanup();}
 });

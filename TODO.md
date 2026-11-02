@@ -2,13 +2,14 @@
 
 ## 当前状态与约定（2026-11-02）
 
-- **大幅重构已开始，新独立空间主链首版落地**：`src/assistant/spatial-memory/{contracts,working-context,long-term-store,service,models}.ts`，不依赖Pi消息投影、旧fact-first finalize或最近5条来源适配器。独立提取两路并行；空间推理有序，每个工具续轮也要有显式当前assessment，最终必须输出new/known/unknown位置。尚在短期Context的地点可用明确contextRefs结合当前证据延续；已淘汰身份需长期取证，不要求每帧机械搜图。SQLite同事务保存最终空间状态及工作Context检查点，成功后才发布；归档/独立事实不因空间失败而删除。提供只读reader与版本/实际可用时间隔离，支持已检查旧观察重归属已有区域或撤为未知的追加修订，旧快照/事实不变。访问视图按版本重建，转移仅为观察顺序，不认证通行。
-- **独立运行入口**：`src/sim/evaluation/run-spatial-memory.ts`，只接公开输入、新输出目录和显式`--confirm-paid`，不读标注、不启动问答或裁判。本轮未付费调用、未切换8884/8894、未覆盖旧运行。两个阶段沿用审计Flash transport，业务记忆由应用维护。工作过期与大断档分段暂用60秒基线，不认证物理访问边界。
+- **大幅重构已开始，新独立空间主链首版落地**：`src/assistant/spatial-memory/{contracts,working-context,long-term-store,service,models,pi-reasoner}.ts`，业务记忆不依赖Pi消息投影、旧fact-first finalize或最近5条来源适配器；空间Agent执行层已接Pi Session/Skill。独立提取两路并行；空间推理有序，每个工具续轮也要有显式当前assessment，最终必须输出new/known/unknown位置。尚在短期Context的地点可用明确contextRefs结合当前证据延续；已淘汰身份需长期取证，不要求每帧机械搜图。SQLite同事务保存最终空间状态及工作Context检查点，成功后才发布；归档/独立事实不因空间失败而删除。提供只读reader与版本/实际可用时间隔离，支持已检查旧观察重归属已有区域或撤为未知的追加修订，旧快照/事实不变。访问视图按版本重建，转移仅为观察顺序，不认证通行。
+- **独立运行入口**：`src/sim/evaluation/run-spatial-memory.ts`，只接公开输入、新输出目录和显式`--confirm-paid`，不读标注、不启动问答或裁判。未切换8884/8894、未覆盖旧运行。两个阶段沿用审计Flash transport，业务记忆由应用维护。工作过期与大断档分段暂用60秒基线，不认证物理访问边界。429探测已实际付费；空间全量尚未付费运行。
 - **独立问答只读视图已接上**：`src/assistant/spatial-memory/question-view.ts` 按固定空间版本和真实可用时间打开，只暴露summary/timeline/find/read/inspect/coverage；检索先返回候选，read/inspect必须使用已交付ID，最多3份历史三摄；没有commit/close等写入口。固定旧版本看不到后来提交或尚未可用的版本。
-- **全量就绪性确认（2026-11-02）**：新空间主链能跑观察与提交，但**现在不应直接开813全量**。已确认缺口：空间Agent尚未接Pi Session/Skill；非法JSON/缺assessment没有有界反馈，当前会中断整轮；服务内无待处理上限与429自适应；运行器无同会话恢复/完整性收据；真实模型协议未预检。以上已写入 [实施计划](docs/active/03-implementation-plan.md) §9.1 作为全量前P0；经历/事件/实体、merge/split、关系撤回、问答接入、网页/评测暂缓。
-- **Pi架构确认**：用户问题 harness 使用 Pi `AgentHarness`＋`JsonlSessionRepo`＋skill；**新空间主链没有**，目前是直接模型调用＋应用自有动作循环。Skill 可通过 `skills/first-sight/<name>/SKILL.md` 增删改并由 `loadSkills` 加载，但角色白名单/必需skill列表需同步调整，且检查点只记录当时hash；已把Pi Session/Skill补为P0。
-- **新主链验证**：全库531/531通过；其中新空间主链16项专项（机制/事务/恢复/修订/读取隔离/问答只读）通过。测试使用脚本模型/临时图片，不能当真实语义或性能结果。首次测试暴露“空间失败阻断后续独立归档”，已修复，失败输出保留在会话记录。
-- **尚未完成，不宣称完整恢复**：新只读视图尚未接正式用户问题Agent提示与对照网页；一般地点merge/split、实体/事件提取、关系撤回未实现，目前仅有版本化历史重归属/撤为未知。旧入口作为对照不删除。下一步接正式问答/展示并补语义能力，按授权做小样本真实验证，未获授权不跑付费全量。
+- **P0 框架已补（2026-11-03）**：空间Agent已接 Pi `AgentHarness`＋`JsonlSessionRepo`＋skill `spatial-memory-v2`，`pi-reasoner.ts` 通过 `memory_timeline/find/read/inspect/record_spatial_state` 执行；应用仍持有 WorkingContext 和长期SQLite，Pi Session只存执行轨迹并按默认规则compact；检查点记录session/tip/skill hash。服务支持可选reasoner，runner默认使用Pi。
+- **P0 协议与429**：非法JSON有界反馈重试；普通provider失败不伪装成语义重试；HTTP 429 会降提取并发、冷却后恢复并记录 `congestion-429`。服务增加 `maxPending=24` 背压（满时暂停接收不丢帧）。
+- **P0 运行器**：`run-spatial-memory` 支持 `--resume`、`--limit=N`，新目录/恢复分开；完成收据校验计划数、空间状态数、pending、context文件和Pi检查点数，并汇总perception/pi用量；不再仅凭观察数标完成。
+- **429 实测（2026-11-03）**：`run/qwen-429-probe-v1/` 用单图小请求做 4/8/12/16 在途，**4–16全部200，无429、无配额响应头**，40次调用估算USD0.002016。只能证明该负载/时刻至少支持16在途，不是账号上限或大负载保证；因此当前无需换API。最小需求仍为2提取+1空间=3，推荐峰值6，远低于已测16。
+- **测试**：全库534/534通过，新增Pi Session/Skill、无效JSON重试、429冷却/重试测试。真实模型协议预检（少量帧）尚未执行；未跑全量、未接正式问答/网页。
 
 - **架构及其理由以 [docs/active/README.md](docs/active/README.md) 为准；本文件负责状态、待办、阶段决策和维护记录，不能隐式覆盖架构。** 变更架构必须先说明原理由、问题、影响及验证方案，得到用户明确确认后再改实现与设计。
 - 本次文档调整已完成：active仅保留入口、架构与设计理由；原状态、代码地图、工件、评测、操作及维护说明移入 [历史快照](docs/archive/active-knowledge-2026-11-02/)。AGENTS规定架构不可擅改、动态记录归TODO。OpenCode仅自动加载3篇架构文档，工作时读取TODO顶部，不将全份历史日志常驻上下文。白名单/链接检查和Python目录回归通过；未修改算法或启动模型。
