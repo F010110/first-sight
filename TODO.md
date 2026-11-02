@@ -1,5 +1,7 @@
 # 当前工作
 
+> **本文件以下全部归为历史工作日志，不再作为当前任务入口。最新状态/下一步见 [docs/active/02-current-state.md](docs/active/02-current-state.md)，架构与维护入口见 [docs/active/README.md](docs/active/README.md)。**
+
 当前版本：**V2 / v2.0.0**，用户确认冻结当前单摄实时原型。历史v1.2.0完整90题成绩不迁移为实时版本验收；[V2发布说明](docs/releases/v2.0.0.md)。
 
 ## 当前主线：生活助手产品设计
