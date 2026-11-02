@@ -17,7 +17,7 @@ export class AssistantRuntime {
   for(const capability of capabilities){if(this.registry.has(capability.id))throw Error('Duplicate capability');this.registry.set(capability.id,capability);}
   this.state={sessionId:randomUUID(),capture:'stopped',mode:'daily',outputPaused:false,modelEnabled,messages:[],tasks:[],watches:[],capabilities:capabilities.map(({id,title,available,reason})=>({id,title,available,...reason?{reason}:{}})),latestObservation:null,processing:0,lastError:null};
  }
- view(){return structuredClone(this.state);}
+  view(){return structuredClone({...this.state,...this.observations.backgroundState?{background:this.observations.backgroundState()}: {}});}
  private async emit(candidate:OutputCandidate,cancelled=false){
   const decision=this.policy.decide(candidate,{mode:this.state.mode,outputPaused:this.state.outputPaused,cancelled},this.now());
   await this.journal.append('output-decision',{candidate,decision});
@@ -38,7 +38,11 @@ export class AssistantRuntime {
  async control(action:string,value?:string){
   if(this.closed)throw Error('Session closed');
   // These effects happen BEFORE any await: long inference cannot block control.
-  if(action==='capture.start')this.state.capture='recording';
+   if(action==='capture.start'){this.state.capture='recording';this.observations.resume?.();}
+   else if(action==='observation.inspect'){
+    if(this.state.capture!=='recording'||!this.observations.requestCurrent)throw Error('Immediate inspection unavailable');
+    this.observations.requestCurrent();
+   }
   else if(action==='capture.pause'||action==='capture.stop'){
    this.state.capture=action==='capture.pause'?'paused':'stopped';this.captureEpoch++;
    this.observations.discardPending();
@@ -122,7 +126,13 @@ export class AssistantRuntime {
   if(this.state.latestObservation&&observation.atMs<=this.state.latestObservation.atMs)throw Error('Observation time must increase');
   this.state.latestObservation={id:observation.id,atMs:observation.atMs,views:observation.frames.length,source,captureTimeKnown:false};
   const epoch=this.captureEpoch;
-  await this.journal.append('observation-received',{observation,source,captureTimeKnown:false});
+   await this.journal.append('observation-received',{observation,source,captureTimeKnown:false});
+   if(this.observations.independentObservationLane){
+    if(epoch!==this.captureEpoch||this.state.capture!=='recording')return;
+    await this.observations.observe(observation);
+    await this.journal.append('observation-archived',{id:observation.id,semanticProcessing:'asynchronous'});
+    return;
+   }
   void this.queue(async()=>{
    if(epoch!==this.captureEpoch||this.state.capture!=='recording'){await this.journal.append('observation-inference-skipped',{id:observation.id,reason:'capture-permission-changed'});return;}
     try{await this.observations.observe(observation);await this.journal.append('observation-processed',{id:observation.id});await this.checkWatches(observation,epoch);}
@@ -155,5 +165,5 @@ export class AssistantRuntime {
    }
   }
  }
- async close(){this.closed=true;this.epoch++;this.captureEpoch++;await this.idle();this.observations.close();}
+  async close(){this.closed=true;this.epoch++;this.captureEpoch++;await this.idle();if(this.observations.shutdown)await this.observations.shutdown();else this.observations.close();}
 }

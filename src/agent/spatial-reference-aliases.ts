@@ -1,7 +1,8 @@
 import type {SpatialJsonRequest} from './spatial-json-vlm.js';
+import {SpatialOutputProtocolError} from './spatial-protocol-retry.js';
 type Binding={alias:string;originalId:string;kind:'source'|'group'};
 const scalarIds=new Set(['id','observationId','currentId','referenceId','groupId','selectedGroupId']);
-const arrayIds=new Set(['sourceIds','memberIds']);
+const arrayIds=new Set(['sourceIds','memberIds','allowedSourceIds','rawFallbackIds']);
 /** Request-local aliases are opaque references, never semantic identity repairs.
  * Full bindings are journal metadata, not additional VLM evidence. Unknown IDs fail. */
 export function aliasedSpatialRequest(request:(input:SpatialJsonRequest)=>Promise<unknown>){
@@ -28,7 +29,8 @@ export function aliasedSpatialRequest(request:(input:SpatialJsonRequest)=>Promis
   for(const [kind,ids,prefix] of [['source',sources,'S'],['group',groups,'G']] as const){let i=0;for(const originalId of ids){let alias:string;do{alias=prefix+i++;}while(originals.has(alias));bindings.push({alias,originalId,kind});}}
   const encode=new Map(bindings.map(b=>[b.originalId,b.alias])),decode=new Map(bindings.map(b=>[b.alias,b.originalId]));
   const transform=(value:unknown,mapping:Map<string,string>,strict:boolean,key=''):unknown=>{
-   if(typeof value==='string'&&(scalarIds.has(key)||arrayIds.has(key))){const id=mapping.get(value);if(!id&&strict)throw Error(`Unknown model reference alias: ${value}`);return id??value;}
+    if(typeof value==='string'&&(scalarIds.has(key)||arrayIds.has(key))){const id=mapping.get(value);if(!id&&strict)throw new SpatialOutputProtocolError(`Unknown model reference alias: ${value}`);return id??value;}
+    if(typeof value==='string'&&!strict&&['feedback','protocolFeedback'].includes(key)){let text=value;for(const [from,to] of [...mapping].sort((a,b)=>b[0].length-a[0].length))text=text.split(from).join(to);return text;}
    if(Array.isArray(value))return value.map(v=>transform(v,mapping,strict,arrayIds.has(key)?key:''));
    if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,transform(v,mapping,strict,k)]));
    return value;

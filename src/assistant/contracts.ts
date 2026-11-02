@@ -15,6 +15,11 @@ export interface VisualTargetResult {status:'observed'|'not_seen'|'uncertain';de
 export interface Watch {id:string;condition:string;kind:'watch'|'find';status:'active'|'candidate'|'completed'|'cancelled'|'expired'|'failed';createdAtMs:number;expiresAtMs:number;lastObservationId?:string;sourceIds:string[];notificationCount:number;error?:string}
 export interface Planner {plan(text:string,history:Message[],capabilities:Array<{id:string;title:string;available:boolean}>):Promise<Plan>}
 export interface ObservationService {
+  independentObservationLane?:boolean;
+  resume?():void;
+  requestCurrent?():void;
+  shutdown?():Promise<void>;
+  backgroundState?():unknown;
  observe(observation:SpatialObservation):Promise<void>;
  question(text:string,historical:boolean):Promise<CapabilityResult>;
  discardPending():void;
@@ -27,5 +32,6 @@ export interface AssistantView {
  messages:Message[];tasks:Task[];capabilities:Array<{id:string;title:string;available:boolean;reason?:string}>;
  latestObservation:{id:string;atMs:number;views:number;source:'manual-import'|'simulator-replay';captureTimeKnown:false}|null;
  processing:number;lastError:string|null;
- watches:Watch[];
+  watches:Watch[];
+  background?:unknown;
 }
