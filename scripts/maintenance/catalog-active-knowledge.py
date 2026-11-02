@@ -5,17 +5,16 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ACTIVE = ["README.md", "01-spatial-memory-architecture.md", "02-current-state.md",
-          "03-decisions.md", "04-code-map.md", "05-artifacts-and-results.md",
-          "06-evaluation.md", "07-operations-and-assets.md", "08-maintenance.md"]
+ACTIVE = ["README.md", "01-spatial-memory-architecture.md", "02-design-rationale.md"]
 ACTIVE_PATHS = {"docs/active/" + name for name in ACTIVE}
+INSTRUCTIONS = ["docs/active/" + name for name in ACTIVE]
 
 
 def main():
     config_path = ROOT / "opencode.json"
     if config_path.exists():
         instructions = json.loads(config_path.read_text(encoding="utf-8")).get("instructions")
-        if instructions != ["docs/active/" + name for name in ACTIVE]:
+        if instructions != INSTRUCTIONS:
             raise ValueError("OpenCode instructions must match the ordered active whitelist")
     for name in ACTIVE:
         path = ROOT / "docs/active" / name
@@ -41,16 +40,19 @@ def main():
         data = path.read_bytes()
         role = ("active-knowledge" if rel in ACTIVE_PATHS else
                 "maintenance-instructions" if rel == "AGENTS.md" else
+                "current-task-log" if rel == "TODO.md" else
                 "runtime-skill" if rel.startswith("skills/") else
                 "historical-reference" if path.suffix.lower() == ".md" else "implementation-or-test")
         entries.append({"path": rel, "role": role, "bytes": len(data),
                         "sha256": hashlib.sha256(data).hexdigest(), "semanticReview": "not-implied-by-inventory"})
     output = {"schema": "active-knowledge-catalog-v1", "active": sorted(ACTIVE_PATHS),
               "hashScope": "Working-tree snapshot, including pre-existing uncommitted work; not a reproducible release freeze.",
-              "policy": "Other explanatory documents are historical; code/evidence are not disabled. No claim of full content review.",
+              "policy": "Active docs define architecture and rationale; TODO tracks current work. Other explanatory documents are historical. Code/evidence are not disabled. No claim of full content review.",
               "excluded": ["run", "data", "datasets", "research", "cam/local", "node_modules", ".git"],
               "entries": entries}
-    (ROOT / "docs/active/source-catalog.json").write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    destination = ROOT / "docs/maintenance/active-source-catalog.json"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"active": len(ACTIVE_PATHS), "indexed": len(entries), "links": "passed"}))
 
 

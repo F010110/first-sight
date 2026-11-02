@@ -1,6 +1,6 @@
 # First Sight V2 · 第一视角生活助手
 
-> **活跃设计与当前状态请先读 [docs/active/README.md](docs/active/README.md)。本页下方为历史入口与发布说明，不再承担当前架构定义；其中“当前”仅指当时。维护规则见 [AGENTS.md](AGENTS.md)。**
+> **架构及设计理由以 [docs/active/README.md](docs/active/README.md) 为准；当前状态、待办与维护看 [TODO.md](TODO.md)。本页下方为历史入口与发布说明；其中“当前”仅指当时。执行规则见 [AGENTS.md](AGENTS.md)。**
 
 [脚本导航](scripts/README.md) · [相机主机侧工具](cam/host/README.md) · [目录迁移与验证](docs/maintenance/v2-layout-validation.md)
 

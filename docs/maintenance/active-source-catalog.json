@@ -2,17 +2,11 @@
   "schema": "active-knowledge-catalog-v1",
   "active": [
     "docs/active/01-spatial-memory-architecture.md",
-    "docs/active/02-current-state.md",
-    "docs/active/03-decisions.md",
-    "docs/active/04-code-map.md",
-    "docs/active/05-artifacts-and-results.md",
-    "docs/active/06-evaluation.md",
-    "docs/active/07-operations-and-assets.md",
-    "docs/active/08-maintenance.md",
+    "docs/active/02-design-rationale.md",
     "docs/active/README.md"
   ],
   "hashScope": "Working-tree snapshot, including pre-existing uncommitted work; not a reproducible release freeze.",
-  "policy": "Other explanatory documents are historical; code/evidence are not disabled. No claim of full content review.",
+  "policy": "Active docs define architecture and rationale; TODO tracks current work. Other explanatory documents are historical. Code/evidence are not disabled. No claim of full content review.",
   "excluded": [
     "run",
     "data",
@@ -26,8 +20,8 @@
     {
       "path": "AGENTS.md",
       "role": "maintenance-instructions",
-      "bytes": 3111,
-      "sha256": "8c61fdaced4bbe40c97c6a87685df9e51a388b5cfad64673b142a9ab4bf09b86",
+      "bytes": 2437,
+      "sha256": "b1b368a16a78b650b11693b33e7eaa4b3a9757fdf71ef07105ffd9cfab922020",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -38,59 +32,17 @@
       "semanticReview": "not-implied-by-inventory"
     },
     {
-      "path": "docs/active/02-current-state.md",
+      "path": "docs/active/02-design-rationale.md",
       "role": "active-knowledge",
-      "bytes": 3278,
-      "sha256": "562d9bf92259c2e333d95a23bc9ce94b29db18d7181b5d1bb03796bfc014df76",
-      "semanticReview": "not-implied-by-inventory"
-    },
-    {
-      "path": "docs/active/03-decisions.md",
-      "role": "active-knowledge",
-      "bytes": 2646,
-      "sha256": "cb49fd7ff628bde9df9560046246ab183dad90986b4bf5de972e446e5515ba79",
-      "semanticReview": "not-implied-by-inventory"
-    },
-    {
-      "path": "docs/active/04-code-map.md",
-      "role": "active-knowledge",
-      "bytes": 5576,
-      "sha256": "a88331c93cc5d078d44df2c881ebc2591ccdb50a6a1786d5de9bc1f701983a78",
-      "semanticReview": "not-implied-by-inventory"
-    },
-    {
-      "path": "docs/active/05-artifacts-and-results.md",
-      "role": "active-knowledge",
-      "bytes": 7578,
-      "sha256": "73716fd1e24fe30d1808a868fe197c68eaa1a64f918db13a70ddd3022b6d75e4",
-      "semanticReview": "not-implied-by-inventory"
-    },
-    {
-      "path": "docs/active/06-evaluation.md",
-      "role": "active-knowledge",
-      "bytes": 4269,
-      "sha256": "059ca785a4db92b5f838ab5878c483613ddd7ff7967c274b420da3a2428614c1",
-      "semanticReview": "not-implied-by-inventory"
-    },
-    {
-      "path": "docs/active/07-operations-and-assets.md",
-      "role": "active-knowledge",
-      "bytes": 4102,
-      "sha256": "445765838b821caea91df1ec1ea96f2220436af7fdec45e92962eb6db5dacf27",
-      "semanticReview": "not-implied-by-inventory"
-    },
-    {
-      "path": "docs/active/08-maintenance.md",
-      "role": "active-knowledge",
-      "bytes": 6566,
-      "sha256": "6693b1196b030e1303f8108fef30e19f0779e6107bbfa9b4bd9722766ef88256",
+      "bytes": 4970,
+      "sha256": "19f6c748c63fcca66b3bf40817bb747d556848fc67bb1df352b5aa4efd0adfb6",
       "semanticReview": "not-implied-by-inventory"
     },
     {
       "path": "docs/active/README.md",
       "role": "active-knowledge",
-      "bytes": 2247,
-      "sha256": "8de002d0260d5c9ae12853c6809b1fc315fb5505d5a51b9bf5e1b696068ebcd5",
+      "bytes": 1307,
+      "sha256": "d52a9af44fd04088bf096ff196c73a2458f1ee4cabd66735a7a95bbf8346fc40",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -133,6 +85,62 @@
       "role": "historical-reference",
       "bytes": 4790,
       "sha256": "e74d7e782438ea721133cb89306d2dee7382d59ad5306f232896721ecf4ac4a0",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "docs/archive/active-knowledge-2026-11-02/02-current-state.md",
+      "role": "historical-reference",
+      "bytes": 3318,
+      "sha256": "2a7f58342e7a7c3e965d491e94710ed6b7321e3932dd386e9bbb711e7e21b33a",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "docs/archive/active-knowledge-2026-11-02/03-decisions.md",
+      "role": "historical-reference",
+      "bytes": 2688,
+      "sha256": "5f128e3e24864611d993cb93fcb30ed05e77161627cc4b786c18ae4a8eda1903",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "docs/archive/active-knowledge-2026-11-02/04-code-map.md",
+      "role": "historical-reference",
+      "bytes": 5591,
+      "sha256": "05100d44173977c996dbd75e4113648e7dc3930ea7985364a85df4032112ea8b",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "docs/archive/active-knowledge-2026-11-02/05-artifacts-and-results.md",
+      "role": "historical-reference",
+      "bytes": 7593,
+      "sha256": "61e366eef4c2543b4c17922695dc186a710534281c7e03118a879cd86be6e669",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "docs/archive/active-knowledge-2026-11-02/06-evaluation.md",
+      "role": "historical-reference",
+      "bytes": 4284,
+      "sha256": "ea6dc737666389abc94e81eb3ac3b39213154e1c15185535b25873eedf641dab",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "docs/archive/active-knowledge-2026-11-02/07-operations-and-assets.md",
+      "role": "historical-reference",
+      "bytes": 4117,
+      "sha256": "1138ba21b0a5f4da0bec221f0771583053da0430a55cb87a7090c92fdb1be9d3",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "docs/archive/active-knowledge-2026-11-02/08-maintenance.md",
+      "role": "historical-reference",
+      "bytes": 6585,
+      "sha256": "d43226ed502127da2e517487b3eb5763c724cb89242884078662a7da8e4058b0",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "docs/archive/active-knowledge-2026-11-02/README.md",
+      "role": "historical-reference",
+      "bytes": 718,
+      "sha256": "e7a4594d13626be6297f5b063d63fa2756f2822bafb21d51f0809ae45b664898",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -1678,15 +1686,15 @@
     {
       "path": "docs/project-sync/README.md",
       "role": "historical-reference",
-      "bytes": 2970,
-      "sha256": "db72685ce9df40ba8e9aefd09d33f9e3526f0e02f26e4ad88e015a94699e7565",
+      "bytes": 2983,
+      "sha256": "26d1edfef48a287e09027415805ba25d1f593f54502b54bc5337222a0015d6d5",
       "semanticReview": "not-implied-by-inventory"
     },
     {
       "path": "docs/README.md",
       "role": "historical-reference",
-      "bytes": 4433,
-      "sha256": "ff90f688c6082ee2a9ddbf8219dca055f996a0f858dbc80ffadc6f4cb75b1cac",
+      "bytes": 4456,
+      "sha256": "4d12074f1e7a96ac93c10e7ae75365271872bec19892f4f5a4cd101568de4f02",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -2175,8 +2183,8 @@
     {
       "path": "README.md",
       "role": "historical-reference",
-      "bytes": 6763,
-      "sha256": "b85554f4f6c0d5bf5b963af9d81deee485cde8a6f5ee9928309c5c7851c63bbc",
+      "bytes": 6780,
+      "sha256": "a52143321b85cd2b977b024e9acce9849e58ad2ca6f124a471edccb1746034f4",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -2637,8 +2645,8 @@
     {
       "path": "scripts/maintenance/catalog-active-knowledge.py",
       "role": "implementation-or-test",
-      "bytes": 3273,
-      "sha256": "38b89e296e40ebaaee3d6ed983f3565086397f52a801175bdd623ddc812610b4",
+      "bytes": 3375,
+      "sha256": "d0ef71bd46bcfd748807e6dc473a1e02eb8e00c03c2df07400c48a8b439e3cca",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -5955,8 +5963,8 @@
     {
       "path": "tests/python/test_active_knowledge.py",
       "role": "implementation-or-test",
-      "bytes": 2466,
-      "sha256": "245717f89cfe22602afad9176d22218eda0b166db3625d4f6c0ec583e7a0a664",
+      "bytes": 2620,
+      "sha256": "cbfc42ff461a2964cb4ea15387bc9bae583d601e6d64cc86befe3152ab5d8cf4",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -6528,9 +6536,9 @@
     },
     {
       "path": "TODO.md",
-      "role": "historical-reference",
-      "bytes": 76782,
-      "sha256": "0a7fca7814c658bec8c40b59acfde106efe4da176cc2ea4ead22b01f3d86348f",
+      "role": "current-task-log",
+      "bytes": 80025,
+      "sha256": "acf8299dcbf390a352f7b90c9f8ff8cd2f8f5a237e279014deac07daf37da51f",
       "semanticReview": "not-implied-by-inventory"
     },
     {

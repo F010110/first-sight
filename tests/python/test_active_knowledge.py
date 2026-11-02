@@ -20,21 +20,24 @@ class ActiveKnowledgeTests(unittest.TestCase):
             active.mkdir(parents=True)
             for name in catalog.ACTIVE:
                 (active / name).write_text("# Active\n", encoding="utf-8")
-            for rel in ("docs/old.md", "src/code.ts", "run/raw.md", "cam/local/private.md", "research/private.md"):
+            for rel in ("TODO.md", "docs/old.md", "src/code.ts", "run/raw.md", "cam/local/private.md", "research/private.md"):
                 path = root / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("fixture", encoding="utf-8")
             original = catalog.ROOT
             catalog.ROOT = root
             try:
-                (root / "opencode.json").write_text(json.dumps({"instructions": ["docs/active/" + name for name in catalog.ACTIVE]}), encoding="utf-8")
+                (root / "opencode.json").write_text(json.dumps({"instructions": catalog.INSTRUCTIONS}), encoding="utf-8")
                 catalog.main()
-                first = (active / "source-catalog.json").read_bytes()
+                output = root / "docs/maintenance/active-source-catalog.json"
+                first = output.read_bytes()
                 catalog.main()
-                self.assertEqual(first, (active / "source-catalog.json").read_bytes())
+                self.assertEqual(first, output.read_bytes())
                 records = {entry["path"]: entry for entry in json.loads(first)["entries"]}
                 self.assertEqual(records["docs/old.md"]["role"], "historical-reference")
                 self.assertEqual(records["src/code.ts"]["role"], "implementation-or-test")
+                self.assertEqual(records["TODO.md"]["role"], "current-task-log")
+                self.assertNotIn("TODO.md", catalog.INSTRUCTIONS)
                 self.assertFalse(any(key.startswith(("run/", "cam/", "research/")) for key in records))
                 (active / "README.md").write_text("[broken](missing.md)", encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "Broken link"):
