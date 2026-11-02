@@ -3,6 +3,7 @@
   "instructions": [
     "docs/active/README.md",
     "docs/active/01-spatial-memory-architecture.md",
-    "docs/active/02-design-rationale.md"
+    "docs/active/02-design-rationale.md",
+    "docs/active/03-implementation-plan.md"
   ]
 }

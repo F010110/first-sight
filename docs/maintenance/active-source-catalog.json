@@ -3,6 +3,7 @@
   "active": [
     "docs/active/01-spatial-memory-architecture.md",
     "docs/active/02-design-rationale.md",
+    "docs/active/03-implementation-plan.md",
     "docs/active/README.md"
   ],
   "hashScope": "Working-tree snapshot, including pre-existing uncommitted work; not a reproducible release freeze.",
@@ -27,8 +28,8 @@
     {
       "path": "docs/active/01-spatial-memory-architecture.md",
       "role": "active-knowledge",
-      "bytes": 8609,
-      "sha256": "3dcaac9068f242a3ee3d940ad2f5917c37c0839bf2def7688980d1aae3f9f28c",
+      "bytes": 9464,
+      "sha256": "53e5dfc313cca999aae81d7cd0933dada5cafc155daa304e770b1cd572c987c6",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -39,10 +40,17 @@
       "semanticReview": "not-implied-by-inventory"
     },
     {
+      "path": "docs/active/03-implementation-plan.md",
+      "role": "active-knowledge",
+      "bytes": 9672,
+      "sha256": "fd5fc32d98d6d9e0025e1d80891b00402f5e3562e1537292ce3470b07b130fd8",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
       "path": "docs/active/README.md",
       "role": "active-knowledge",
-      "bytes": 1307,
-      "sha256": "d52a9af44fd04088bf096ff196c73a2458f1ee4cabd66735a7a95bbf8346fc40",
+      "bytes": 1525,
+      "sha256": "ba802270779240f65b91485ea1976ceeeb11c7a0967fb29a946a3fcf74e7dc87",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -2645,8 +2653,8 @@
     {
       "path": "scripts/maintenance/catalog-active-knowledge.py",
       "role": "implementation-or-test",
-      "bytes": 3375,
-      "sha256": "d0ef71bd46bcfd748807e6dc473a1e02eb8e00c03c2df07400c48a8b439e3cca",
+      "bytes": 3404,
+      "sha256": "013b6ab9b6070803abd78773ea759ecfef207b699a9a569b37e0d59057ace16e",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -4526,6 +4534,62 @@
       "semanticReview": "not-implied-by-inventory"
     },
     {
+      "path": "src/assistant/spatial-memory/contracts.ts",
+      "role": "implementation-or-test",
+      "bytes": 4417,
+      "sha256": "128364a41be82b7b2fcf5a27d1b8f1bace26c25ac7c4d2ae3935601f8628e1ac",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "src/assistant/spatial-memory/long-term-store.ts",
+      "role": "implementation-or-test",
+      "bytes": 8315,
+      "sha256": "9c9d026e7af17e10ce2271172ae4dceef85490b33c24f7198a6e781169edc8f6",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "src/assistant/spatial-memory/models.ts",
+      "role": "implementation-or-test",
+      "bytes": 3935,
+      "sha256": "922430be49efab8256c3800c928b8ed9a0427746b97d463b0d8dc0ac84d3f60f",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "src/assistant/spatial-memory/question-view.test.ts",
+      "role": "implementation-or-test",
+      "bytes": 3237,
+      "sha256": "fa99dce9e99587585e178198955cb62a55c857454202afb89c3d9b638bdc2217",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "src/assistant/spatial-memory/question-view.ts",
+      "role": "implementation-or-test",
+      "bytes": 4704,
+      "sha256": "b0507e0630ce658b5d3b80ec500dc6fb85beeb67051599764d328c0fa65a788c",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "src/assistant/spatial-memory/service.test.ts",
+      "role": "implementation-or-test",
+      "bytes": 15360,
+      "sha256": "6981f8af08bee7d124c15ffae82caf5f6ec0ffd8505a2e90f72e32efb3f92d5b",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "src/assistant/spatial-memory/service.ts",
+      "role": "implementation-or-test",
+      "bytes": 12845,
+      "sha256": "f7435675f01a35506984e5a87962e997a1fba253ba42fbbc1e303ad5ed021bb5",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "src/assistant/spatial-memory/working-context.ts",
+      "role": "implementation-or-test",
+      "bytes": 3100,
+      "sha256": "34cbbbebf9dc2a5b6d5ecc6d8e20429c3d9e3f5ef7e6ee4d41d30ba16bbe9753",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
       "path": "src/assistant/stream-efficiency.ts",
       "role": "implementation-or-test",
       "bytes": 6718,
@@ -5447,6 +5511,13 @@
       "role": "implementation-or-test",
       "bytes": 12068,
       "sha256": "49c020a7496685b1df2da849e337eff65d3a01484a50a3b6e08d62e4dfc22ecd",
+      "semanticReview": "not-implied-by-inventory"
+    },
+    {
+      "path": "src/sim/evaluation/run-spatial-memory.ts",
+      "role": "implementation-or-test",
+      "bytes": 2998,
+      "sha256": "c9fd84ea9e665cf29f8f6f3ca729d2f81f0cc31a5bbe95d27baf56846f39e490",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -6537,8 +6608,8 @@
     {
       "path": "TODO.md",
       "role": "current-task-log",
-      "bytes": 80025,
-      "sha256": "acf8299dcbf390a352f7b90c9f8ff8cd2f8f5a237e279014deac07daf37da51f",
+      "bytes": 86505,
+      "sha256": "ec4acdcea0581394a9cb3782af2aec73e489599d9c60d30ddee9d412a9f4fe48",
       "semanticReview": "not-implied-by-inventory"
     },
     {

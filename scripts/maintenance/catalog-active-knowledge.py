@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ACTIVE = ["README.md", "01-spatial-memory-architecture.md", "02-design-rationale.md"]
+ACTIVE = ["README.md", "01-spatial-memory-architecture.md", "02-design-rationale.md", "03-implementation-plan.md"]
 ACTIVE_PATHS = {"docs/active/" + name for name in ACTIVE}
 INSTRUCTIONS = ["docs/active/" + name for name in ACTIVE]
 
