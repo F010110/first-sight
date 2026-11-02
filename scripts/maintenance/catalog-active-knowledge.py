@@ -12,6 +12,11 @@ ACTIVE_PATHS = {"docs/active/" + name for name in ACTIVE}
 
 
 def main():
+    config_path = ROOT / "opencode.json"
+    if config_path.exists():
+        instructions = json.loads(config_path.read_text(encoding="utf-8")).get("instructions")
+        if instructions != ["docs/active/" + name for name in ACTIVE]:
+            raise ValueError("OpenCode instructions must match the ordered active whitelist")
     for name in ACTIVE:
         path = ROOT / "docs/active" / name
         if not path.is_file():

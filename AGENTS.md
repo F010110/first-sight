@@ -1,5 +1,13 @@
 # Active project knowledge / 活跃项目知识
 
+## 项目信息依据：active 优先于 TODO
+
+**`docs/active/` 白名单文档是本项目设计、状态、决定、待办和操作边界的直接依据，优先级高于 `TODO.md`、根README、旧同步区及其他历史说明。** 不得先读TODO便开始工作，也不得用历史文档中的“当前/最新”覆盖active。
+
+项目内知识取用顺序：用户最新明确要求 → `docs/active/README.md`及其白名单 → 任务相关源码/原始证据核验 → 历史资料溯源。该顺序不改变OpenCode自身系统/安全指令层级；源码/报告与active不符时应报告实现差距并更新active，不能歪曲证据。
+
+项目 `opencode.json` 通过官方 `instructions` 配置自动加载活跃白名单；不加载 `TODO.md` 或历史目录作为项目指令。新增活跃文件时同步修改README白名单、该配置及目录校验脚本。
+
 开始任何工作前，先读 `docs/active/README.md`、`docs/active/01-spatial-memory-architecture.md`、`docs/active/02-current-state.md`。按任务继续读其余活跃文件。
 
 - **有效设计与当前状态只在 `docs/active/` 明确列出的文档维护。** 其他设计文档、旧README、TODO及 `docs/project-sync/` 全部是历史资料；其中“当前”“主线”“已实现”等词不能直接作为当前事实。历史材料不删除、不批量移动。

@@ -27,6 +27,7 @@ class ActiveKnowledgeTests(unittest.TestCase):
             original = catalog.ROOT
             catalog.ROOT = root
             try:
+                (root / "opencode.json").write_text(json.dumps({"instructions": ["docs/active/" + name for name in catalog.ACTIVE]}), encoding="utf-8")
                 catalog.main()
                 first = (active / "source-catalog.json").read_bytes()
                 catalog.main()
@@ -37,6 +38,9 @@ class ActiveKnowledgeTests(unittest.TestCase):
                 self.assertFalse(any(key.startswith(("run/", "cam/", "research/")) for key in records))
                 (active / "README.md").write_text("[broken](missing.md)", encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "Broken link"):
+                    catalog.main()
+                (root / "opencode.json").write_text(json.dumps({"instructions": ["TODO.md"]}), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "OpenCode instructions"):
                     catalog.main()
             finally:
                 catalog.ROOT = original

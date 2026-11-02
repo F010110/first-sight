@@ -1,0 +1,14 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "docs/active/README.md",
+    "docs/active/01-spatial-memory-architecture.md",
+    "docs/active/02-current-state.md",
+    "docs/active/03-decisions.md",
+    "docs/active/04-code-map.md",
+    "docs/active/05-artifacts-and-results.md",
+    "docs/active/06-evaluation.md",
+    "docs/active/07-operations-and-assets.md",
+    "docs/active/08-maintenance.md"
+  ]
+}

@@ -26,8 +26,8 @@
     {
       "path": "AGENTS.md",
       "role": "maintenance-instructions",
-      "bytes": 2228,
-      "sha256": "e32f33ef403d36116316d234712c942ef484ab46900c7228c9509ee3f80d6899",
+      "bytes": 3111,
+      "sha256": "8c61fdaced4bbe40c97c6a87685df9e51a388b5cfad64673b142a9ab4bf09b86",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -82,8 +82,8 @@
     {
       "path": "docs/active/08-maintenance.md",
       "role": "active-knowledge",
-      "bytes": 5846,
-      "sha256": "cc8bc74313b73f1ed165535b5fb0a864251c16d3ab2e6065c5818bd9658cd6b9",
+      "bytes": 6566,
+      "sha256": "6693b1196b030e1303f8108fef30e19f0779e6107bbfa9b4bd9722766ef88256",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -2637,8 +2637,8 @@
     {
       "path": "scripts/maintenance/catalog-active-knowledge.py",
       "role": "implementation-or-test",
-      "bytes": 2943,
-      "sha256": "26de433f9e1cea98324337e2195e45d0429f791a43ef19dfa12f5b8faa34658f",
+      "bytes": 3273,
+      "sha256": "38b89e296e40ebaaee3d6ed983f3565086397f52a801175bdd623ddc812610b4",
       "semanticReview": "not-implied-by-inventory"
     },
     {
@@ -5955,8 +5955,8 @@
     {
       "path": "tests/python/test_active_knowledge.py",
       "role": "implementation-or-test",
-      "bytes": 2084,
-      "sha256": "2ca9da8f34d7edbd58f85d23acb196baf3a9333922aeb8f2e614d206b1ce2e0f",
+      "bytes": 2466,
+      "sha256": "245717f89cfe22602afad9176d22218eda0b166db3625d4f6c0ec583e7a0a664",
       "semanticReview": "not-implied-by-inventory"
     },
     {
