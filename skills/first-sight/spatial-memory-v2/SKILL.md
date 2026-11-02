@@ -27,6 +27,7 @@ description: Maintain a durable, evidence-backed spatial memory from arriving ob
 
 ## 输出
 
+工具调用必须严格使用这个外层结构：`{"tool":"工具名","arguments":{...}}`。不要把 assessment 直接放在顶层；只有 `arguments` 内部才放 assessment、terms、ids 等参数。
 每个工具调用都必须带完整的 `assessment`，包括 location、hypotheses、unresolved 和 relations。动作与 assessment 同轮输出；中间轮不得提交 relations/revisions，只有最终 `record_spatial_state` 可以耐久提交关系与历史修订。每次提交完整当前状态，不复制无关旧猜测。
 
 不要推断连通、通行许可或安全；不要虚构未见动作、坐标或精确身份。

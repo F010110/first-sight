@@ -23,8 +23,13 @@ export class SpatialMemoryService{
  static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number}={}){
   const root=resolve(rootArg),concurrency=options.extractionConcurrency??2,max=options.maxReasonCalls??8,maxPending=options.maxPending??64,cool=options.cooldownMs??30000;
   if(!Number.isInteger(concurrency)||concurrency<1||concurrency>8||!Number.isInteger(max)||max<1||max>32||!Number.isInteger(maxPending)||maxPending<1||maxPending>1024||!Number.isFinite(cool)||cool<0||cool>300000)throw Error('Invalid spatial execution budget');
-  if(!options.resume)await mkdir(root,{recursive:false});
-  else await readFile(join(root,'spatial.sqlite')); // Explicit same-session recovery only.
+  if(!options.resume){
+   await mkdir(root,{recursive:true});
+   // A new run may pre-create its Pi session directory, but it must not reuse
+   // an existing spatial database without the explicit resume flag.
+   try{await readFile(join(root,'spatial.sqlite'));throw Error('Existing spatial memory requires --resume');}
+   catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+  } else await readFile(join(root,'spatial.sqlite')); // Explicit same-session recovery only.
   const store=new SpatialLongTermStore(root,options.now??Date.now),service=new SpatialMemoryService(root,models,options.reasoner??null,store,{extractionConcurrency:concurrency,maxReasonCalls:max,now:options.now??Date.now,maxPending,cooldownMs:cool,activeLimit:concurrency,coolUntil:0});
   try{if(options.resume&&store.version()){
    const state=store.state(store.version())!,context=store.checkpoint(state.version);if(!context)throw Error('Missing durable working checkpoint');
