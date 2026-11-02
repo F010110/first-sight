@@ -3,6 +3,10 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>空间记忆</title><link rel="stylesheet" href="/memory.css"></head>
 <body>
 <nav aria-label="观察时间"><button id="prev">上一帧</button><input id="seek" aria-label="选择观察" type="range" min="0" value="0"><button id="next">下一帧</button><span id="position"></span></nav>
-<main><section><h2>当前地点 <small>位置标注</small></h2><p id="location">载入中…</p></section><section><h2>地点描述 <small>模型原文</small></h2><p id="description">载入中…</p></section></main>
+<div id="images" aria-label="当前观察三摄原图"></div>
+<main>
+<section><h2>位置数据标注</h2><h3>位置</h3><p id="location">载入中…</p><h3>细节</h3><p id="reference-details">载入中…</p><small id="reference-scope"></small></section>
+<section><h2>模型输出</h2><h3>最终判断的位置</h3><p id="model-location">载入中…</p><h3>细节</h3><p id="description">载入中…</p></section>
+</main>
 <script src="/memory.js"></script>
 </body></html>
