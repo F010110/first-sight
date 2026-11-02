@@ -1,7 +1,8 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>空间记忆评测</title><link rel="stylesheet" href="/memory.css"></head><body>
-<h1>空间记忆评测：位置标注 × 实际记忆</h1><p>裁判评审为主，人工审核独立保存。未知不等于错误；未执行的检索不当成失败。<a href="/">位置与原图审核页</a></p>
-<nav><button id="prev">上一帧</button><input id="seek" type="range" min="0" value="0"><button id="next">下一帧</button><span id="position"></span><select id="filter"><option value="all">全部</option><option value="flagged">裁判标记／低分／失败</option><option value="pending">待裁判评审</option><option value="unreviewed">待人工审核</option></select></nav>
-<div id="images"></div><main><section><h2>已确认的位置标签</h2><pre id="reference"></pre></section><section><h2>当时实际模型输出</h2><pre id="candidate"></pre></section></main>
-<section><h2>模型裁判意见（非人工结论）</h2><pre id="grade"></pre></section>
-<section><h2>人工审核</h2><p>确认／驳回针对裁判意见；标准有疑问请选“需人工核实”并说明。不修改原始标注或记忆。</p><textarea id="note" rows="3" placeholder="审核依据、分歧或标准疑问"></textarea><button id="approve">认可裁判</button><button id="reject">驳回裁判</button><button id="uncertain">需人工核实</button><p id="save"></p><pre id="history"></pre></section>
-<section><h2>实际数据结构</h2><p>当前为观察事实与版本上下文，无已建立的复杂空间图。下列是实际保存结构，不是裁判补出的地图。</p><details><summary>展开结构／原始JSON</summary><div id="tree"></div></details></section><script src="/memory.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>空间记忆</title><link rel="stylesheet" href="/memory.css"></head>
+<body>
+<nav aria-label="观察时间"><button id="prev">上一帧</button><input id="seek" aria-label="选择观察" type="range" min="0" value="0"><button id="next">下一帧</button><span id="position"></span></nav>
+<main><section><h2>当前地点 <small>位置标注</small></h2><p id="location">载入中…</p></section><section><h2>地点描述 <small>模型原文</small></h2><p id="description">载入中…</p></section></main>
+<script src="/memory.js"></script>
+</body></html>

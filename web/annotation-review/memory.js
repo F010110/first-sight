@@ -1,10 +1,23 @@
 'use strict';
-const $=id=>document.getElementById(id);let state,index=0,current=null,epoch=0,dirty=false,busy=false;const cache=new Map();
-const text=(id,value)=>{$(id).textContent=typeof value==='string'?value:JSON.stringify(value,null,2);};
-function tree(value,key){const node=document.createElement('details'),label=document.createElement('summary');label.textContent=key;node.append(label);if(value&&typeof value==='object')for(const [k,v] of Object.entries(value))node.append(tree(v,k));else{const p=document.createElement('pre');p.textContent=String(value);node.append(p);}return node;}
-async function load(i){const id=state.sample.frames[i].id;if(!cache.has(id)){const r=await fetch('/api/memory?id='+encodeURIComponent(id));if(!r.ok)throw Error('无法读取记忆状态 '+r.status);cache.set(id,await r.json());}return cache.get(id);}
-async function show(i){if(busy)return;if(dirty&&!confirm('放弃尚未保存的审核备注？'))return;const ticket=++epoch;index=Math.max(0,Math.min(state.sample.frames.length-1,i));dirty=false;const item=await load(index);if(ticket!==epoch)return;current=item;const f=state.sample.frames[index];$('seek').value=index;text('position',`${index+1} / ${state.sample.frames.length} · ${(item.atMs/1000).toFixed(2)}秒`);$('images').replaceChildren(...['front','left','right'].map(d=>{const img=document.createElement('img');img.src=f.views[d];img.alt=d;return img;}));text('reference',item.reference);text('candidate',item.candidate);text('grade',item.grade??(item.error?{error:item.error}:'待裁判评审，尚无评分'));$('tree').replaceChildren(tree(item.structure,'记忆快照'));const history=state.reviews.filter(r=>r.targetType==='observation'&&r.targetId===item.id);text('history',history);$('note').value=history.at(-1)?.note??'';text('save','');}
-async function save(status){if(busy||!current)return;if(!current.grade&&status!=='uncertain'){text('save','尚无裁判结果，不能认可或驳回；可先记录需核实事项。');return;}busy=true;try{const r=await fetch('/api/reviews',{method:'POST',headers:{'Content-Type':'application/json','X-Review-Token':state.reviewToken},body:JSON.stringify({expectedRevision:state.revision,targetType:'observation',targetId:current.id,status,note:$('note').value})});const result=await r.json();if(!r.ok)throw Error(result.error);state.revision=result.revision;state.reviews.push(result.review);dirty=false;text('save','审核已独立保存 · 版本'+state.revision);text('history',state.reviews.filter(r=>r.targetType==='observation'&&r.targetId===current.id));}catch(e){text('save',e.message);}finally{busy=false;}}
-async function move(step){const mode=$('filter').value;for(let i=index+step;i>=0&&i<state.sample.frames.length;i+=step){const c=await load(i),reviewed=state.reviews.some(r=>r.targetType==='observation'&&r.targetId===c.id);if(mode==='all'||mode==='pending'&&!c.grade&&!c.error||mode==='unreviewed'&&!reviewed||mode==='flagged'&&(c.error||c.grade?.needsHumanReview||c.grade?.issues.length||Object.values(c.grade?.dimensions??{}).some(d=>d.status==='scored'&&d.score<=2))){await show(i);return;}}text('save','该方向没有匹配项');}
-$('prev').onclick=()=>move(-1).catch(e=>text('save',e.message));$('next').onclick=()=>move(1).catch(e=>text('save',e.message));$('seek').onchange=()=>show(Number($('seek').value)).catch(e=>text('save',e.message));$('note').oninput=()=>{dirty=true;};$('approve').onclick=()=>save('approved');$('reject').onclick=()=>save('needs-change');$('uncertain').onclick=()=>save('uncertain');window.onbeforeunload=e=>{if(dirty){e.preventDefault();e.returnValue='';}};
-(async()=>{const r=await fetch('/api/sample');state=await r.json();if(!state.sample?.provenance?.memoryEvaluation)throw Error('此数据包未附带空间记忆评测');$('seek').max=state.sample.frames.length-1;await show(0);})().catch(e=>text('save',e.message));
+const $=id=>document.getElementById(id);
+let state,index=0,epoch=0;
+const cache=new Map();
+async function show(next){
+ const selected=Math.max(0,Math.min(state.sample.frames.length-1,next)),ticket=++epoch;
+ const id=state.sample.frames[selected].id;
+ index=selected;$('seek').value=index;
+ $('position').textContent=`${index+1} / ${state.sample.frames.length}`;
+ $('prev').disabled=index===0;$('next').disabled=index===state.sample.frames.length-1;
+ $('location').textContent='载入中…';$('description').textContent='载入中…';
+ try{
+  if(!cache.has(id)){const response=await fetch('/api/memory?id='+encodeURIComponent(id));if(!response.ok)throw Error('无法读取记忆状态');cache.set(id,await response.json());}
+  if(ticket!==epoch)return;
+  const item=cache.get(id),annotation=item.reference?.annotation,update=item.candidate?.update;
+  // Position annotations are not a model-produced localization judgment.
+  $('location').textContent=annotation?.description||'暂无地点标注';
+  $('description').textContent=update?.summary||update?.observations?.join('\n')||'模型未输出地点描述';
+ }catch(error){if(ticket===epoch){$('location').textContent='读取失败';$('description').textContent=error.message;}}
+}
+$('prev').onclick=()=>show(index-1);$('next').onclick=()=>show(index+1);
+$('seek').oninput=()=>show(Number($('seek').value));
+(async()=>{const response=await fetch('/api/sample');if(!response.ok)throw Error('无法读取观察列表');state=await response.json();if(!state.sample?.provenance?.memoryEvaluation)throw Error('此数据包未附带空间记忆');$('seek').max=state.sample.frames.length-1;await show(0);})().catch(error=>{$('location').textContent='读取失败';$('description').textContent=error.message;});
