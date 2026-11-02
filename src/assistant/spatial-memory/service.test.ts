@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {SpatialMemoryService} from './service.js';
+import {SpatialQuestionView} from './question-view.js';
 import {SpatialLongTermStore} from './long-term-store.js';
 import {SpatialWorkingMemory} from './working-context.js';
 import type {Observation,SpatialModels,SpatialAction,Assessment} from './contracts.js';
@@ -122,4 +123,19 @@ test('tool continuations cannot skip the current spatial assessment',async()=>{
 test('recent context can support spatial continuity without a mandatory historical-image ritual',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined;
  try{service=await SpatialMemoryService.create(f.root,{async perceive(row){return facts(row);},async reason(input){if(input.current.id==='a')return commit(assessment('a'));assert.deepEqual(input.inspectedIds,['b']);const recent=input.context.recent[0]!;const value=assessment('b','known',recent.assessment.location.placeId);value.location.contextRefs=['a'];return commit(value);}});await service.observe(await f.row('a',0));await service.observe(await f.row('b',1000));await service.finishInput();assert.equal(service.progress().places,1);assert.equal(service.progress().visits,1);assert.deepEqual(service.latest()!.state.assessment.location.contextRefs,['a']);}finally{await service?.close();await f.cleanup();}
+});
+
+test('question view on the real service reads history and images without changing spatial memory',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined;
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(row){return facts(row);},async reason(input){return commit(assessment(input.current.id));}});
+  await service.observe(await f.row('a',0));await service.observe(await f.row('b',1000));await service.finishInput();
+  const before=service.progress(),view=SpatialQuestionView.open(service.reader(),2,Number.MAX_SAFE_INTEGER);
+  assert.equal(view.summary().coverage.semanticCompleteness,false);assert.equal(view.currentLocation().status,'known');
+  assert.equal(view.timeline().records.length,2);
+  assert.equal(view.find(['当前观察a']).total,1);
+  const images=await view.inspect(['a']);assert.equal(images.images.length,3);
+  assert.deepEqual(service.progress(),before);
+  const locked:any=view;assert.equal(typeof locked.commit,'undefined');assert.equal(typeof locked.close,'undefined');
+ }finally{await service?.close();await f.cleanup();}
 });

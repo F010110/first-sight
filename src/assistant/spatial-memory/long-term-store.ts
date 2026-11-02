@@ -55,7 +55,7 @@ export class SpatialLongTermStore{
    const next=this.pending()[0];if(next?.id!==row.id)throw Error('Spatial commit must follow contiguous source order');
    const facts=this.facts(row.id);if(!facts)throw Error('No independent facts');
    const version=this.version()+1,assessment=structuredClone(a),location=assessment.location;
-   if(location.status==='new'){location.placeId=randomUUID();this.db.prepare('INSERT INTO places VALUES(?,?,?)').run(location.placeId,location.name,version);}
+   if(location.status==='new'){location.placeId=randomUUID();location.status='known';this.db.prepare('INSERT INTO places VALUES(?,?,?)').run(location.placeId,location.name,version);}
    if(location.status==='known'&&!this.db.prepare('SELECT id FROM places WHERE id=?').get(location.placeId))throw Error('Unknown persistent place');
    const previous=this.state(version-1),sameRecording=previous?this.observation(previous.observationId)?.recordingId===row.recordingId:false;
    let visitId:string|null=null;
