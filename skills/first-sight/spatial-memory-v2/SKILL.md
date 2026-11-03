@@ -13,6 +13,8 @@ description: Maintain a durable, evidence-backed spatial memory from arriving ob
 
 短输出不等于只分类：仍需结合workingContext判断是否延续、重访或未知，必要时自主检索/读原图，维护hypotheses/unresolved/relations及必要修订。窗口不限制只能调用模型一次；普通窗口尽量一次record完成。reason尽量≤120汉字，hypotheses/unresolved只保留当前适用事项，没有则空数组，不重新输出已有独立观察细节。
 
+窗口事实可能尚未齐全：`facts:null`与`missingFactIds`表示未拿到独立提取，不是“没有物品”。只用已就绪事实及本轮实际交付原图，明确保留缺口；尾观察的facts为null时，location必须unknown，不能默认沿用上一地点，并在unresolved说明待补证据。后续窗口不必等待这些事实。`revisionOfVersion`表示迟到证据到达后的重新判断，追加新版本而不改旧快照；历史窗口修订不等于又一次物理到访，也不代表用户当前回到该处。优先检查Context中本窗口的原判断，若新事实没有推翻身份，不凭重复执行就新建地点。历史修订后系统会用最新窗口重评当前状态，不能把旧观察当成当前现场。
+
 必须判断当前占据的具体区域，不能把远处看见的店面当成当前所在室内。普通装修、相邻或单个物体相似不能认证同一地点；新区域不推翻旧观察。当前区域有三种状态：
 
 - `new`：有具体布局证据的新候选，可暂名，不必知道官方名称；

@@ -21,6 +21,47 @@ const assessment=(id:string,status:'new'|'known'|'unknown'='new',placeId:string|
 const commit=(a:Assessment):SpatialAction=>({kind:'commit',assessment:a});
 const facts=(row:Observation)=>({summary:'当前观察'+row.id,details:['当前细节'+row.id]});
 
+test('missing tail facts cannot block the next window; late facts append revisions without changing old snapshots',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,release!:()=>void,second!:()=>void,calls=0;
+ const blocked=new Promise<void>(r=>release=r),secondCommitted=new Promise<void>(r=>second=r);
+ const reasoner:SpatialReasoner={async judge(input){
+  calls++;const missing=input.window!.missingFactIds??[],old=input.context.recent.find(r=>r.observationId===input.row.id);
+  const a=missing.includes(input.row.id)?assessment(input.row.id,'unknown'):old?.assessment.location.placeId?assessment(input.row.id,'known',old.assessment.location.placeId):assessment(input.row.id);
+  if(a.location.status==='known')a.location.contextRefs=[input.row.id];
+  await input.commit(a,{inspected:new Set(input.window!.observations.map(o=>o.id)),delivered:new Set()});if(input.row.id==='n7'&&!input.window!.revisionOfVersion)second();return a;
+ },async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(row){if(row.id==='n3')await blocked;return facts(row);}},{windowMs:8000,evidenceWaitMs:5,extractionConcurrency:8,reasoner});
+  for(let i=0;i<8;i++)await service.observe(await f.row('n'+i,i*2000));
+  await Promise.race([secondCommitted,new Promise((_,reject)=>setTimeout(()=>reject(Error('Next window was blocked')),2000))]);
+  assert.equal(service.latest()!.state.observationId,'n7');assert.equal(service.progress().incompleteWindows,1);assert.ok(service.progress().admitted<=12);
+  const early=service.snapshotAt(1,Number.MAX_SAFE_INTEGER);assert.equal(early.state.facts,null);assert.deepEqual(early.state.window!.missingFactIds,['n3']);
+  release();await service.finishInput();assert.equal(service.progress().spatialStates,2);assert.equal(service.progress().stateVersions,4);assert.equal(service.progress().incompleteWindows,0);assert.equal(service.progress().missingFacts,0);assert.equal(calls,4);assert.equal(service.latest()!.state.observationId,'n7');assert.equal(service.latest()!.state.atMs,14000);
+  assert.equal(service.snapshotAt(1,Number.MAX_SAFE_INTEGER).state.facts,null);assert.equal(service.snapshotAt(4,Number.MAX_SAFE_INTEGER).history[0]!.window!.observations[3]!.facts!.summary,'当前观察n3');
+ }finally{release();await service?.close().catch(()=>{});await f.cleanup();}
+});
+
+test('production batch perception uses one worker, not two per-observation lanes, while space can overlap preparation',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,active=0,peak=0,batches=0,spaceStarted!:()=>void,prepared!:()=>void;
+ const firstSpace=new Promise<void>(r=>spaceStarted=r),secondPrepared=new Promise<void>(r=>prepared=r);
+ const reasoner:SpatialReasoner={async judge(input){if(input.row.id==='b3'){spaceStarted();await secondPrepared;}const a=assessment(input.row.id);await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('Per-observation lane must not run');},async perceiveWindow(rows){active++;peak=Math.max(peak,active);batches++;if(batches===2){await firstSpace;prepared();}active--;return rows.map(row=>({id:row.id,facts:facts(row)}));}},{windowMs:8000,reasoner});
+  for(let i=0;i<8;i++)await service.observe(await f.row('b'+i,i*2000));await service.finishInput();assert.equal(batches,2);assert.equal(peak,1);assert.equal(service.progress().coveredObservations,8);
+ }finally{spaceStarted();prepared();await service?.close().catch(()=>{});await f.cleanup();}
+});
+
+test('recovery resumes durable incomplete windows instead of treating coverage as completion',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,extractions=0;const rows=await Promise.all(Array.from({length:4},(_,i)=>f.row('p'+i,i*2000)));
+ const store=new SpatialLongTermStore(f.root);for(const row of rows)store.archive(row);for(const row of rows.slice(0,3))store.saveFacts(row.id,facts(row));
+ const working=new SpatialWorkingMemory();working.begin(rows[3]!);
+ store.commit(rows[3]!,assessment('p3','unknown'),s=>{working.commit(s);return working.view();},{startMs:0,endExclusiveMs:8000,observations:rows.map(r=>({id:r.id,atMs:r.atMs,facts:store.facts(r.id)})),missingFactIds:['p3']});store.close();
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(row){extractions++;return facts(row);}},{resume:true,windowMs:8000,reasoner:{async judge(input){const a=assessment(input.row.id);await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}}});
+  await service.resumePending();await service.finishInput();assert.equal(extractions,1);assert.equal(service.progress().incompleteWindows,0);assert.equal(service.progress().stateVersions,2);assert.equal(service.progress().admitted,0);assert.equal(service.snapshotAt(1,Number.MAX_SAFE_INTEGER).state.facts,null);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
+
 test('8-second windows commit one durable judgment with four immutable members, not four invented locations',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
  const reasoner:SpatialReasoner={async judge(input){calls++;assert.equal(input.window!.observations.length,4);assert.equal(input.windowViews!.length,12);assert.equal(input.context.location,null);const a=assessment(input.row.id);if(calls===2){a.location.status='unknown';a.location.name='甲乙边界';a.location.boundary={regions:['甲','乙']};}await input.commit(a,{inspected:new Set(input.window!.observations.map(o=>o.id)),delivered:new Set()});return a;},async close(){}};
@@ -28,7 +69,7 @@ test('8-second windows commit one durable judgment with four immutable members, 
   service=await SpatialMemoryService.create(f.root,{async perceive(r){return facts(r);}},{reasoner,windowMs:8000,maxPending:12,now:()=>50000});
   for(let i=0;i<8;i++)await service.observe(await f.row('w'+i,i*2000));
   const p=await service.finishInput();assert.equal(calls,2);assert.equal(p.observations,8);assert.equal(p.spatialStates,2);assert.equal(p.coveredObservations,8);assert.equal(p.pending,0);assert.equal(service.progress().admitted,0);
-  const first=service.snapshotAt(1,50000);assert.deepEqual(first.state.window!.observations.map(o=>o.id),['w0','w1','w2','w3']);assert.equal(first.history.length,1);assert.equal(first.history[0]!.window!.observations[0]!.facts.summary,'当前观察w0');assert.throws(()=>service!.snapshotAt(1,6000),/not yet available/);
+   const first=service.snapshotAt(1,50000);assert.deepEqual(first.state.window!.observations.map(o=>o.id),['w0','w1','w2','w3']);assert.equal(first.history.length,1);assert.equal(first.history[0]!.window!.observations[0]!.facts!.summary,'当前观察w0');assert.throws(()=>service!.snapshotAt(1,6000),/not yet available/);
   assert.equal(service.latest()!.state.assessment.location.boundary!.regions.length,2);assert.equal(service.latest()!.state.visitId,null);
   const question=SpatialQuestionView.open(service.reader(),1,50000);await assert.rejects(question.inspect(['w0']),/delivered/);question.timeline();assert.equal((await question.inspect(['w0'])).images.length,3);assert.equal(question.read(['w0'])[0]!.window!.observations.length,4);
   const db=new DatabaseSync(join(f.root,'spatial.sqlite'),{readOnly:true});try{assert.equal((db.prepare('SELECT COUNT(*) AS n FROM window_members').get() as any).n,8);assert.equal((db.prepare('SELECT COUNT(*) AS n FROM checkpoint_bindings').get() as any).n,2);}finally{db.close();}
@@ -75,7 +116,7 @@ test('window transaction rolls back membership, place and context together',asyn
 test('length-triggered working compression retains current state, unresolved and source recovery references',()=>{
  const working=new SpatialWorkingMemory();let original:StoredState|undefined;
  for(let i=0;i<7;i++){const row={id:'s'+i,atMs:i*2000,views:[]};working.begin(row);const a=assessment(row.id);a.unresolved=['需要进一步确认'];const s:StoredState={version:i+1,observationId:row.id,atMs:row.atMs,availableAtMs:99999,facts:{summary:'事实'.repeat(1000),details:Array(12).fill('细节'.repeat(500))},assessment:a,visitId:null};original=s;working.commit(s);}
- const view=working.view();assert.ok(view.summary?.policy.includes('extractive'));assert.ok(view.summary!.sourceIds.length);assert.equal(view.current.id,'s6');assert.deepEqual(view.unresolved,['需要进一步确认']);assert.ok(JSON.stringify(view).length<24000);assert.equal(original!.facts.details.length,12);assert.equal(original!.facts.summary.length,2000);
+  const view=working.view();assert.ok(view.summary?.policy.includes('extractive'));assert.ok(view.summary!.sourceIds.length);assert.equal(view.current.id,'s6');assert.deepEqual(view.unresolved,['需要进一步确认']);assert.ok(JSON.stringify(view).length<24000);assert.equal(original!.facts!.details.length,12);assert.equal(original!.facts!.summary.length,2000);
 });
 
 test('new durable spatial service produces location, visits and bounded context; old revisit requires actual retrieval and inspection',async()=>{
@@ -132,7 +173,7 @@ test('failed spatial prefix preserves later extracted observations and resumes f
 });
 
 test('long-term transaction failure cannot create place/state/checkpoint or publish short-term changes',async()=>{
- const f=await fixture();const store=new SpatialLongTermStore(f.root);try{const row=await f.row('a',0);store.archive(row);store.saveFacts('a',facts(row));assert.throws(()=>store.commit(row,assessment('a'),()=>{throw Error('checkpoint failure');}),/checkpoint failure/);assert.deepEqual(store.counts(),{observations:1,spatialStates:0,coveredObservations:0,places:0,visits:0,pending:1});assert.equal(store.checkpoint(1),null);}finally{store.close();await f.cleanup();}
+ const f=await fixture();const store=new SpatialLongTermStore(f.root);try{const row=await f.row('a',0);store.archive(row);store.saveFacts('a',facts(row));assert.throws(()=>store.commit(row,assessment('a'),()=>{throw Error('checkpoint failure');}),/checkpoint failure/);assert.deepEqual(store.counts(),{observations:1,spatialStates:0,stateVersions:0,incompleteWindows:0,missingFacts:0,coveredObservations:0,places:0,visits:0,pending:1});assert.equal(store.checkpoint(1),null);}finally{store.close();await f.cleanup();}
 });
 
 test('new observation does not inherit location; cold start never rebuilds context from archive',async()=>{

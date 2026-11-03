@@ -1,18 +1,18 @@
 import type {SpatialJsonImage} from '../../agent/spatial-json-vlm.js';
 
 /** Business memory contracts; independent of Pi transcripts and evaluation labels. */
-export type Observation={id:string;atMs:number;recordingId?:string;views:SpatialJsonImage[]};
+export type Observation={id:string;atMs:number;sourceAtMs?:number;recordingId?:string;views:SpatialJsonImage[]};
 export type Facts={summary:string;details:string[]};
 export type Location={status:'new'|'known'|'unknown';placeId:string|null;name:string;reason:string;sourceIds:string[];contextRefs?:string[];boundary?:{regions:string[]}};
 export type Relation={kind:'same-facility'|'different-region';referenceId:string;reason:string;sourceIds:string[]};
 export type SpatialRevision={observationId:string;location:Location};
 export type Assessment={location:Location;hypotheses:string[];unresolved:string[];relations:Relation[];revisions?:SpatialRevision[]};
-export type SpatialWindow={startMs:number;endExclusiveMs:number;observations:Array<{id:string;atMs:number;facts:Facts}>};
-export type StoredState={version:number;observationId:string;atMs:number;availableAtMs:number;facts:Facts;assessment:Assessment;visitId:string|null;window?:SpatialWindow};
+export type SpatialWindow={startMs:number;endExclusiveMs:number;observations:Array<{id:string;atMs:number;facts:Facts|null}>;missingFactIds?:string[];revisionOfVersion?:number};
+export type StoredState={version:number;observationId:string;atMs:number;availableAtMs:number;facts:Facts|null;assessment:Assessment;visitId:string|null;window?:SpatialWindow};
 export type AgentCheckpoint={sessionId:string;tipId:string;skillVersions:Record<string,string>};
-export type JudgeInput={row:Observation;facts:Facts;context:WorkingContext;history:HistoryRecord[];window?:SpatialWindow;windowViews?:SpatialJsonImage[];evaluate?:(assessment:Assessment,evidence:JudgeEvidence)=>void;inspect:(ids:string[])=>Promise<SpatialJsonImage[]>;commit:(assessment:Assessment,evidence:JudgeEvidence)=>Promise<StoredState>;feedback?:string|null};
+export type JudgeInput={row:Observation;facts:Facts|null;context:WorkingContext;history:HistoryRecord[];window?:SpatialWindow;windowViews?:SpatialJsonImage[];evaluate?:(assessment:Assessment,evidence:JudgeEvidence)=>void;inspect:(ids:string[])=>Promise<SpatialJsonImage[]>;commit:(assessment:Assessment,evidence:JudgeEvidence)=>Promise<StoredState>;feedback?:string|null};
 export interface SpatialReasoner{judge(input:JudgeInput):Promise<Assessment>;close():Promise<void>}
-export type HistoryRecord={observationId:string;atMs:number;facts:Facts;location:Location;version:number;window?:SpatialWindow};
+export type HistoryRecord={observationId:string;atMs:number;facts:Facts|null;location:Location;version:number;window?:SpatialWindow};
 export type WorkingContext={current:{id:string;atMs:number};location:Location|null;recent:StoredState[];anchors:StoredState[];retrieved:HistoryRecord[];summary?:{policy:string;text:string;sourceIds:string[];throughAtMs:number};unresolved?:string[]};
 export type SpatialAction=
  |{kind:'find';terms:string[];assessment:Assessment}
@@ -22,6 +22,7 @@ export type SpatialAction=
 export type ReasonInput={current:Observation;facts:Facts;context:WorkingContext;toolResult:unknown;inspectedIds:string[];remainingCalls:number;feedback:string|null};
 export interface SpatialModels{
  perceive(row:Observation):Promise<Facts>;
+ perceiveWindow?(rows:Observation[]):Promise<Array<{id:string;facts:Facts}>>;
  reason?(input:ReasonInput,images:SpatialJsonImage[]):Promise<SpatialAction>;
 }
 export type JudgeEvidence={inspected:Set<string>;delivered:Set<string>};

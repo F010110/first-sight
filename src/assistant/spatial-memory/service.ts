@@ -20,9 +20,12 @@ export class SpatialMemoryService{
  private extractionTasks=new Set<Promise<unknown>>();
  private bucket:Array<{row:Observation;extract:Promise<void>}>=[];
  private admitted=0;
+ private windowExtractionTail=Promise.resolve();
+ private evidenceWaitMs=8000;
+ private bucketTimer:ReturnType<typeof setTimeout>|null=null;
  private published:StoredState|null=null;
  private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number;windowMs:number}){}
- static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number;windowMs?:number}={}){
+ static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number;windowMs?:number;evidenceWaitMs?:number}={}){
   const root=resolve(rootArg),concurrency=options.extractionConcurrency??2,max=options.maxReasonCalls??8,maxPending=options.maxPending??64,cool=options.cooldownMs??30000;
   if(!Number.isInteger(concurrency)||concurrency<1||concurrency>8||!Number.isInteger(max)||max<1||max>32||!Number.isInteger(maxPending)||maxPending<1||maxPending>1024||!Number.isFinite(cool)||cool<0||cool>300000)throw Error('Invalid spatial execution budget');
   const windowMs=options.windowMs??0;
@@ -35,10 +38,15 @@ export class SpatialMemoryService{
    catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   } else await readFile(join(root,'spatial.sqlite')); // Explicit same-session recovery only.
   const store=new SpatialLongTermStore(root,options.now??Date.now),service=new SpatialMemoryService(root,models,options.reasoner??null,store,{extractionConcurrency:concurrency,maxReasonCalls:max,now:options.now??Date.now,maxPending,cooldownMs:cool,activeLimit:concurrency,coolUntil:0,windowMs});
-  service.admitted=store.pending().length;
+  if(windowMs&&!store.supportsWindowRevisions()){store.close();throw Error('Nonblocking windows require a new schema-v2 database; legacy runs are preserved');}
+  service.evidenceWaitMs=options.evidenceWaitMs??8000;
+  if(!Number.isFinite(service.evidenceWaitMs)||service.evidenceWaitMs<0||service.evidenceWaitMs>120000){store.close();throw Error('Invalid evidence deadline');}
+  const incomplete=store.history(store.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).filter(r=>r.window?.missingFactIds?.length);
+  service.admitted=store.pending().length+incomplete.reduce((n,r)=>n+r.window!.observations.length,0);
   if(service.admitted>maxPending){store.close();throw Error('Recovered pending exceeds configured capacity');}
   try{if(options.resume&&store.version()){
-   const state=store.state(store.version())!,context=store.checkpoint(state.version);if(!context)throw Error('Missing durable working checkpoint');
+   const latest=store.history(store.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).at(-1)!;
+   const state=store.state(latest.version)!,context=store.checkpoint(state.version);if(!context)throw Error('Missing durable working checkpoint');
    service.working.restore(store.observation(state.observationId)!,context);service.published=state;
   }}catch(e){store.close();throw e;}
   return service;
@@ -54,7 +62,7 @@ export class SpatialMemoryService{
    // Spatial failure stops ordered reasoning, never independent raw archival.
     if(this.options.windowMs&&this.store.latestObservation()&&source.atMs-this.store.latestObservation()!.atMs<2000)throw Error('8-second mode requires observations at least 2 seconds apart');
    if(!source.id||!Number.isFinite(source.atMs)||source.atMs<0||source.views.length!==3||new Set(source.views.map(v=>v.direction)).size!==3||source.views.some(v=>v.id!==source.id||!['front','left','right'].includes(v.direction)))throw Error('Require source-bound three-camera observation');
-   const row:Observation={id:source.id,atMs:source.atMs,...source.recordingId?{recordingId:source.recordingId}:{},views:source.views.map(v=>({id:source.id,direction:v.direction,path:v.path,sha256:v.sha256}))};
+    const row:Observation={id:source.id,atMs:source.atMs,...source.sourceAtMs!==undefined?{sourceAtMs:source.sourceAtMs}:{},...source.recordingId?{recordingId:source.recordingId}:{},views:source.views.map(v=>({id:source.id,direction:v.direction,path:v.path,sha256:v.sha256}))};
    for(const view of row.views){const bytes=await readFile(view.path);if(createHash('sha256').update(bytes).digest('hex')!==view.sha256)throw Error('Original source hash mismatch');const path=join(this.root,'originals',view.sha256+'.png');await mkdir(join(this.root,'originals'),{recursive:true});try{await writeFile(path,bytes,{flag:'wx'});}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST')throw e;if(createHash('sha256').update(await readFile(path)).digest('hex')!==view.sha256)throw Error('Archived source changed');}view.path=path;}
     this.store.archive(row);archived=true;this.schedule(row);
    });
@@ -62,19 +70,67 @@ export class SpatialMemoryService{
  }
  private schedule(row:Observation){
   if(this.scheduled.has(row.id))return;this.scheduled.add(row.id);
-   const extract=this.extract(row);this.extractionTasks.add(extract);void extract.finally(()=>this.extractionTasks.delete(extract)).catch(()=>{});
+   const extract=this.options.windowMs&&this.models.perceiveWindow?Promise.resolve():this.trackExtraction(this.extract(row));
    if(this.options.windowMs){
     if(this.bucket.length&&(Math.floor(this.bucket[0]!.row.atMs/8000)!==Math.floor(row.atMs/8000)||this.bucket[0]!.row.recordingId!==row.recordingId))this.flushWindow();
-    this.bucket.push({row,extract});if(this.bucket.length===4)this.flushWindow();
+    this.bucket.push({row,extract});
+    if(this.bucket.length===1){this.bucketTimer=setTimeout(()=>this.flushWindow(),this.options.windowMs);this.bucketTimer.unref();}
+    if(this.bucket.length===4)this.flushWindow();
    }else this.enqueue([{row,extract}]);
   }
- private flushWindow(){if(this.bucket.length){const batch=this.bucket;this.bucket=[];this.enqueue(batch);}}
+ private trackExtraction(task:Promise<void>){this.extractionTasks.add(task);void task.finally(()=>this.extractionTasks.delete(task)).catch(()=>{});return task;}
+ private flushWindow(){if(this.bucketTimer){clearTimeout(this.bucketTimer);this.bucketTimer=null;}if(this.bucket.length){const batch=this.bucket;this.bucket=[];if(this.models.perceiveWindow){const task=this.trackExtraction(this.extractWindow(batch.map(b=>b.row)));for(const item of batch)item.extract=task;}this.enqueue(batch);}}
+ private extractWindow(rows:Observation[]){
+  const task=this.windowExtractionTail.then(async()=>{
+   const missing=rows.filter(r=>!this.store.facts(r.id));if(!missing.length)return;
+   this.extractionActive++;
+   try{
+    let result:Array<{id:string;facts:import('./contracts.js').Facts}>|undefined;
+    for(let attempt=0;attempt<3;attempt++){try{result=await this.models.perceiveWindow!(structuredClone(missing));break;}catch(error){if(attempt===2||!await this.congest(error))throw error;}}
+    if(!Array.isArray(result)||result.length!==missing.length||result.some((r,i)=>r.id!==missing[i]!.id))throw Error('Batch perception must cover every source exactly once in order');
+    const validated=result.map(r=>({id:r.id,facts:validateFacts(r.facts)}));
+    for(const r of validated)this.store.saveFacts(r.id,r.facts);
+   }catch(error){for(const row of missing)this.store.fail(row.id,error);throw error;}
+   finally{this.extractionActive--;}
+  });
+  this.windowExtractionTail=task.catch(()=>{});return task;
+ }
  private enqueue(batch:Array<{row:Observation;extract:Promise<void>}>){
+  const settled=Promise.allSettled(batch.map(b=>b.extract));let done=false,initialVersion:number|null=null,released=false,repairQueued=false;
+  const release=()=>{if(released)return;released=true;this.admitted-=batch.length;for(const b of batch)this.scheduled.delete(b.row.id);};
+  const finish=()=>{
+   if(!done||initialVersion===null)return;
+   const state=this.store.state(initialVersion)!;
+   if(state.window?.missingFactIds?.length&&!batch.some(b=>!this.store.facts(b.row.id))&&!repairQueued){repairQueued=true;this.enqueueRepair(batch.map(b=>b.row),initialVersion,release);}
+   else if(!repairQueued)release();
+  };
+  void settled.then(()=>{done=true;finish();});
   this.commitTail=this.commitTail.then(async()=>{
    if(this.failure)return;
-   try{await Promise.all(batch.map(b=>b.extract));await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);this.admitted-=batch.length;}
+   try{
+    if(this.options.windowMs){let timer:ReturnType<typeof setTimeout>|undefined;try{await Promise.race([settled,new Promise<void>(resolve=>{timer=setTimeout(resolve,this.evidenceWaitMs);})]);}finally{if(timer)clearTimeout(timer);}}
+    else await Promise.all(batch.map(b=>b.extract));
+    await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);initialVersion=this.store.version();finish();
+   }
    catch(e){this.failure=String(e);this.store.fail(batch[0]!.row.id,e);}
-   finally{for(const b of batch)this.scheduled.delete(b.row.id);}
+  });
+ }
+ private enqueueRepair(rows:Observation[],version:number,release:()=>void){
+  this.commitTail=this.commitTail.then(async()=>{
+   if(this.failure)return;
+   const working=this.working,published=this.published;
+   try{
+    const tail=rows.at(-1)!,latest=this.store.history(this.store.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).find(r=>r.observationId===tail.id);
+    if(latest&&!latest.window?.missingFactIds?.length)return;
+    const targetVersion=latest?.version??version;this.working=new SpatialWorkingMemory();this.working.restore(tail,this.store.checkpoint(targetVersion)!);
+    await this.associate(tail,rows,targetVersion);
+    if(published&&published.atMs>tail.atMs){
+     this.working=working;this.published=published;
+     const latestRow=this.store.observation(published.observationId)!;
+     await this.associate(latestRow,published.window!.observations.map(o=>this.store.observation(o.id)!),published.version);
+    }
+   }catch(error){this.working=working;this.published=published;this.failure=String(error);this.store.fail(rows.at(-1)!.id,error);}
+   finally{release();}
   });
  }
  private async extract(row:Observation){
@@ -103,10 +159,10 @@ export class SpatialMemoryService{
   this.options.activeLimit=Math.min(this.options.extractionConcurrency,this.options.activeLimit+1);
   return true;
  }
-  private async associate(row:Observation,rows?:Observation[]){
-   const window:SpatialWindow|undefined=rows?{startMs:rows[0]!.atMs,endExclusiveMs:(Math.floor(row.atMs/8000)+1)*8000,observations:rows.map(r=>({id:r.id,atMs:r.atMs,facts:this.store.facts(r.id)!}))}:undefined;
+  private async associate(row:Observation,rows?:Observation[],revisionOfVersion?:number){
+   const window:SpatialWindow|undefined=rows?{startMs:rows[0]!.atMs,endExclusiveMs:(Math.floor(row.atMs/8000)+1)*8000,observations:rows.map(r=>({id:r.id,atMs:r.atMs,facts:this.store.facts(r.id)})),missingFactIds:rows.filter(r=>!this.store.facts(r.id)).map(r=>r.id),...revisionOfVersion!==undefined?{revisionOfVersion}:{}}:undefined;
    for(const view of (rows??[row]).flatMap(r=>r.views))if(createHash('sha256').update(await readFile(view.path)).digest('hex')!==view.sha256)throw Error('Archived current source changed');
-  this.working.begin(row);
+   this.working.begin(row,revisionOfVersion!==undefined);
    const prior=this.store.history(this.store.version(),(window?.startMs??row.atMs)-0.000001,this.options.now());
    const byId=new Map(prior.map(r=>[r.observationId,r]));
    // Member source IDs resolve to their window record, not invented per-frame judgments.
@@ -172,7 +228,7 @@ export class SpatialMemoryService{
      if(!Array.isArray(action.terms)||!action.terms.length||action.terms.length>6||action.terms.some(t=>typeof t!=='string'||!t.trim()))throw Error('Invalid literal search terms');
      const terms=action.terms.map(t=>t.toLowerCase());const matches=prior.filter(r=>terms.some(t=>JSON.stringify(r).toLowerCase().includes(t))).slice(0,12);
      for(const r of matches)delivered.add(r.observationId);
-     toolResult={kind:'previews',records:matches.map(r=>({...r,facts:{summary:r.facts.summary.slice(0,240),details:[]}})),semanticCompleteness:false};
+     toolResult={kind:'previews',records:matches.map(r=>({...r,facts:r.facts?{summary:r.facts.summary.slice(0,240),details:[]}:null})),semanticCompleteness:false};
     }else if(action.kind==='read'){
      const after=action.afterMs??0,before=action.beforeMs??row.atMs-0.000001,cursor=action.cursor??0;
      if(!Number.isFinite(after)||!Number.isFinite(before)||after<0||before<after||before>=row.atMs||!Number.isInteger(cursor)||cursor<0)throw Error('Invalid causal read range');
@@ -200,15 +256,21 @@ export class SpatialMemoryService{
   }
   private commitValidated(row:Observation,assessment:Assessment,inspected:ReadonlySet<string>,byId:Map<string,HistoryRecord>,contextSources:Array<{observationId:string;assessment:{location:{placeId:string|null}}}>,window?:SpatialWindow){
    validateAssessment(assessment,row.id,inspected);this.validateIdentity(assessment,byId,contextSources);
+   if(window?.missingFactIds?.includes(row.id)&&assessment.location.status!=='unknown')throw Error('Tail observation facts unavailable: current location must remain unknown');
    const state=this.store.commit(row,assessment,s=>{const next=new SpatialWorkingMemory();next.restore(row,this.working.view(),true);next.commit(s);return next.view();},window);
-  this.working.commit(state);this.published=structuredClone(state);return state;
+   this.working.commit(state);if(!this.published||state.atMs>=this.published.atMs)this.published=structuredClone(state);return state;
  }
- async resumePending(){
-  if(this.closed||this.scheduled.size||this.failure)throw Error('Resume requires a newly reopened service');
-  for(const row of this.store.pending())this.schedule(row);
- }
+  async resumePending(){
+   if(this.closed||this.scheduled.size||this.failure)throw Error('Resume requires a newly reopened service');
+   for(const row of this.store.pending())this.schedule(row);
+   for(const record of this.store.history(this.store.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).filter(r=>r.window?.missingFactIds?.length)){
+    const rows=record.window!.observations.map(o=>this.store.observation(o.id)!);for(const row of rows)this.scheduled.add(row.id);
+    const task=this.trackExtraction(this.models.perceiveWindow?this.extractWindow(rows):Promise.all(rows.map(row=>this.extract(row))).then(()=>{}));
+    void task.then(()=>this.enqueueRepair(rows,record.version,()=>{this.admitted-=rows.length;for(const row of rows)this.scheduled.delete(row.id);}),error=>{this.failure=String(error);});
+   }
+  }
  knows(id:string){return !!this.store.observation(id);}
-  async finishInput(){await this.archiveTail;this.flushWindow();await Promise.allSettled([...this.extractionTasks]);await this.commitTail;if(this.failure)throw Error(this.failure);return this.store.counts();}
+  async finishInput(){await this.archiveTail;this.flushWindow();await Promise.allSettled([...this.extractionTasks]);let tail:Promise<void>;do{tail=this.commitTail;await tail;}while(tail!==this.commitTail);if(this.failure)throw Error(this.failure);return this.store.counts();}
  latest(){
   if(!this.published)return null;
   const current=this.store.latestObservation()!,pending=current.id!==this.published.observationId;

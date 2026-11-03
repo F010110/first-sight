@@ -52,13 +52,13 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   if(!Number.isFinite(after)||!Number.isFinite(before)||after<0||before<after||before>input.row.atMs||!Number.isInteger(cursor)||cursor<0)throw Error('Invalid causal timeline range');
   const range=input.history.filter(r=>r.atMs>=after&&r.atMs<=before),page=range.slice(cursor,cursor+24);
   for(const r of page)deliver(r);
-  lastToolResult={kind:'timeline',records:page.map(r=>({observationId:r.observationId,atMs:r.atMs,location:r.location,windowMemberIds:r.window?.observations.map(o=>o.id),preview:r.facts.summary.slice(0,240)})),nextCursor:cursor+page.length<range.length?cursor+page.length:null,total:range.length,note:'Previews are not full text; member IDs reference window evidence, not per-frame locations; zero matches do not establish absence'};
+  lastToolResult={kind:'timeline',records:page.map(r=>({observationId:r.observationId,atMs:r.atMs,location:r.location,windowMemberIds:r.window?.observations.map(o=>o.id),preview:r.facts?.summary.slice(0,240)??null})),nextCursor:cursor+page.length<range.length?cursor+page.length:null,total:range.length,note:'Previews are not full text; null facts mean missing evidence, not absence; member IDs reference window evidence, not per-frame locations'};
   return lastToolResult;
  });
  const find=tool('memory_find','Literal candidate hints only; not a target resolver and not exhaustive.',Type.Object({terms:Type.Array(Type.String({maxLength:80}),{minItems:1,maxItems:6})}),async a=>{
   const input=requireCurrent(),terms=(a.terms as string[]).map(t=>t.toLowerCase()),hits=input.history.filter(r=>terms.some(t=>JSON.stringify(r).toLowerCase().includes(t))),page=hits.slice(0,12);
   for(const r of page)deliver(r);
-  lastToolResult={kind:'find',records:page.map(r=>({observationId:r.observationId,atMs:r.atMs,location:r.location,windowMemberIds:r.window?.observations.map(o=>o.id),preview:r.facts.summary.slice(0,240)})),total:hits.length,candidateOnly:true,exhaustive:false};
+  lastToolResult={kind:'find',records:page.map(r=>({observationId:r.observationId,atMs:r.atMs,location:r.location,windowMemberIds:r.window?.observations.map(o=>o.id),preview:r.facts?.summary.slice(0,240)??null})),total:hits.length,candidateOnly:true,exhaustive:false};
   return lastToolResult;
  });
  const read=tool('memory_read','Read full facts for previously delivered records.',Type.Object({ids:Type.Array(Type.String(),{minItems:1,maxItems:12})}),async a=>{
@@ -112,7 +112,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    const outcome=getOrThrow(await lane.prompt(JSON.stringify({observationId:input.row.id,atMs:input.row.atMs}),undefined,BACKGROUND_CONTEXT));
    if(outcome.status!=='completed'||!committed)throw Error('Spatial Pi turn did not commit: '+JSON.stringify(outcome));
    const tipId=await lane.getTipId(BACKGROUND_CONTEXT);
-   await appendFile(join(root,'pi-checkpoints.jsonl'),JSON.stringify({observationId:input.row.id,atMs:input.row.atMs,window:input.window?{startMs:input.window.startMs,endExclusiveMs:input.window.endExclusiveMs,memberIds:input.window.observations.map(o=>o.id)}:undefined,session:session.metadata,tipId,skillVersions:versions})+'\n');
+   await appendFile(join(root,'pi-checkpoints.jsonl'),JSON.stringify({version:(committed as StoredState).version,observationId:input.row.id,atMs:input.row.atMs,window:input.window?{startMs:input.window.startMs,endExclusiveMs:input.window.endExclusiveMs,memberIds:input.window.observations.map(o=>o.id),missingFactIds:input.window.missingFactIds??[],revisionOfVersion:input.window.revisionOfVersion}:undefined,session:session.metadata,tipId,skillVersions:versions})+'\n');
    return committed;
   },
   async close(){await harness.close(BACKGROUND_CONTEXT);await repo.close(BACKGROUND_CONTEXT);}

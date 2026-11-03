@@ -9,10 +9,11 @@ export class SpatialWorkingMemory{
  private pendingLocation:Location|null=null;
  private summary:WorkingContext['summary'];
  private unresolved:string[]=[];
+ private awaiting=false;
  constructor(private horizonMs=60000,private recentLimit=6,private anchorLimit=4,private retrievedLimit=4){}
- begin(row:Observation){
-  if(this.current&&row.atMs<=this.current.atMs)throw Error('Working memory time regression');
-  this.current=structuredClone(row);this.retrieved=[];this.pendingLocation=null;
+  begin(row:Observation,reassessment=false){
+   if(this.current&&(row.atMs<this.current.atMs||row.atMs===this.current.atMs&&!reassessment))throw Error('Working memory time regression');
+   this.current=structuredClone(row);this.retrieved=[];this.pendingLocation=null;this.awaiting=true;
    const evicted=this.recent.filter(s=>s.atMs<row.atMs-this.horizonMs);
    this.summarize(evicted);
    this.recent=this.recent.filter(s=>s.atMs>=row.atMs-this.horizonMs);
@@ -21,7 +22,7 @@ export class SpatialWorkingMemory{
  view():WorkingContext{
   if(!this.current)throw Error('No active observation');
   const state=this.recent.find(s=>s.observationId===this.current!.id);
-   return structuredClone({current:{id:this.current.id,atMs:this.current.atMs},location:state?.assessment.location??this.pendingLocation,recent:this.recent,anchors:this.anchors,retrieved:this.retrieved,...this.summary?{summary:this.summary}:{},unresolved:this.unresolved});
+   return structuredClone({current:{id:this.current.id,atMs:this.current.atMs},location:this.awaiting?this.pendingLocation:state?.assessment.location??this.pendingLocation,recent:this.recent,anchors:this.anchors,retrieved:this.retrieved,...this.summary?{summary:this.summary}:{},unresolved:this.unresolved});
  }
  evaluate(location:Location){if(!this.current)throw Error('No active observation');this.pendingLocation=structuredClone(location);}
  deliver(records:HistoryRecord[]){
@@ -29,14 +30,15 @@ export class SpatialWorkingMemory{
   for(const r of records){this.retrieved=this.retrieved.filter(v=>v.observationId!==r.observationId);this.retrieved.push(structuredClone(r));}
   this.retrieved=this.retrieved.slice(-this.retrievedLimit);
  }
- commit(state:StoredState){
-  if(!this.current||state.observationId!==this.current.id||state.atMs!==this.current.atMs)throw Error('Working commit mismatch');
+  commit(state:StoredState){
+   if(!this.current||state.observationId!==this.current.id||state.atMs!==this.current.atMs)throw Error('Working commit mismatch');
+   this.awaiting=false;
   for(const revision of state.assessment.revisions??[]){
    for(const item of [...this.recent,...this.anchors])if(item.observationId===revision.observationId)item.assessment.location=structuredClone(revision.location);
    for(const record of this.retrieved)if(record.observationId===revision.observationId)record.location=structuredClone(revision.location);
   }
   this.anchors=this.anchors.filter((s,i,all)=>s.assessment.location.placeId!==null&&all.findIndex(a=>a.assessment.location.placeId===s.assessment.location.placeId)===i);
-   this.recent.push(structuredClone(state));this.summarize(this.recent.slice(0,-this.recentLimit));this.recent=this.recent.slice(-this.recentLimit);
+   this.recent=this.recent.filter(s=>s.observationId!==state.observationId);this.recent.push(structuredClone(state));this.summarize(this.recent.slice(0,-this.recentLimit));this.recent=this.recent.slice(-this.recentLimit);
   const place=state.assessment.location.placeId;
   if(place&&!this.anchors.some(s=>s.assessment.location.placeId===place))this.anchors.push(structuredClone(state));
    this.anchors=this.anchors.slice(-this.anchorLimit);
@@ -45,16 +47,16 @@ export class SpatialWorkingMemory{
    if(JSON.stringify(this.view()).length>24000){
     this.summarize(this.recent.slice(0,-2));this.recent=this.recent.slice(-2);this.anchors=this.anchors.slice(-2);this.retrieved=this.retrieved.slice(-2);
     for(const s of [...this.recent,...this.anchors]){
-     s.facts={summary:s.facts.summary.slice(0,400),details:s.facts.details.slice(-3).map(d=>d.slice(0,240))};
+     if(s.facts)s.facts={summary:s.facts.summary.slice(0,400),details:s.facts.details.slice(-3).map(d=>d.slice(0,240))};
      s.assessment.location.reason=s.assessment.location.reason.slice(0,400);
      s.assessment.hypotheses=s.assessment.hypotheses.slice(-2).map(v=>v.slice(0,240));
      s.assessment.unresolved=s.assessment.unresolved.slice(-4).map(v=>v.slice(0,240));
      s.assessment.relations=s.assessment.relations.slice(-2).map(r=>({...r,reason:r.reason.slice(0,160)}));
      if(s.assessment.revisions)s.assessment.revisions=s.assessment.revisions.map(r=>({...r,location:{...r.location,reason:r.location.reason.slice(0,160)}}));
-     if(s.window)for(const o of s.window.observations)o.facts={summary:o.facts.summary.slice(0,240),details:[]};
+     if(s.window)for(const o of s.window.observations)if(o.facts)o.facts={summary:o.facts.summary.slice(0,240),details:[]};
     }
     this.unresolved=this.unresolved.slice(-4).map(v=>v.slice(0,240));
-    this.retrieved=this.retrieved.map(r=>{const {window,...record}=r;return {...record,facts:{summary:r.facts.summary.slice(0,240),details:[]}};});
+    this.retrieved=this.retrieved.map(r=>{const {window,...record}=r;return {...record,facts:r.facts?{summary:r.facts.summary.slice(0,240),details:[]}:null};});
    }
  }
   restore(row:Observation,view:WorkingContext,retainCurrentDeliveries=false){
