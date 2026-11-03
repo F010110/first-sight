@@ -372,7 +372,7 @@ export class SpatialMemoryService{
    }
    if(membersById.size)places.push({placeId,name:entry.name,members:[...membersById.values()].sort((a,b)=>a.atMs-b.atMs)});
   }
-  if(!places.length)return {status:'ok' as const,method:'sift-ransac-plus-global-layout',consideredPlaces:0,excludedPreviousPlaceId:previousPlaceId,error:null,candidates:[],note:'No older place candidates are available yet.'};
+  if(!places.length)return {status:'ok' as const,method:'sift-ransac-plus-global-layout' as const,consideredPlaces:0,excludedPreviousPlaceId:previousPlaceId,limit:this.options.revisitLimit,error:null,candidates:[],note:'No older place candidates are available yet.'};
   if(!this.options.revisitMatcher)return revisitRecallUnavailable(places,previousPlaceId,'visual matcher not configured',this.options.revisitLimit);
   const query=members.flatMap(o=>o.views).map(v=>({id:v.id,direction:v.direction,path:v.path,sha256:v.sha256}));
   const result=await this.options.revisitMatcher.match(query,places.flatMap(p=>p.members.map(m=>({placeId:p.placeId,image:{id:m.observationId,direction:m.direction,path:m.path,sha256:m.sha256}}))));
