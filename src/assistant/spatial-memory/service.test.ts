@@ -8,6 +8,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {SpatialMemoryService} from './service.js';
 import {SpatialQuestionView} from './question-view.js';
 import {SpatialOutputProtocolError} from '../../agent/spatial-protocol-retry.js';
+import {projectSpatialContext} from './context-projection.js';
 import {SpatialLongTermStore} from './long-term-store.js';
 import {SpatialWorkingMemory} from './working-context.js';
 import type {Observation,SpatialModels,SpatialAction,Assessment,SpatialReasoner,StoredState} from './contracts.js';
@@ -181,6 +182,32 @@ test('length-triggered working compression retains current state, unresolved and
  const working=new SpatialWorkingMemory();let original:StoredState|undefined;
  for(let i=0;i<7;i++){const row={id:'s'+i,atMs:i*2000,views:[]};working.begin(row);const a=assessment(row.id);a.unresolved=['需要进一步确认'];const s:StoredState={version:i+1,observationId:row.id,atMs:row.atMs,availableAtMs:99999,facts:{summary:'事实'.repeat(1000),details:Array(12).fill('细节'.repeat(500))},assessment:a,visitId:null};original=s;working.commit(s);}
   const view=working.view();assert.ok(view.summary?.policy.includes('extractive'));assert.ok(view.summary!.sourceIds.length);assert.equal(view.current.id,'s6');assert.deepEqual(view.unresolved,['需要进一步确认']);assert.ok(JSON.stringify(view).length<24000);assert.equal(original!.facts!.details.length,12);assert.equal(original!.facts!.summary.length,2000);
+});
+
+test('model context projection deduplicates anchors and separates historical decisions from current reasons',()=>{
+ const shared:StoredState={version:2,observationId:'b',atMs:2000,availableAtMs:50000,facts:{summary:'事实b',details:['细节']},assessment:assessment('b','known','place-a',['b','a']),locationDecision:'known',visitId:'v1'};
+ const context={current:{id:'c',atMs:4000},location:null,recent:[shared],anchors:[shared],retrieved:[],summary:{policy:'p',text:'t',sourceIds:['a'],throughAtMs:2000},unresolved:['待确认']};
+ const projected=projectSpatialContext(context) as any;
+ assert.equal(projected.recent.length,1);assert.equal(projected.anchors.length,0);assert.deepEqual(projected.anchorRefs,['b']);
+ assert.equal(projected.recent[0].decisionAtThatTime,'known');assert.equal(projected.recent[0].assessment.location.placeId,'place-a');
+ assert.equal(projected.recent[0].assessment.location.reason,undefined);assert.ok(projected.recent[0].historicalReason);
+ assert.ok(JSON.stringify(projected).includes('historical-not-current'));assert.deepEqual(projected.unresolved,['待确认']);
+ assert.equal(shared.assessment.location.reason,'独立当前布局与实际交付来源');
+});
+
+test('task timing reports delivery-to-commit latency, missing evidence and peak admission without changing semantics',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,time=1000;
+ const reasoner:SpatialReasoner={async judge(input){time+=2500;const a=assessment(input.row.id);await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('No per-observation lane');},async perceiveWindow(rows){time+=1000;return rows.map(r=>({id:r.id,facts:facts(r)}));}},{windowMs:8000,reasoner,now:()=>time});
+  for(let i=0;i<4;i++){time+=2000;await service.observe(await f.row('k'+i,i*2000));}
+  await service.finishInput();
+  const timings=service.taskTimings();assert.equal(timings.length,1);
+  const task=timings[0] as any;assert.deepEqual(task.observationIds,['k0','k1','k2','k3']);
+  assert.equal(task.missingFactCount,0);assert.equal(task.perceptionCalls,1);
+  assert.ok(task.oldestDeliveryToCommitMs>0);assert.ok(task.sealedToCommitMs>=0);assert.ok(task.tailDeliveryToCommitMs>=0);
+  assert.equal(service.progress().peakAdmitted,4);assert.equal(service.progress().admitted,0);assert.equal(service.progress().backpressureRejections,0);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });
 
 test('new durable spatial service produces location, visits and bounded context; old revisit requires actual retrieval and inspection',async()=>{

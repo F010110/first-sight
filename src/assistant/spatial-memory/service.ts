@@ -23,6 +23,13 @@ export class SpatialMemoryService{
  private windowExtractionTail=Promise.resolve();
  private evidenceWaitMs=8000;
  private bucketTimer:ReturnType<typeof setTimeout>|null=null;
+ private deliveredAt=new Map<string,number>();
+ private sealedAt=new Map<string,number>();
+ private perceptionTiming=new Map<string,{start:number;end?:number;calls:number}>();
+ private judgmentStartedAt=new Map<string,number>();
+ private completedTasks:Array<Record<string,unknown>>=[];
+ private peakAdmitted=0;
+ private backpressureRejections=0;
  private published:StoredState|null=null;
  private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number;windowMs:number}){}
  static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number;windowMs?:number;evidenceWaitMs?:number}={}){
@@ -55,8 +62,9 @@ export class SpatialMemoryService{
    if(this.closed)throw Error('Spatial service closed');
    // Reserve before joining archiveTail: callers cannot build an unbounded
    // queue of waiting observe promises. The caller must await capacity/retry.
-   if(this.admitted>=this.options.maxPending)throw Error('Spatial backpressure: capacity full; retry after progress');
+   if(this.admitted>=this.options.maxPending){this.backpressureRejections++;throw Error('Spatial backpressure: capacity full; retry after progress');}
    this.admitted++;
+   this.peakAdmitted=Math.max(this.peakAdmitted,this.admitted);
    let archived=false;
    const archive=this.archiveTail.then(async()=>{
    // Spatial failure stops ordered reasoning, never independent raw archival.
@@ -64,7 +72,7 @@ export class SpatialMemoryService{
    if(!source.id||!Number.isFinite(source.atMs)||source.atMs<0||source.views.length!==3||new Set(source.views.map(v=>v.direction)).size!==3||source.views.some(v=>v.id!==source.id||!['front','left','right'].includes(v.direction)))throw Error('Require source-bound three-camera observation');
     const row:Observation={id:source.id,atMs:source.atMs,...source.sourceAtMs!==undefined?{sourceAtMs:source.sourceAtMs}:{},...source.recordingId?{recordingId:source.recordingId}:{},views:source.views.map(v=>({id:source.id,direction:v.direction,path:v.path,sha256:v.sha256}))};
    for(const view of row.views){const bytes=await readFile(view.path);if(createHash('sha256').update(bytes).digest('hex')!==view.sha256)throw Error('Original source hash mismatch');const path=join(this.root,'originals',view.sha256+'.png');await mkdir(join(this.root,'originals'),{recursive:true});try{await writeFile(path,bytes,{flag:'wx'});}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST')throw e;if(createHash('sha256').update(await readFile(path)).digest('hex')!==view.sha256)throw Error('Archived source changed');}view.path=path;}
-    this.store.archive(row);archived=true;this.schedule(row);
+    this.store.archive(row);archived=true;this.deliveredAt.set(row.id,this.options.now());this.schedule(row);
    });
    this.archiveTail=archive.catch(()=>{});try{return await archive;}catch(error){if(!archived)this.admitted--;throw error;}
  }
@@ -79,10 +87,12 @@ export class SpatialMemoryService{
    }else this.enqueue([{row,extract}]);
   }
  private trackExtraction(task:Promise<void>){this.extractionTasks.add(task);void task.finally(()=>this.extractionTasks.delete(task)).catch(()=>{});return task;}
- private flushWindow(){if(this.bucketTimer){clearTimeout(this.bucketTimer);this.bucketTimer=null;}if(this.bucket.length){const batch=this.bucket;this.bucket=[];if(this.models.perceiveWindow){const task=this.trackExtraction(this.extractWindow(batch.map(b=>b.row)));for(const item of batch)item.extract=task;}this.enqueue(batch);}}
+ private flushWindow(){if(this.bucketTimer){clearTimeout(this.bucketTimer);this.bucketTimer=null;}if(this.bucket.length){const batch=this.bucket;this.bucket=[];this.sealedAt.set(batch.at(-1)!.row.id,this.options.now());if(this.models.perceiveWindow){const task=this.trackExtraction(this.extractWindow(batch.map(b=>b.row)));for(const item of batch)item.extract=task;}this.enqueue(batch);}}
  private extractWindow(rows:Observation[]){
   const task=this.windowExtractionTail.then(async()=>{
    let missing=rows.filter(r=>!this.store.facts(r.id));if(!missing.length)return;
+   const timing=this.perceptionTiming.get(rows.at(-1)!.id)??{start:this.options.now(),calls:0};timing.calls++;
+   this.perceptionTiming.set(rows.at(-1)!.id,timing);
    this.extractionActive++;
    try{
     let feedback:string|undefined;
@@ -100,12 +110,14 @@ export class SpatialMemoryService{
     }
     throw new SpatialOutputProtocolError('Batch perception incomplete after bounded feedback: '+missing.map(r=>r.id).join(','));
    }catch(error){for(const row of missing.filter(r=>!this.store.facts(r.id)))this.store.fail(row.id,error);throw error;}
-   finally{this.extractionActive--;}
+   finally{timing.end=this.options.now();this.extractionActive--;}
   });
   this.windowExtractionTail=task.catch(()=>{});return task;
  }
  private enqueue(batch:Array<{row:Observation;extract:Promise<void>}>){
   const settled=Promise.allSettled(batch.map(b=>b.extract));let done=false,initialVersion:number|null=null,released=false,repairQueued=false;
+  const tailId=batch.at(-1)!.row.id;
+  if(!this.sealedAt.has(tailId))this.sealedAt.set(tailId,this.options.now());
   const release=()=>{if(released)return;released=true;this.admitted-=batch.length;for(const b of batch)this.scheduled.delete(b.row.id);};
   const finish=()=>{
    if(!done||initialVersion===null)return;
@@ -119,6 +131,7 @@ export class SpatialMemoryService{
    try{
     if(this.options.windowMs){let timer:ReturnType<typeof setTimeout>|undefined;try{await Promise.race([settled,new Promise<void>(resolve=>{timer=setTimeout(resolve,this.evidenceWaitMs);})]);}finally{if(timer)clearTimeout(timer);}}
     else await Promise.all(batch.map(b=>b.extract));
+    this.judgmentStartedAt.set(tailId,this.options.now());
     await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);initialVersion=this.store.version();finish();
    }
    catch(e){this.failure=String(e);this.store.fail(batch[0]!.row.id,e);}
@@ -144,6 +157,8 @@ export class SpatialMemoryService{
   });
  }
  private async extract(row:Observation){
+   const timing=this.perceptionTiming.get(row.id)??{start:this.options.now(),calls:0};timing.calls++;
+   this.perceptionTiming.set(row.id,timing);
   while(this.options.now()<this.options.coolUntil)await sleep(20);
    while(this.extractionActive>=this.options.activeLimit)await new Promise<void>(r=>this.waiters.push(r));
   this.extractionActive++;
@@ -156,7 +171,7 @@ export class SpatialMemoryService{
     }
     if(last)throw last;
    }
-  }finally{this.extractionActive--;this.waiters.shift()?.();}
+  }finally{timing.end=this.options.now();this.extractionActive--;this.waiters.shift()?.();}
  }
  private async congest(error:unknown){
   if(!/HTTP 429|rate.?limit/i.test(String(error)))return false;
@@ -269,8 +284,31 @@ export class SpatialMemoryService{
    if(window?.missingFactIds?.includes(row.id)&&assessment.location.status!=='unknown')throw Error('Tail observation facts unavailable: current location must remain unknown');
    this.validateContinuity(row,assessment,window);
    const state=this.store.commit(row,assessment,s=>{const next=new SpatialWorkingMemory();next.restore(row,this.working.view(),true);next.commit(s);return next.view();},window);
+   this.finalizeTask(row.id,state);
    this.working.commit(state);if(!this.published||state.atMs>=this.published.atMs)this.published=structuredClone(state);return state;
  }
+ /** Per-window latency facts; wall-clock only, no semantic claim. */
+ private finalizeTask(tailId:string,state:StoredState){
+  const members=state.window?.observations.map(o=>o.id)??[state.observationId];
+  const delivered=members.map(id=>this.deliveredAt.get(id)).filter((v):v is number=>typeof v==='number');
+  const sealed=this.sealedAt.get(tailId),perception=this.perceptionTiming.get(tailId),judgment=this.judgmentStartedAt.get(tailId);
+  const committed=state.availableAtMs;
+  this.completedTasks.push({taskId:tailId,version:state.version,observationIds:members,
+   ...state.window?.revisionOfVersion!==undefined?{repairOfVersion:state.window.revisionOfVersion}:{},
+   deliveredAtMs:delivered.length?Math.min(...delivered):null,
+   sealedAtMs:sealed??null,perceptionStartMs:perception?.start??null,perceptionEndMs:perception?.end??null,
+   perceptionCalls:perception?.calls??0,judgmentStartMs:judgment??null,committedAtMs:committed,
+   sealedToCommitMs:sealed===undefined?null:committed-sealed,
+   oldestDeliveryToCommitMs:delivered.length?committed-Math.min(...delivered):null,
+   tailDeliveryToCommitMs:delivered.length?committed-Math.max(...delivered):null,
+   perceptionToCommitMs:perception?.end===undefined?null:committed-perception.end,
+   missingFactCount:state.window?.missingFactIds?.length??0,
+   missingFactIds:state.window?.missingFactIds??[]});
+  for(const id of members)this.deliveredAt.delete(id);
+  this.sealedAt.delete(tailId);this.perceptionTiming.delete(tailId);this.judgmentStartedAt.delete(tailId);
+ }
+ /** Copy of completed task timings. */
+ taskTimings(){return structuredClone(this.completedTasks);}
   async resumePending(){
    if(this.closed||this.scheduled.size||this.failure)throw Error('Resume requires a newly reopened service');
    for(const row of this.store.pending())this.schedule(row);
@@ -324,6 +362,6 @@ export class SpatialMemoryService{
   if(!Array.isArray(ids)||!ids.length||ids.length>3||new Set(ids).size!==ids.length||ids.some(id=>!allowed.has(id)))throw Error('Read-only image access outside committed snapshot');
   const images=ids.flatMap(id=>this.store.observation(id)!.views);for(const image of images)if(createHash('sha256').update(await readFile(image.path)).digest('hex')!==image.sha256)throw Error('Read-only source changed');return structuredClone(images);
  }});}
-  progress(){return {...this.store.counts(),admitted:this.admitted,capacity:this.options.maxPending,activeExtractions:this.extractionActive,bufferedObservations:this.bucket.length,failure:this.failure};}
+  progress(){return {...this.store.counts(),admitted:this.admitted,capacity:this.options.maxPending,peakAdmitted:this.peakAdmitted,backpressureRejections:this.backpressureRejections,activeExtractions:this.extractionActive,bufferedObservations:this.bucket.length,failure:this.failure};}
  async close(){if(this.closed)return;try{await this.finishInput();}finally{this.closed=true;await this.reasoner?.close().catch(()=>{});this.store.close();}}
 }

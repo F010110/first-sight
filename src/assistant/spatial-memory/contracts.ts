@@ -8,12 +8,13 @@ export type Relation={kind:'same-facility'|'different-region';referenceId:string
 export type SpatialRevision={observationId:string;location:Location};
 export type Assessment={location:Location;hypotheses:string[];unresolved:string[];relations:Relation[];revisions?:SpatialRevision[]};
 export type SpatialWindow={startMs:number;endExclusiveMs:number;observations:Array<{id:string;atMs:number;facts:Facts|null}>;missingFactIds?:string[];revisionOfVersion?:number};
-export type StoredState={version:number;observationId:string;atMs:number;availableAtMs:number;facts:Facts|null;assessment:Assessment;visitId:string|null;provisionalVisitId?:string|null;window?:SpatialWindow};
+export type StoredState={version:number;observationId:string;atMs:number;availableAtMs:number;facts:Facts|null;assessment:Assessment;locationDecision?:Location['status'];visitId:string|null;provisionalVisitId?:string|null;window?:SpatialWindow};
+export type SpatialTimingEvent={type:'archived'|'window-sealed'|'perception-start'|'perception-end'|'evidence-wait-start'|'evidence-wait-end'|'judgment-start'|'state-committed';atMs:number;observationIds:string[];taskId?:string;version?:number;missingFactIds?:string[];repairOfVersion?:number};
 export type AgentCheckpoint={sessionId:string;tipId:string;skillVersions:Record<string,string>};
 export type ContinuityReference={observationId:string;placeId:string;name:string;uncertain:boolean};
 export type JudgeInput={row:Observation;facts:Facts|null;context:WorkingContext;history:HistoryRecord[];previousRegion?:ContinuityReference;window?:SpatialWindow;windowViews?:SpatialJsonImage[];evaluate?:(assessment:Assessment,evidence:JudgeEvidence)=>void;inspect:(ids:string[])=>Promise<SpatialJsonImage[]>;commit:(assessment:Assessment,evidence:JudgeEvidence)=>Promise<StoredState>;feedback?:string|null};
 export interface SpatialReasoner{judge(input:JudgeInput):Promise<Assessment>;close():Promise<void>}
-export type HistoryRecord={observationId:string;atMs:number;facts:Facts|null;location:Location;version:number;visitId?:string|null;provisionalVisitId?:string|null;window?:SpatialWindow};
+export type HistoryRecord={observationId:string;atMs:number;facts:Facts|null;location:Location;locationDecision?:Location['status'];version:number;visitId?:string|null;provisionalVisitId?:string|null;window?:SpatialWindow};
 export type WorkingContext={current:{id:string;atMs:number};location:Location|null;recent:StoredState[];anchors:StoredState[];retrieved:HistoryRecord[];summary?:{policy:string;text:string;sourceIds:string[];throughAtMs:number};unresolved?:string[]};
 export type SpatialAction=
  |{kind:'find';terms:string[];assessment:Assessment}

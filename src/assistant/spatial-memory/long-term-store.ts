@@ -48,7 +48,7 @@ export class SpatialLongTermStore{
   pending():Observation[]{return (this.db.prepare('SELECT o.raw FROM observations o LEFT JOIN states s ON s.observation_id=o.id LEFT JOIN window_members w ON w.observation_id=o.id WHERE s.version IS NULL AND w.version IS NULL ORDER BY o.seq').all() as any[]).map(r=>JSON.parse(r.raw));}
  history(version:number,cutoffMs:number,knownAtMs:number):HistoryRecord[]{
    const latest=new Map<string,StoredState>();for(const row of this.db.prepare('SELECT raw FROM states WHERE version<=? AND at_ms<=? AND available_ms<=? ORDER BY version').all(version,cutoffMs,knownAtMs) as any[]){const state:StoredState=JSON.parse(row.raw);latest.set(state.observationId,state);}
-   const records:HistoryRecord[]=[...latest.values()].sort((a,b)=>a.atMs-b.atMs).map(s=>({version:s.version,observationId:s.observationId,atMs:s.atMs,facts:s.facts,location:s.assessment.location,visitId:s.visitId,provisionalVisitId:s.provisionalVisitId??null,...s.window?{window:s.window}:{}}));
+   const records:HistoryRecord[]=[...latest.values()].sort((a,b)=>a.atMs-b.atMs).map(s=>({version:s.version,observationId:s.observationId,atMs:s.atMs,facts:s.facts,location:s.assessment.location,...s.locationDecision?{locationDecision:s.locationDecision}:{},visitId:s.visitId,provisionalVisitId:s.provisionalVisitId??null,...s.window?{window:s.window}:{}}));
   const revisions=this.db.prepare('SELECT r.observation_id,r.raw FROM revisions r JOIN states s ON s.version=r.version WHERE s.version<=? AND s.at_ms<=? AND s.available_ms<=? ORDER BY s.version').all(version,cutoffMs,knownAtMs) as Array<{observation_id:string;raw:string}>;
    for(const revision of revisions){const record=records.find(r=>r.observationId===revision.observation_id);if(record){const location=JSON.parse(revision.raw).location;if(location.placeId!==record.location.placeId){record.visitId=null;record.provisionalVisitId=null;}record.location=location;}}
   return records;
@@ -62,7 +62,7 @@ export class SpatialLongTermStore{
     if(!members.length||members.at(-1)!==row.id||!revising&&members.some((id,i)=>pending[i]?.id!==id))throw Error('Spatial commit must follow contiguous source order');
     if(window&&(window.endExclusiveMs<=row.atMs||window.startMs!==window.observations[0]!.atMs||window.observations.some(o=>{const raw=this.observation(o.id);return !raw||raw.atMs!==o.atMs||o.facts!==null&&JSON.stringify(this.facts(o.id))!==JSON.stringify(o.facts);})||JSON.stringify(window.missingFactIds??[])!==JSON.stringify(window.observations.filter(o=>o.facts===null).map(o=>o.id))))throw Error('Invalid window source binding');
     const facts=window?window.observations.at(-1)!.facts:this.facts(row.id);if(!facts&&!window)throw Error('No independent facts');
-   const version=this.version()+1,assessment=structuredClone(a),location=assessment.location;
+    const version=this.version()+1,assessment=structuredClone(a),location=assessment.location,locationDecision=a.location.status;
    if(location.status==='new'){location.placeId=randomUUID();location.status='known';this.db.prepare('INSERT INTO places VALUES(?,?,?)').run(location.placeId,location.name,version);}
     if(location.status==='known'&&!this.db.prepare('SELECT id FROM places WHERE id=?').get(location.placeId))throw Error('Unknown persistent place');
     if(location.continuityCandidate&&!this.db.prepare('SELECT id FROM places WHERE id=?').get(location.continuityCandidate.placeId))throw Error('Unknown provisional continuity place');
@@ -75,7 +75,7 @@ export class SpatialLongTermStore{
     }
     let provisionalVisitId:string|null=null;
     if(location.continuityCandidate){const reference=this.history(version-1,row.atMs-0.000001,Number.MAX_SAFE_INTEGER).find(r=>r.observationId===location.continuityCandidate!.referenceId);provisionalVisitId=reference?.visitId??reference?.provisionalVisitId??null;}
-     const state:StoredState={version,observationId:row.id,atMs:row.atMs,availableAtMs:this.now(),facts,assessment,visitId,provisionalVisitId,...window?{window:structuredClone(window)}:{}};
+     const state:StoredState={version,observationId:row.id,atMs:row.atMs,availableAtMs:this.now(),facts,assessment,locationDecision,visitId,provisionalVisitId,...window?{window:structuredClone(window)}:{}};
    const context=makeCheckpoint(structuredClone(state));
     this.db.prepare('INSERT INTO states VALUES(?,?,?,?,?)').run(version,row.id,row.atMs,state.availableAtMs,JSON.stringify(state));
     if(window&&!revising)for(const id of members)this.db.prepare('INSERT INTO window_members VALUES(?,?)').run(id,version);
