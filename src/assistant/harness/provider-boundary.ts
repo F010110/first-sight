@@ -4,7 +4,7 @@ import type {SpatialJsonRequest,SpatialJsonImage} from '../../agent/spatial-json
 
 /** JSON compatibility transport. Pi owns tool dispatch/session; existing boundary owns HTTP/accounting.
  * This is not native provider tool calling. Keep this explicit in every audit. */
-export function accountedPiProvider(options:{request:(r:SpatialJsonRequest)=>Promise<unknown>;view:()=>{current:{id:string;atMs:number};runtimeContext:unknown;images:SpatialJsonImage[]};onRequest?:()=>void;onAssessment?:(text:string)=>void;singleToolArguments?:boolean}){
+export function accountedPiProvider(options:{request:(r:SpatialJsonRequest)=>Promise<unknown>;view:()=>{current:{id:string;atMs:number};runtimeContext:unknown;images:SpatialJsonImage[];windowSources?:Array<{id:string;atMs:number}>};onRequest?:()=>void;onAssessment?:(text:string)=>void;singleToolArguments?:boolean}){
  const model={id:'qwen3.8-flash',name:'First-Sight accounted JSON bridge',api:'openai-completions' as const,provider:'first-sight-accounted',baseUrl:'http://accounted-boundary.invalid',reasoning:false,input:['text','image'] as ('text'|'image')[],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:128000,maxTokens:1600};
  const stream:ProviderStreams['streamSimple']=(target,context,streamOptions)=>{
   const events=createAssistantMessageEventStream();
@@ -16,7 +16,7 @@ export function accountedPiProvider(options:{request:(r:SpatialJsonRequest)=>Pro
     if(!context.tools?.length)throw Error('Unrouted summary request: use the application compaction skill boundary; no fallback provider call was sent');
     options.onRequest?.();const view=options.view();
     const messages=context.messages.map(m=>({role:m.role,...m.role==='toolResult'?{toolName:m.toolName,isError:m.isError}:{},content:typeof m.content==='string'?m.content:m.content.filter(b=>b.type!=='thinking'&&b.type!=='image')}));
-    const response=await options.request({phase:'identity',prompt:context.systemPrompt??'',data:{current:view.current,role:'pi-harness',runtimeContext:view.runtimeContext,messages,tools:context.tools,transport:{singleToolArgumentsAllowed:options.singleToolArguments===true}},images:view.images,textOnlyIdentity:view.images.length===0,includeUsage:true}) as any;
+    const response=await options.request({phase:'identity',prompt:context.systemPrompt??'',data:{current:view.current,role:'pi-harness',runtimeContext:view.runtimeContext,messages,tools:context.tools,transport:{singleToolArgumentsAllowed:options.singleToolArguments===true}},images:view.images,...view.windowSources?{windowSources:view.windowSources}:{},textOnlyIdentity:view.images.length===0,includeUsage:true}) as any;
     streamOptions?.signal?.throwIfAborted();
     const wire=response.output??response,usage=response.usage;
     // Explicit single-tool wire format: wrapping arguments adds no semantic fields,

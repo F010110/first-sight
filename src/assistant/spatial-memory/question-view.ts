@@ -17,6 +17,7 @@ export class SpatialQuestionView{
   return new SpatialQuestionView(version,knownAtMs,reader.snapshotAt(version,knownAtMs),reader);
  }
  currentLocation(){return structuredClone(this.snapshot.state.assessment.location);}
+ private deliver(record:HistoryRecord){this.delivered.set(record.observationId,record);for(const member of record.window?.observations??[])this.delivered.set(member.id,record);}
  summary(){
   const s=this.snapshot,anchorPlaces=[...new Set([...s.context.anchors.map(a=>a.assessment.location.placeId),...s.history.map(r=>r.location.placeId)].filter((p):p is string=>p!==null))];
   return structuredClone({version:this.version,knownAtMs:this.knownAtMs,atMs:s.state.atMs,current:s.state.assessment.location,activeUnresolved:s.state.assessment.unresolved,recent:s.context.recent.map(r=>({observationId:r.observationId,atMs:r.atMs,location:r.assessment.location,facts:r.facts})),anchorPlaces,coverage:{historyRecords:s.history.length,textRead:0,imagesInspected:0,semanticCompleteness:false as const}});
@@ -25,14 +26,14 @@ export class SpatialQuestionView{
   const after=options.afterMs??0,before=options.beforeMs??this.snapshot.state.atMs,cursor=options.cursor??0;
   if(!Number.isFinite(after)||!Number.isFinite(before)||after<0||before<after||before>this.snapshot.state.atMs||!Number.isInteger(cursor)||cursor<0)throw Error('Timeline range must be inside the committed snapshot');
   const range=this.snapshot.history.filter(r=>r.atMs>=after&&r.atMs<=before),page=range.slice(cursor,cursor+24);
-  for(const r of page)this.delivered.set(r.observationId,r);
-  return structuredClone({records:page.map(r=>({observationId:r.observationId,atMs:r.atMs,location:r.location,facts:r.facts})),nextCursor:cursor+page.length<range.length?cursor+page.length:null,total:range.length,scope:'Committed spatial versions only; text read is not image inspection'});
+   for(const r of page)this.deliver(r);
+   return structuredClone({records:page.map(r=>({observationId:r.observationId,atMs:r.atMs,location:r.location,facts:r.facts,windowMemberIds:r.window?.observations.map(o=>o.id)})),nextCursor:cursor+page.length<range.length?cursor+page.length:null,total:range.length,scope:'Committed spatial versions only; member IDs are sources of a window judgment, not per-frame positions; text read is not image inspection'});
  }
  find(terms:string[]){
   if(!Array.isArray(terms)||!terms.length||terms.length>6||terms.some(t=>typeof t!=='string'||!t.trim()||t.length>80))throw Error('Expected 1-6 literal terms');
   const lowered=terms.map(t=>t.toLowerCase()),hits=this.snapshot.history.filter(r=>lowered.some(t=>JSON.stringify(r).toLowerCase().includes(t)));
-  const page=hits.slice(0,12);for(const r of page)this.delivered.set(r.observationId,r);
-  return structuredClone({records:page.map(r=>({observationId:r.observationId,atMs:r.atMs,location:r.location,facts:r.facts})),total:hits.length,scope:'Literal candidates only; no match does not establish absence'});
+   const page=hits.slice(0,12);for(const r of page)this.deliver(r);
+   return structuredClone({records:page.map(r=>({observationId:r.observationId,atMs:r.atMs,location:r.location,facts:r.facts,windowMemberIds:r.window?.observations.map(o=>o.id)})),total:hits.length,scope:'Literal candidates only; no match does not establish absence'});
  }
  read(ids:string[]){
   if(!Array.isArray(ids)||!ids.length||ids.length>12||new Set(ids).size!==ids.length)throw Error('Require distinct delivered observation IDs');

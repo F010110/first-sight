@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {boundedNetworkRetry} from './bounded-network-retry.js';
 import {SpatialOutputProtocolError} from './spatial-protocol-retry.js';
 export interface SpatialJsonImage {id:string;direction:string;path:string;sha256:string}
-export interface SpatialJsonRequest {phase:'perception'|'identity';prompt:string;data:unknown;images:SpatialJsonImage[];responseMode?:'text';textOnlyIdentity?:boolean;includeUsage?:boolean;metadata?:{referenceBindings:Array<{alias:string;originalId:string;kind:'source'|'group'}>}}
+export interface SpatialJsonRequest {phase:'perception'|'identity';prompt:string;data:unknown;images:SpatialJsonImage[];windowSources?:Array<{id:string;atMs:number}>;responseMode?:'text';textOnlyIdentity?:boolean;includeUsage?:boolean;metadata?:{referenceBindings:Array<{alias:string;originalId:string;kind:'source'|'group'}>}}
 /** Separate stateless request adapter. Metadata receipts never embed Base64. */
 export function spatialJsonVlm(root:string,maxCalls=96,maxEstimatedUSD=.4,resumeLedger=false,maxOutputTokens=1000,options:{extendedEvaluationImages?:boolean}={}){
   if(!Number.isInteger(maxOutputTokens)||maxOutputTokens<100||maxOutputTokens>2000)throw Error('Invalid output budget');
@@ -41,7 +41,8 @@ export function spatialJsonVlm(root:string,maxCalls=96,maxEstimatedUSD=.4,resume
     if(input.images.length>(evaluationImages?24:12))throw Error('Separated request image limit exceeded (12 normally; 24 only for explicit isolated evaluation)');
    const data=input.data as any;
    if(!data?.current||typeof data.current.id!=='string')throw Error('Separated request needs exact current ID');
-   if(input.phase==='perception'&&(Object.keys(data).some(key=>!['current','feedback'].includes(key))||input.images.some(image=>image.id!==data.current.id)))throw Error('Independent perception cannot receive history, identities or reference images');
+    if(input.phase==='perception'&&(Object.keys(data).some(key=>!['current','feedback'].includes(key))||input.images.some(image=>image.id!==data.current.id)))throw Error('Independent perception cannot receive history, identities or reference images');
+    if(input.windowSources&&(input.phase!=='identity'||!input.windowSources.length||input.windowSources.length>4||new Set(input.windowSources.map(s=>s.id)).size!==input.windowSources.length||!input.windowSources.some(s=>s.id===data.current.id)||input.windowSources.some(s=>!s.id||!Number.isFinite(s.atMs)||s.atMs>data.current.atMs||!input.images.some(image=>image.id===s.id))))throw Error('Invalid current window source bindings');
    const key=process.env.QWEN_API_KEY,base=process.env.QWEN_BASE_URL;if(!key||!base)throw Error('Missing Qwen configuration');
    // JSON-object transports require the literal word JSON in messages, regardless
    // of whether a caller describes its schema only in Chinese or with examples.
@@ -50,7 +51,8 @@ export function spatialJsonVlm(root:string,maxCalls=96,maxEstimatedUSD=.4,resume
    for(const image of input.images){
     const bytes=await readFile(image.path);
     if(createHash('sha256').update(bytes).digest('hex')!==image.sha256||!bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))throw Error('Separated original image hash/PNG mismatch');
-    content.push({type:'text',text:`${image.id===(input.data as any).current?.id?'CURRENT':'REFERENCE'} sourceId=${image.id} direction=${image.direction}`},{type:'image_url',image_url:{url:'data:image/png;base64,'+bytes.toString('base64')}});
+     const member=input.windowSources?.find(s=>s.id===image.id);
+     content.push({type:'text',text:`${member?'CURRENT_WINDOW':image.id===(input.data as any).current?.id?'CURRENT':'REFERENCE'} sourceId=${image.id} direction=${image.direction}${member?' atMs='+member.atMs:''}`},{type:'image_url',image_url:{url:'data:image/png;base64,'+bytes.toString('base64')}});
    }
    await writeFile(join(directory,'input.json'),JSON.stringify(input,null,2));
      const payload=JSON.stringify({model:'qwen3.8-flash',enable_thinking:false,temperature:0,max_tokens:maxOutputTokens,...input.responseMode==='text'?{}:{response_format:{type:'json_object'}},messages:[{role:'user',content}]});

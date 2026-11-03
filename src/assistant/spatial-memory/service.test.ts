@@ -10,7 +10,7 @@ import {SpatialQuestionView} from './question-view.js';
 import {SpatialOutputProtocolError} from '../../agent/spatial-protocol-retry.js';
 import {SpatialLongTermStore} from './long-term-store.js';
 import {SpatialWorkingMemory} from './working-context.js';
-import type {Observation,SpatialModels,SpatialAction,Assessment} from './contracts.js';
+import type {Observation,SpatialModels,SpatialAction,Assessment,SpatialReasoner,StoredState} from './contracts.js';
 
 async function fixture(){
  const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-rewrite-'));await mkdir(join(dir,'sources'));
@@ -20,6 +20,63 @@ async function fixture(){
 const assessment=(id:string,status:'new'|'known'|'unknown'='new',placeId:string|null=null,sourceIds=[id]):Assessment=>({location:{status,placeId,name:status==='unknown'?'无法确定':'区域'+id,reason:'独立当前布局与实际交付来源',sourceIds},hypotheses:[],unresolved:[],relations:[]});
 const commit=(a:Assessment):SpatialAction=>({kind:'commit',assessment:a});
 const facts=(row:Observation)=>({summary:'当前观察'+row.id,details:['当前细节'+row.id]});
+
+test('8-second windows commit one durable judgment with four immutable members, not four invented locations',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
+ const reasoner:SpatialReasoner={async judge(input){calls++;assert.equal(input.window!.observations.length,4);assert.equal(input.windowViews!.length,12);assert.equal(input.context.location,null);const a=assessment(input.row.id);if(calls===2){a.location.status='unknown';a.location.name='甲乙边界';a.location.boundary={regions:['甲','乙']};}await input.commit(a,{inspected:new Set(input.window!.observations.map(o=>o.id)),delivered:new Set()});return a;},async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(r){return facts(r);}},{reasoner,windowMs:8000,maxPending:12,now:()=>50000});
+  for(let i=0;i<8;i++)await service.observe(await f.row('w'+i,i*2000));
+  const p=await service.finishInput();assert.equal(calls,2);assert.equal(p.observations,8);assert.equal(p.spatialStates,2);assert.equal(p.coveredObservations,8);assert.equal(p.pending,0);assert.equal(service.progress().admitted,0);
+  const first=service.snapshotAt(1,50000);assert.deepEqual(first.state.window!.observations.map(o=>o.id),['w0','w1','w2','w3']);assert.equal(first.history.length,1);assert.equal(first.history[0]!.window!.observations[0]!.facts.summary,'当前观察w0');assert.throws(()=>service!.snapshotAt(1,6000),/not yet available/);
+  assert.equal(service.latest()!.state.assessment.location.boundary!.regions.length,2);assert.equal(service.latest()!.state.visitId,null);
+  const question=SpatialQuestionView.open(service.reader(),1,50000);await assert.rejects(question.inspect(['w0']),/delivered/);question.timeline();assert.equal((await question.inspect(['w0'])).images.length,3);assert.equal(question.read(['w0'])[0]!.window!.observations.length,4);
+  const db=new DatabaseSync(join(f.root,'spatial.sqlite'),{readOnly:true});try{assert.equal((db.prepare('SELECT COUNT(*) AS n FROM window_members').get() as any).n,8);assert.equal((db.prepare('SELECT COUNT(*) AS n FROM checkpoint_bindings').get() as any).n,2);}finally{db.close();}
+ }finally{await service?.close();await f.cleanup();}
+});
+
+test('admission capacity rejects excess callers before archiving and is released after bounded batch completion',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,release!:()=>void;const blocked=new Promise<void>(r=>release=r);
+ const reasoner:SpatialReasoner={async judge(input){await blocked;const a=assessment(input.row.id);await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(r){return facts(r);}},{reasoner,windowMs:8000,maxPending:4});
+  const rows=await Promise.all(Array.from({length:5},(_,i)=>f.row('c'+i,i*2000)));
+  const accepted=rows.slice(0,4).map(r=>service!.observe(r));
+  await assert.rejects(service.observe(rows[4]!),/backpressure/);assert.equal(service.progress().admitted,4);
+  await Promise.all(accepted);assert.equal(service.knows('c4'),false);release();await service.finishInput();
+  await service.observe(rows[4]!);await service.finishInput();assert.equal(service.progress().coveredObservations,5);assert.equal(service.latest()!.state.window!.observations.length,1);
+ }finally{release();await service?.close();await f.cleanup();}
+});
+
+test('a checkpoint failure after durable commit cannot trigger another model judgment',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
+ const reasoner:SpatialReasoner={async judge(input){calls++;await input.commit(assessment(input.row.id),{inspected:new Set([input.row.id]),delivered:new Set()});throw Error('Pi journal disk failure');},async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(r){return facts(r);}},{reasoner});await service.observe(await f.row('a',0));
+  await assert.rejects(service.finishInput(),/committed.*explicit recovery/);assert.equal(calls,1);assert.equal(service.progress().spatialStates,1);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
+
+test('failed window preserves every observation and recovery resumes the same complete batch',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined;let extractions=0;
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(r){extractions++;return facts(r);}},{windowMs:8000,reasoner:{async judge(){throw Error('protocol failure');},async close(){}}});
+  for(let i=0;i<4;i++)await service.observe(await f.row('r'+i,i*2000));await assert.rejects(service.finishInput(),/protocol failure/);assert.equal(service.progress().pending,4);assert.equal(service.progress().spatialStates,0);await service.close().catch(()=>{});
+  service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('Do not re-extract');}},{resume:true,windowMs:8000,reasoner:{async judge(input){assert.equal(input.window!.observations.length,4);const a=assessment(input.row.id);await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}}});
+  await service.resumePending();await service.finishInput();assert.equal(extractions,4);assert.equal(service.progress().coveredObservations,4);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
+
+test('window transaction rolls back membership, place and context together',async()=>{
+ const f=await fixture(),store=new SpatialLongTermStore(f.root);
+ try{const rows=await Promise.all([f.row('a',0),f.row('b',2000)]);for(const r of rows){store.archive(r);store.saveFacts(r.id,facts(r));}assert.throws(()=>store.commit(rows[1]!,assessment('b'),()=>{throw Error('context failure');},{startMs:0,endExclusiveMs:8000,observations:rows.map(r=>({id:r.id,atMs:r.atMs,facts:facts(r)}))}),/context failure/);assert.equal(store.counts().pending,2);assert.equal(store.counts().coveredObservations,0);assert.equal(store.counts().places,0);}finally{store.close();await f.cleanup();}
+});
+
+test('length-triggered working compression retains current state, unresolved and source recovery references',()=>{
+ const working=new SpatialWorkingMemory();let original:StoredState|undefined;
+ for(let i=0;i<7;i++){const row={id:'s'+i,atMs:i*2000,views:[]};working.begin(row);const a=assessment(row.id);a.unresolved=['需要进一步确认'];const s:StoredState={version:i+1,observationId:row.id,atMs:row.atMs,availableAtMs:99999,facts:{summary:'事实'.repeat(1000),details:Array(12).fill('细节'.repeat(500))},assessment:a,visitId:null};original=s;working.commit(s);}
+ const view=working.view();assert.ok(view.summary?.policy.includes('extractive'));assert.ok(view.summary!.sourceIds.length);assert.equal(view.current.id,'s6');assert.deepEqual(view.unresolved,['需要进一步确认']);assert.ok(JSON.stringify(view).length<24000);assert.equal(original!.facts.details.length,12);assert.equal(original!.facts.summary.length,2000);
+});
 
 test('new durable spatial service produces location, visits and bounded context; old revisit requires actual retrieval and inspection',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined;let time=1000;const phases=new Map<string,number>();
@@ -75,7 +132,7 @@ test('failed spatial prefix preserves later extracted observations and resumes f
 });
 
 test('long-term transaction failure cannot create place/state/checkpoint or publish short-term changes',async()=>{
- const f=await fixture();const store=new SpatialLongTermStore(f.root);try{const row=await f.row('a',0);store.archive(row);store.saveFacts('a',facts(row));assert.throws(()=>store.commit(row,assessment('a'),()=>{throw Error('checkpoint failure');}),/checkpoint failure/);assert.deepEqual(store.counts(),{observations:1,spatialStates:0,places:0,visits:0,pending:1});assert.equal(store.checkpoint(1),null);}finally{store.close();await f.cleanup();}
+ const f=await fixture();const store=new SpatialLongTermStore(f.root);try{const row=await f.row('a',0);store.archive(row);store.saveFacts('a',facts(row));assert.throws(()=>store.commit(row,assessment('a'),()=>{throw Error('checkpoint failure');}),/checkpoint failure/);assert.deepEqual(store.counts(),{observations:1,spatialStates:0,coveredObservations:0,places:0,visits:0,pending:1});assert.equal(store.checkpoint(1),null);}finally{store.close();await f.cleanup();}
 });
 
 test('new observation does not inherit location; cold start never rebuilds context from archive',async()=>{

@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {SpatialLongTermStore} from './long-term-store.js';
 import {SpatialWorkingMemory} from './working-context.js';
-import {validateFacts,validateAssessment,type Observation,type SpatialModels,type SpatialReasoner,type Assessment,type StoredState,type WorkingContext,type HistoryRecord} from './contracts.js';
+import {validateFacts,validateAssessment,type Observation,type SpatialModels,type SpatialReasoner,type Assessment,type StoredState,type WorkingContext,type HistoryRecord,type SpatialWindow} from './contracts.js';
 import {SpatialOutputProtocolError} from '../../agent/spatial-protocol-retry.js';
 
 /** Parallel perception, one ordered spatial writer. No questions or oracle input. */
@@ -17,12 +17,16 @@ export class SpatialMemoryService{
  private failure:string|null=null;
  private closed=false;
  private scheduled=new Set<string>();
- private extractionTasks:Promise<unknown>[]=[];
+ private extractionTasks=new Set<Promise<unknown>>();
+ private bucket:Array<{row:Observation;extract:Promise<void>}>=[];
+ private admitted=0;
  private published:StoredState|null=null;
- private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number}){}
- static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number}={}){
+ private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number;windowMs:number}){}
+ static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number;windowMs?:number}={}){
   const root=resolve(rootArg),concurrency=options.extractionConcurrency??2,max=options.maxReasonCalls??8,maxPending=options.maxPending??64,cool=options.cooldownMs??30000;
   if(!Number.isInteger(concurrency)||concurrency<1||concurrency>8||!Number.isInteger(max)||max<1||max>32||!Number.isInteger(maxPending)||maxPending<1||maxPending>1024||!Number.isFinite(cool)||cool<0||cool>300000)throw Error('Invalid spatial execution budget');
+  const windowMs=options.windowMs??0;
+  if(![0,8000].includes(windowMs)||windowMs&&(!options.reasoner||maxPending<4))throw Error('8-second windows require Pi reasoner and capacity >=4');
   if(!options.resume){
    await mkdir(root,{recursive:true});
    // A new run may pre-create its Pi session directory, but it must not reuse
@@ -30,33 +34,52 @@ export class SpatialMemoryService{
    try{await readFile(join(root,'spatial.sqlite'));throw Error('Existing spatial memory requires --resume');}
    catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   } else await readFile(join(root,'spatial.sqlite')); // Explicit same-session recovery only.
-  const store=new SpatialLongTermStore(root,options.now??Date.now),service=new SpatialMemoryService(root,models,options.reasoner??null,store,{extractionConcurrency:concurrency,maxReasonCalls:max,now:options.now??Date.now,maxPending,cooldownMs:cool,activeLimit:concurrency,coolUntil:0});
+  const store=new SpatialLongTermStore(root,options.now??Date.now),service=new SpatialMemoryService(root,models,options.reasoner??null,store,{extractionConcurrency:concurrency,maxReasonCalls:max,now:options.now??Date.now,maxPending,cooldownMs:cool,activeLimit:concurrency,coolUntil:0,windowMs});
+  service.admitted=store.pending().length;
+  if(service.admitted>maxPending){store.close();throw Error('Recovered pending exceeds configured capacity');}
   try{if(options.resume&&store.version()){
    const state=store.state(store.version())!,context=store.checkpoint(state.version);if(!context)throw Error('Missing durable working checkpoint');
    service.working.restore(store.observation(state.observationId)!,context);service.published=state;
   }}catch(e){store.close();throw e;}
   return service;
  }
- async observe(source:Observation){
-  if(this.closed)throw Error('Spatial service closed');
-  const archive=this.archiveTail.then(async()=>{
+  async observe(source:Observation){
+   if(this.closed)throw Error('Spatial service closed');
+   // Reserve before joining archiveTail: callers cannot build an unbounded
+   // queue of waiting observe promises. The caller must await capacity/retry.
+   if(this.admitted>=this.options.maxPending)throw Error('Spatial backpressure: capacity full; retry after progress');
+   this.admitted++;
+   let archived=false;
+   const archive=this.archiveTail.then(async()=>{
    // Spatial failure stops ordered reasoning, never independent raw archival.
-   while(!this.failure&&this.store.pending().length>=this.options.maxPending)await sleep(50);
+    if(this.options.windowMs&&this.store.latestObservation()&&source.atMs-this.store.latestObservation()!.atMs<2000)throw Error('8-second mode requires observations at least 2 seconds apart');
    if(!source.id||!Number.isFinite(source.atMs)||source.atMs<0||source.views.length!==3||new Set(source.views.map(v=>v.direction)).size!==3||source.views.some(v=>v.id!==source.id||!['front','left','right'].includes(v.direction)))throw Error('Require source-bound three-camera observation');
    const row:Observation={id:source.id,atMs:source.atMs,...source.recordingId?{recordingId:source.recordingId}:{},views:source.views.map(v=>({id:source.id,direction:v.direction,path:v.path,sha256:v.sha256}))};
    for(const view of row.views){const bytes=await readFile(view.path);if(createHash('sha256').update(bytes).digest('hex')!==view.sha256)throw Error('Original source hash mismatch');const path=join(this.root,'originals',view.sha256+'.png');await mkdir(join(this.root,'originals'),{recursive:true});try{await writeFile(path,bytes,{flag:'wx'});}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST')throw e;if(createHash('sha256').update(await readFile(path)).digest('hex')!==view.sha256)throw Error('Archived source changed');}view.path=path;}
-   this.store.archive(row);this.schedule(row);
-  });
-  this.archiveTail=archive.catch(()=>{});return archive;
+    this.store.archive(row);archived=true;this.schedule(row);
+   });
+   this.archiveTail=archive.catch(()=>{});try{return await archive;}catch(error){if(!archived)this.admitted--;throw error;}
  }
  private schedule(row:Observation){
   if(this.scheduled.has(row.id))return;this.scheduled.add(row.id);
-  const extract=this.extract(row);this.extractionTasks.push(extract);void extract.catch(()=>{});
-  this.commitTail=this.commitTail.then(async()=>{if(this.failure)return;try{await extract;await this.associate(row);}catch(e){this.failure=String(e);this.store.fail(row.id,e);}});
+   const extract=this.extract(row);this.extractionTasks.add(extract);void extract.finally(()=>this.extractionTasks.delete(extract)).catch(()=>{});
+   if(this.options.windowMs){
+    if(this.bucket.length&&(Math.floor(this.bucket[0]!.row.atMs/8000)!==Math.floor(row.atMs/8000)||this.bucket[0]!.row.recordingId!==row.recordingId))this.flushWindow();
+    this.bucket.push({row,extract});if(this.bucket.length===4)this.flushWindow();
+   }else this.enqueue([{row,extract}]);
+  }
+ private flushWindow(){if(this.bucket.length){const batch=this.bucket;this.bucket=[];this.enqueue(batch);}}
+ private enqueue(batch:Array<{row:Observation;extract:Promise<void>}>){
+  this.commitTail=this.commitTail.then(async()=>{
+   if(this.failure)return;
+   try{await Promise.all(batch.map(b=>b.extract));await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);this.admitted-=batch.length;}
+   catch(e){this.failure=String(e);this.store.fail(batch[0]!.row.id,e);}
+   finally{for(const b of batch)this.scheduled.delete(b.row.id);}
+  });
  }
  private async extract(row:Observation){
   while(this.options.now()<this.options.coolUntil)await sleep(20);
-  if(this.extractionActive>=this.options.activeLimit)await new Promise<void>(r=>this.waiters.push(r));
+   while(this.extractionActive>=this.options.activeLimit)await new Promise<void>(r=>this.waiters.push(r));
   this.extractionActive++;
   try{
    if(!this.store.facts(row.id)){
@@ -80,20 +103,24 @@ export class SpatialMemoryService{
   this.options.activeLimit=Math.min(this.options.extractionConcurrency,this.options.activeLimit+1);
   return true;
  }
- private async associate(row:Observation){
-  for(const view of row.views)if(createHash('sha256').update(await readFile(view.path)).digest('hex')!==view.sha256)throw Error('Archived current source changed');
+  private async associate(row:Observation,rows?:Observation[]){
+   const window:SpatialWindow|undefined=rows?{startMs:rows[0]!.atMs,endExclusiveMs:(Math.floor(row.atMs/8000)+1)*8000,observations:rows.map(r=>({id:r.id,atMs:r.atMs,facts:this.store.facts(r.id)!}))}:undefined;
+   for(const view of (rows??[row]).flatMap(r=>r.views))if(createHash('sha256').update(await readFile(view.path)).digest('hex')!==view.sha256)throw Error('Archived current source changed');
   this.working.begin(row);
-  const prior=this.store.history(this.store.version(),row.atMs-0.000001,this.options.now());
-  const byId=new Map(prior.map(r=>[r.observationId,r]));
+   const prior=this.store.history(this.store.version(),(window?.startMs??row.atMs)-0.000001,this.options.now());
+   const byId=new Map(prior.map(r=>[r.observationId,r]));
+   // Member source IDs resolve to their window record, not invented per-frame judgments.
+   for(const record of prior)for(const member of record.window?.observations??[])byId.set(member.id,record);
   const contextSources=[...this.working.view().recent,...this.working.view().anchors];
-  const commit=(assessment:Assessment,inspected:ReadonlySet<string>)=>this.commitValidated(row,assessment,inspected,byId,contextSources);
+   const commit=(assessment:Assessment,inspected:ReadonlySet<string>)=>this.commitValidated(row,assessment,inspected,byId,contextSources,window);
   if(this.reasoner){
    let feedback:string|null=null,lastError:unknown=null;
-   for(let attempt=0;attempt<3;attempt++){
     let committed:StoredState|null=null;
+    for(let attempt=0;attempt<3;attempt++){
     try{
      const assessment=await this.reasoner.judge({
-      row:structuredClone(row),facts:this.store.facts(row.id)!,context:this.working.view(),history:structuredClone(prior),
+       row:structuredClone(row),facts:this.store.facts(row.id)!,context:this.working.view(),history:structuredClone(prior),...window&&rows?{window,windowViews:rows.flatMap(r=>r.views)}:{},
+       evaluate:(a,evidence)=>{validateAssessment(a,row.id,evidence.inspected);this.validateIdentity(a,byId,contextSources);if(a.relations.length||a.revisions?.length)throw Error('Interim assessment cannot submit relations or revisions');this.working.evaluate(a.location);this.store.event('spatial-interim',{observationId:row.id,assessment:a});},
       inspect:async ids=>{
        const originals=ids.map(id=>{const record=byId.get(id);if(!record)throw Error('Inspection source outside committed history');return this.store.observation(id)!;});
        const images=originals.flatMap(o=>o.views);if(images.length>9)throw Error('Inspection image limit');
@@ -105,11 +132,17 @@ export class SpatialMemoryService{
      });
      if(!committed)throw Error('Spatial reasoner returned without committing a location judgment');
      return;
-    }catch(error){lastError=error;feedback=String(error);this.store.event('spatial-agent-retry',{observationId:row.id,attempt,error:String(error)});if(await this.congest(error))continue;}
+     }catch(error){
+      if(committed)throw Error('Spatial state committed; checkpoint/agent finalization failed, explicit recovery required: '+String(error));
+      lastError=error;feedback=String(error);this.store.event('spatial-agent-failure',{observationId:row.id,attempt,error:String(error)});
+      if(await this.congest(error))continue;
+      if(!/Invalid declared Pi tool call|SpatialOutputProtocolError|not valid JSON|Invalid bounded assessment/i.test(String(error)))throw error;
+     }
    }
    throw lastError;
   }
-  let imageWindow=row.views,toolResult:unknown=null,feedback:string|null=null,inspected=new Set([row.id]);
+   let imageWindow=row.views,toolResult:unknown=null,feedback:string|null=null,inspected=new Set([row.id]);
+   const delivered=new Set(contextSources.map(s=>s.observationId));
   const reason=this.models.reason;if(!reason)throw Error('Spatial service requires a reasoner or a reason model');
   for(let call=0;call<this.options.maxReasonCalls;call++){
    let action;
@@ -138,15 +171,17 @@ export class SpatialMemoryService{
     if(action.kind==='find'){
      if(!Array.isArray(action.terms)||!action.terms.length||action.terms.length>6||action.terms.some(t=>typeof t!=='string'||!t.trim()))throw Error('Invalid literal search terms');
      const terms=action.terms.map(t=>t.toLowerCase());const matches=prior.filter(r=>terms.some(t=>JSON.stringify(r).toLowerCase().includes(t))).slice(0,12);
+     for(const r of matches)delivered.add(r.observationId);
      toolResult={kind:'previews',records:matches.map(r=>({...r,facts:{summary:r.facts.summary.slice(0,240),details:[]}})),semanticCompleteness:false};
     }else if(action.kind==='read'){
      const after=action.afterMs??0,before=action.beforeMs??row.atMs-0.000001,cursor=action.cursor??0;
      if(!Number.isFinite(after)||!Number.isFinite(before)||after<0||before<after||before>=row.atMs||!Number.isInteger(cursor)||cursor<0)throw Error('Invalid causal read range');
      const range=prior.filter(r=>r.atMs>=after&&r.atMs<=before),records=range.slice(cursor,cursor+24);
+     for(const r of records)delivered.add(r.observationId);
      this.working.deliver(records);
      toolResult={kind:'records',records,nextCursor:cursor+records.length<range.length?cursor+records.length:null,semanticCompleteness:false};
     }else if(action.kind==='inspect'){
-     if(!Array.isArray(action.observationIds)||!action.observationIds.length||action.observationIds.length>3||new Set(action.observationIds).size!==action.observationIds.length||action.observationIds.some(id=>!byId.has(id)))throw Error('Inspect only committed historical sources');
+     if(!Array.isArray(action.observationIds)||!action.observationIds.length||action.observationIds.length>3||new Set(action.observationIds).size!==action.observationIds.length||action.observationIds.some(id=>!byId.has(id)||!delivered.has(id)))throw Error('Inspect only delivered committed historical sources');
      const originals=action.observationIds.map(id=>this.store.observation(id)!);
      imageWindow=[...row.views,...originals.flatMap(o=>o.views)]; // <=12 original images.
      for(const image of imageWindow)if(createHash('sha256').update(await readFile(image.path)).digest('hex')!==image.sha256)throw Error('Inspection source changed');
@@ -157,12 +192,15 @@ export class SpatialMemoryService{
   }
   throw Error('Spatial reasoning budget exhausted without a durable location judgment');
  }
- private commitValidated(row:Observation,assessment:Assessment,inspected:ReadonlySet<string>,byId:Map<string,HistoryRecord>,contextSources:Array<{observationId:string;assessment:{location:{placeId:string|null}}}>){
+  private validateIdentity(assessment:Assessment,byId:Map<string,HistoryRecord>,contextSources:Array<{observationId:string;assessment:{location:{placeId:string|null}}}>){
   const contextSupport=assessment.location.contextRefs?.some(id=>contextSources.some(s=>s.observationId===id&&s.assessment.location.placeId===assessment.location.placeId));
   if(assessment.location.contextRefs?.some(id=>!contextSources.some(s=>s.observationId===id)))throw Error('Undelivered working context reference');
-  if(assessment.location.status==='known'&&!contextSupport&&!assessment.location.sourceIds.some(id=>id!==row.id&&byId.get(id)?.location.placeId===assessment.location.placeId))throw Error('Known identity requires delivered working context or inspected historical evidence of that place');
-  for(const revision of assessment.revisions??[])if(revision.location.status==='known'&&!revision.location.sourceIds.some(id=>id!==row.id&&byId.get(id)?.location.placeId===revision.location.placeId))throw Error('Revised identity requires inspected evidence of the destination place');
-  const state=this.store.commit(row,assessment,s=>{const next=new SpatialWorkingMemory();next.restore(row,this.working.view());next.commit(s);return next.view();});
+   if(assessment.location.status==='known'&&!contextSupport&&!assessment.location.sourceIds.some(id=>byId.get(id)?.location.placeId===assessment.location.placeId))throw Error('Known identity requires delivered working context or inspected historical evidence of that place');
+   for(const revision of assessment.revisions??[])if(revision.location.status==='known'&&!revision.location.sourceIds.some(id=>byId.get(id)?.location.placeId===revision.location.placeId))throw Error('Revised identity requires inspected evidence of the destination place');
+  }
+  private commitValidated(row:Observation,assessment:Assessment,inspected:ReadonlySet<string>,byId:Map<string,HistoryRecord>,contextSources:Array<{observationId:string;assessment:{location:{placeId:string|null}}}>,window?:SpatialWindow){
+   validateAssessment(assessment,row.id,inspected);this.validateIdentity(assessment,byId,contextSources);
+   const state=this.store.commit(row,assessment,s=>{const next=new SpatialWorkingMemory();next.restore(row,this.working.view(),true);next.commit(s);return next.view();},window);
   this.working.commit(state);this.published=structuredClone(state);return state;
  }
  async resumePending(){
@@ -170,7 +208,7 @@ export class SpatialMemoryService{
   for(const row of this.store.pending())this.schedule(row);
  }
  knows(id:string){return !!this.store.observation(id);}
- async finishInput(){await this.archiveTail;await Promise.allSettled(this.extractionTasks);await this.commitTail;if(this.failure)throw Error(this.failure);return this.store.counts();}
+  async finishInput(){await this.archiveTail;this.flushWindow();await Promise.allSettled([...this.extractionTasks]);await this.commitTail;if(this.failure)throw Error(this.failure);return this.store.counts();}
  latest(){
   if(!this.published)return null;
   const current=this.store.latestObservation()!,pending=current.id!==this.published.observationId;
@@ -196,10 +234,10 @@ export class SpatialMemoryService{
   return structuredClone({state,context:this.store.checkpoint(version)!,history,visits,transitions});
  }
  reader(){return Object.freeze({latest:()=>this.latest(),snapshotAt:(version:number,knownAtMs:number)=>this.snapshotAt(version,knownAtMs),inspectAt:async(version:number,knownAtMs:number,ids:string[])=>{
-  const snapshot=this.snapshotAt(version,knownAtMs),allowed=new Set(snapshot.history.map(r=>r.observationId));
+   const snapshot=this.snapshotAt(version,knownAtMs),allowed=new Set(snapshot.history.flatMap(r=>[r.observationId,...r.window?.observations.map(o=>o.id)??[]]));
   if(!Array.isArray(ids)||!ids.length||ids.length>3||new Set(ids).size!==ids.length||ids.some(id=>!allowed.has(id)))throw Error('Read-only image access outside committed snapshot');
   const images=ids.flatMap(id=>this.store.observation(id)!.views);for(const image of images)if(createHash('sha256').update(await readFile(image.path)).digest('hex')!==image.sha256)throw Error('Read-only source changed');return structuredClone(images);
  }});}
- progress(){return {...this.store.counts(),failure:this.failure};}
+  progress(){return {...this.store.counts(),admitted:this.admitted,capacity:this.options.maxPending,activeExtractions:this.extractionActive,bufferedObservations:this.bucket.length,failure:this.failure};}
  async close(){if(this.closed)return;try{await this.finishInput();}finally{this.closed=true;await this.reasoner?.close().catch(()=>{});this.store.close();}}
 }

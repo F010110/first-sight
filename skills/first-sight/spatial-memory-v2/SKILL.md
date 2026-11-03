@@ -7,6 +7,12 @@ description: Maintain a durable, evidence-backed spatial memory from arriving ob
 
 ## 每次判断
 
+若输入包含 `window`，其 observations 是一个固定8秒窗口中的最多4次、间隔至少2秒的观察。把整窗视为一个整体，只提交一个区域判断，不逐帧重复输出。所有原始观察及独立事实仍分别保留；当前ID是窗口尾观察，sourceIds必须包含它。依据可引用本轮仍实际交付原图的其他窗口成员。窗口是调度单位，不是永久地点或经历片段。
+
+整窗处于一个具体区域时按new/known/unknown判断持久身份；类别名如“城市街道”不是已认证的地点。整窗处于两个区域之间的边界/过渡时，location使用status=unknown、placeId=null，并加 `boundary:{"regions":["区域A暂名","区域B暂名"]}`，name可写“区域A与区域B边界”。这不认证连通、进入，也不意味着批尾确定处于任一区域。复杂多区域/无法判断时保持unknown。不把一个整窗结果复制成逐帧身份，不假装早帧当时已经知道后帧证据。
+
+短输出不等于只分类：仍需结合workingContext判断是否延续、重访或未知，必要时自主检索/读原图，维护hypotheses/unresolved/relations及必要修订。窗口不限制只能调用模型一次；普通窗口尽量一次record完成。reason尽量≤120汉字，hypotheses/unresolved只保留当前适用事项，没有则空数组，不重新输出已有独立观察细节。
+
 必须判断当前占据的具体区域，不能把远处看见的店面当成当前所在室内。普通装修、相邻或单个物体相似不能认证同一地点；新区域不推翻旧观察。当前区域有三种状态：
 
 - `new`：有具体布局证据的新候选，可暂名，不必知道官方名称；

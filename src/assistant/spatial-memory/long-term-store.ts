@@ -1,8 +1,8 @@
 import {DatabaseSync} from 'node:sqlite';
 import {mkdirSync} from 'node:fs';
 import {join} from 'node:path';
-import {randomUUID} from 'node:crypto';
-import type {Observation,Facts,Assessment,StoredState,HistoryRecord,WorkingContext} from './contracts.js';
+import {randomUUID,createHash} from 'node:crypto';
+import type {Observation,Facts,Assessment,StoredState,HistoryRecord,WorkingContext,SpatialWindow} from './contracts.js';
 
 /** New isolated schema: append-only spatial versions, not a transcript or fact-only ledger. */
 export class SpatialLongTermStore{
@@ -17,7 +17,9 @@ export class SpatialLongTermStore{
    CREATE TABLE IF NOT EXISTS places(id TEXT PRIMARY KEY,name TEXT NOT NULL,created_version INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS visits(id TEXT PRIMARY KEY,place_id TEXT NOT NULL REFERENCES places(id),start_version INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS states(version INTEGER PRIMARY KEY,observation_id TEXT UNIQUE NOT NULL REFERENCES observations(id),at_ms REAL NOT NULL,available_ms REAL NOT NULL,raw TEXT NOT NULL);
-   CREATE TABLE IF NOT EXISTS checkpoints(version INTEGER PRIMARY KEY REFERENCES states(version),raw TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS checkpoints(version INTEGER PRIMARY KEY REFERENCES states(version),raw TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS checkpoint_bindings(version INTEGER PRIMARY KEY REFERENCES states(version),raw TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS window_members(observation_id TEXT PRIMARY KEY REFERENCES observations(id),version INTEGER NOT NULL REFERENCES states(version));
    CREATE TABLE IF NOT EXISTS relation_assertions(version INTEGER NOT NULL REFERENCES states(version),raw TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS revisions(version INTEGER NOT NULL REFERENCES states(version),observation_id TEXT NOT NULL REFERENCES observations(id),raw TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY,at_ms REAL NOT NULL,kind TEXT NOT NULL,raw TEXT NOT NULL);
@@ -42,17 +44,19 @@ export class SpatialLongTermStore{
  version(){return (this.db.prepare('SELECT COALESCE(MAX(version),0) AS n FROM states').get() as any).n as number;}
  state(version:number):StoredState|null{const r=this.db.prepare('SELECT raw FROM states WHERE version=?').get(version) as any;return r?JSON.parse(r.raw):null;}
  checkpoint(version:number):WorkingContext|null{const r=this.db.prepare('SELECT raw FROM checkpoints WHERE version=?').get(version) as any;return r?JSON.parse(r.raw):null;}
- pending():Observation[]{return (this.db.prepare('SELECT o.raw FROM observations o LEFT JOIN states s ON s.observation_id=o.id WHERE s.version IS NULL ORDER BY o.seq').all() as any[]).map(r=>JSON.parse(r.raw));}
+  pending():Observation[]{return (this.db.prepare('SELECT o.raw FROM observations o LEFT JOIN states s ON s.observation_id=o.id LEFT JOIN window_members w ON w.observation_id=o.id WHERE s.version IS NULL AND w.version IS NULL ORDER BY o.seq').all() as any[]).map(r=>JSON.parse(r.raw));}
  history(version:number,cutoffMs:number,knownAtMs:number):HistoryRecord[]{
-  const records:HistoryRecord[]=(this.db.prepare('SELECT raw FROM states WHERE version<=? AND at_ms<=? AND available_ms<=? ORDER BY version').all(version,cutoffMs,knownAtMs) as any[]).map(r=>{const s:StoredState=JSON.parse(r.raw);return {version:s.version,observationId:s.observationId,atMs:s.atMs,facts:s.facts,location:s.assessment.location};});
+   const records:HistoryRecord[]=(this.db.prepare('SELECT raw FROM states WHERE version<=? AND at_ms<=? AND available_ms<=? ORDER BY version').all(version,cutoffMs,knownAtMs) as any[]).map(r=>{const s:StoredState=JSON.parse(r.raw);return {version:s.version,observationId:s.observationId,atMs:s.atMs,facts:s.facts,location:s.assessment.location,...s.window?{window:s.window}:{}};});
   const revisions=this.db.prepare('SELECT r.observation_id,r.raw FROM revisions r JOIN states s ON s.version=r.version WHERE s.version<=? AND s.at_ms<=? AND s.available_ms<=? ORDER BY s.version').all(version,cutoffMs,knownAtMs) as Array<{observation_id:string;raw:string}>;
   for(const revision of revisions){const record=records.find(r=>r.observationId===revision.observation_id);if(record)record.location=JSON.parse(revision.raw).location;}
   return records;
  }
- counts(){const n=(table:string)=>(this.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as any).n as number;return {observations:n('observations'),spatialStates:n('states'),places:n('places'),visits:n('visits'),pending:this.pending().length};}
- commit(row:Observation,a:Assessment,makeCheckpoint:(s:StoredState)=>WorkingContext):StoredState{
+  counts(){const n=(table:string)=>(this.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as any).n as number;return {observations:n('observations'),spatialStates:n('states'),coveredObservations:n('observations')-this.pending().length,places:n('places'),visits:n('visits'),pending:this.pending().length};}
+  commit(row:Observation,a:Assessment,makeCheckpoint:(s:StoredState)=>WorkingContext,window?:SpatialWindow):StoredState{
   this.db.exec('BEGIN IMMEDIATE');try{
-   const next=this.pending()[0];if(next?.id!==row.id)throw Error('Spatial commit must follow contiguous source order');
+    const members=window?.observations.map(o=>o.id)??[row.id],pending=this.pending();
+    if(!members.length||members.at(-1)!==row.id||members.some((id,i)=>pending[i]?.id!==id))throw Error('Spatial commit must follow contiguous source order');
+    if(window&&(window.endExclusiveMs<=row.atMs||window.startMs!==window.observations[0]!.atMs||window.observations.some(o=>{const raw=this.observation(o.id);return !raw||raw.atMs!==o.atMs||JSON.stringify(this.facts(o.id))!==JSON.stringify(o.facts);})))throw Error('Invalid window source binding');
    const facts=this.facts(row.id);if(!facts)throw Error('No independent facts');
    const version=this.version()+1,assessment=structuredClone(a),location=assessment.location;
    if(location.status==='new'){location.placeId=randomUUID();location.status='known';this.db.prepare('INSERT INTO places VALUES(?,?,?)').run(location.placeId,location.name,version);}
@@ -60,10 +64,12 @@ export class SpatialLongTermStore{
    const previous=this.state(version-1),sameRecording=previous?this.observation(previous.observationId)?.recordingId===row.recordingId:false;
    let visitId:string|null=null;
    if(location.placeId){visitId=previous?.assessment.location.placeId===location.placeId&&sameRecording&&row.atMs-previous.atMs<=60000?previous.visitId:randomUUID();if(visitId&&!this.db.prepare('SELECT id FROM visits WHERE id=?').get(visitId))this.db.prepare('INSERT INTO visits VALUES(?,?,?)').run(visitId,location.placeId,version);}
-   const state:StoredState={version,observationId:row.id,atMs:row.atMs,availableAtMs:this.now(),facts,assessment,visitId};
+    const state:StoredState={version,observationId:row.id,atMs:row.atMs,availableAtMs:this.now(),facts,assessment,visitId,...window?{window:structuredClone(window)}:{}};
    const context=makeCheckpoint(structuredClone(state));
-   this.db.prepare('INSERT INTO states VALUES(?,?,?,?,?)').run(version,row.id,row.atMs,state.availableAtMs,JSON.stringify(state));
-   this.db.prepare('INSERT INTO checkpoints VALUES(?,?)').run(version,JSON.stringify(context));
+    this.db.prepare('INSERT INTO states VALUES(?,?,?,?,?)').run(version,row.id,row.atMs,state.availableAtMs,JSON.stringify(state));
+    if(window)for(const id of members)this.db.prepare('INSERT INTO window_members VALUES(?,?)').run(id,version);
+    this.db.prepare('INSERT INTO checkpoints VALUES(?,?)').run(version,JSON.stringify(context));
+    this.db.prepare('INSERT INTO checkpoint_bindings VALUES(?,?)').run(version,JSON.stringify({policy:'spatial-checkpoint-v2',inputIds:members,knowledgeCutoffMs:row.atMs,availableAtMs:state.availableAtMs,contextSHA256:createHash('sha256').update(JSON.stringify(context)).digest('hex'),sourceHashes:members.flatMap(id=>this.observation(id)!.views.map(v=>v.sha256)),compaction:context.summary??null}));
    for(const relation of assessment.relations)this.db.prepare('INSERT INTO relation_assertions VALUES(?,?)').run(version,JSON.stringify(relation));
    for(const revision of assessment.revisions??[]){if(!this.db.prepare('SELECT observation_id FROM states WHERE observation_id=? AND version<?').get(revision.observationId,version))throw Error('Revision target is not committed history');if(revision.location.status==='known'&&!this.db.prepare('SELECT id FROM places WHERE id=?').get(revision.location.placeId))throw Error('Unknown revised identity');this.db.prepare('INSERT INTO revisions VALUES(?,?,?)').run(version,revision.observationId,JSON.stringify(revision));}
    this.db.exec('COMMIT');return state;
