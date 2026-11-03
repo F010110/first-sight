@@ -7,14 +7,16 @@ export type Location={status:'new'|'known'|'unknown';placeId:string|null;name:st
 export type Relation={kind:'same-facility'|'different-region';referenceId:string;reason:string;sourceIds:string[]};
 export type SpatialRevision={observationId:string;location:Location};
 export type PlaceUpdate={key:string;value:string;status:'asserted'|'uncertain'|'retracted';reason:string;sourceIds:string[]};
-export type Assessment={location:Location;hypotheses:string[];unresolved:string[];relations:Relation[];revisions?:SpatialRevision[];placeUpdates?:PlaceUpdate[]};
+export type MemoryNote={text:string;sourceIds:string[]};
+export type MemoryAddReceipt={operation:'add';version:number;placeId:string|null;visitId:string|null;createdPlace:boolean;createdVisit:boolean;observationIds:string[];grouped:boolean;noteIds:string[];notesAdded:number;attributeRevisions:number};
+export type Assessment={location:Location;hypotheses:string[];unresolved:string[];relations:Relation[];revisions?:SpatialRevision[];placeUpdates?:PlaceUpdate[];memoryNotes?:MemoryNote[]};
 export type SkippedWindow={startMs:number;endExclusiveMs:number;recordingId?:string;observations:Array<{id:string;atMs:number;facts:Facts}>;reason:'busy-superseded'};
 export type SpatialWindow={startMs:number;endExclusiveMs:number;observations:Array<{id:string;atMs:number;facts:Facts|null}>;missingFactIds?:string[];revisionOfVersion?:number;skippedBefore?:SkippedWindow[]};
-export type StoredState={version:number;observationId:string;atMs:number;availableAtMs:number;facts:Facts|null;assessment:Assessment;locationDecision?:Location['status'];visitId:string|null;provisionalVisitId?:string|null;window?:SpatialWindow};
+export type StoredState={version:number;observationId:string;atMs:number;availableAtMs:number;facts:Facts|null;assessment:Assessment;locationDecision?:Location['status'];visitId:string|null;provisionalVisitId?:string|null;window?:SpatialWindow;memoryReceipt?:MemoryAddReceipt};
 export type SpatialTimingEvent={type:'archived'|'window-sealed'|'perception-start'|'perception-end'|'evidence-wait-start'|'evidence-wait-end'|'judgment-start'|'state-committed';atMs:number;observationIds:string[];taskId?:string;version?:number;missingFactIds?:string[];repairOfVersion?:number};
 export type AgentCheckpoint={sessionId:string;tipId:string;skillVersions:Record<string,string>};
 export type ContinuityReference={observationId:string;placeId:string;name:string;uncertain:boolean};
-export type JudgeInput={row:Observation;facts:Facts|null;context:WorkingContext;history:HistoryRecord[];previousRegion?:ContinuityReference;window?:SpatialWindow;windowViews?:SpatialJsonImage[];readPlace?:(id:string)=>unknown;evaluate?:(assessment:Assessment,evidence:JudgeEvidence)=>void;inspect:(ids:string[])=>Promise<SpatialJsonImage[]>;commit:(assessment:Assessment,evidence:JudgeEvidence)=>Promise<StoredState>;feedback?:string|null};
+export type JudgeInput={row:Observation;facts:Facts|null;context:WorkingContext;history:HistoryRecord[];previousRegion?:ContinuityReference;window?:SpatialWindow;windowViews?:SpatialJsonImage[];readPlace?:(id:string,cursor?:number,noteCursor?:number)=>unknown;evaluate?:(assessment:Assessment,evidence:JudgeEvidence)=>void;inspect:(ids:string[])=>Promise<SpatialJsonImage[]>;commit:(assessment:Assessment,evidence:JudgeEvidence)=>Promise<StoredState>;feedback?:string|null};
 export interface SpatialReasoner{judge(input:JudgeInput):Promise<Assessment>;close():Promise<void>}
 export type HistoryRecord={observationId:string;atMs:number;facts:Facts|null;location:Location;locationDecision?:Location['status'];version:number;visitId?:string|null;provisionalVisitId?:string|null;window?:SpatialWindow};
 export type WorkingContext={current:{id:string;atMs:number};location:Location|null;recent:StoredState[];anchors:StoredState[];retrieved:HistoryRecord[];summary?:{policy:string;text:string;sourceIds:string[];throughAtMs:number};unresolved?:string[]};
@@ -54,5 +56,9 @@ export function validateAssessment(a:Assessment,current:string,inspected:Readonl
    if(!Array.isArray(a.placeUpdates)||a.placeUpdates.length>8||new Set(a.placeUpdates.map(u=>u.key)).size!==a.placeUpdates.length||a.placeUpdates.length>0&&l.status==='unknown')throw Error('Place updates require a confirmed current place and unique keys');
    for(const u of a.placeUpdates)if(typeof u.key!=='string'||!u.key.trim()||u.key.length>120||typeof u.value!=='string'||!u.value.trim()||u.value.length>1200||!['asserted','uncertain','retracted'].includes(u.status)||typeof u.reason!=='string'||!u.reason.trim()||u.reason.length>800||!Array.isArray(u.sourceIds)||!u.sourceIds.length||new Set(u.sourceIds).size!==u.sourceIds.length||u.sourceIds.some(id=>!inspected.has(id))||!u.sourceIds.some(id=>l.sourceIds.includes(id)))throw Error('Invalid or undelivered place profile evidence');
   }
- return structuredClone(a);
+  if(a.memoryNotes!==undefined){
+   if(!Array.isArray(a.memoryNotes)||a.memoryNotes.length>6||a.memoryNotes.length>0&&l.status==='unknown')throw Error('Memory notes require a confirmed place');
+   for(const n of a.memoryNotes)if(typeof n.text!=='string'||!n.text.trim()||n.text.length>800||!Array.isArray(n.sourceIds)||!n.sourceIds.length||n.sourceIds.length>12||new Set(n.sourceIds).size!==n.sourceIds.length||n.sourceIds.some(id=>!inspected.has(id)))throw Error('Memory note needs delivered original evidence');
+  }
+  return structuredClone(a);
 }

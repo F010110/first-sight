@@ -120,6 +120,8 @@ test('busy latest policy skips obsolete calls, delivers their facts to the succe
   const p=service.progress();assert.equal(calls,2);assert.equal(p.observations,12);assert.equal(p.spatialStates,2);assert.equal(p.skippedWindows,1);assert.equal(p.skippedObservations,4);assert.equal(p.coveredObservations,8);assert.equal(p.deferredObservations,0);assert.equal(p.admitted,0);assert.equal(p.pending,0);assert.equal(service.latest()!.state.observationId,'s11');
   assert.equal(service.snapshotAt(2,Number.MAX_SAFE_INTEGER).state.window!.skippedBefore![0]!.reason,'busy-superseded');
   assert.equal((await service.reader().inspectAt(2,Number.MAX_SAFE_INTEGER,['s4'])).length,3);
+  const organized=service.reader().placeAt(2,Number.MAX_SAFE_INTEGER,service.latest()!.state.assessment.location.placeId!)!;
+  assert.equal(organized.totalWindows,2);assert.deepEqual(organized.unassignedSkippedSourceIds,['s4','s5','s6','s7']);assert.equal(organized.visits.flatMap(v=>v.windows).flatMap(w=>w.window!.observations).length,8);
  }finally{release();await service?.close().catch(()=>{});await f.cleanup();}
 });
 

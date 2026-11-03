@@ -46,9 +46,9 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
  const checkDelivered=(ids:unknown,max:number)=>{if(!Array.isArray(ids)||!ids.length||ids.length>max||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string'||!delivered.has(id)))throw Error('Use 1-'+max+' distinct previously delivered observation IDs');return ids as string[];};
  const tool=(name:string,description:string,parameters:any,run:(a:any)=>Promise<any>):AgentHarnessTool<undefined>=>({name,label:name,description,parameters:Type.Object({...parameters.properties,assessment:parameters.properties.assessment??Type.Unknown()}),execute:async(_id,args)=>{
   const input=requireCurrent(),a=args as any;
-  if(name!=='record_spatial_state'){
+   if(name!=='memory_add'){
    const assessment=validateAssessment(a.assessment,input.row.id,inspected);
-    if(assessment.relations.length||assessment.revisions?.length||assessment.placeUpdates?.length)throw Error('Interim assessment cannot commit relations/revisions/place updates');
+     if(assessment.relations.length||assessment.revisions?.length||assessment.placeUpdates?.length||assessment.memoryNotes?.length)throw Error('Interim assessment cannot commit relations/revisions/place updates/notes');
    input.evaluate?.(assessment,{inspected,delivered:new Set(delivered.keys())});input.context.location=assessment.location;
   }
   const result=await run(a);return {content:asText(result),details:{},...(result&&typeof result==='object'&&result.terminate===true?{terminate:true}:{})};}});
@@ -78,9 +78,11 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   lastToolResult={kind:'inspect',requestedSourceIds:ids,records:ids.map(id=>delivered.get(id)!),imageCount:originals.length,note:'Only current tail and requested historical images remain delivered; earlier window images removed. Not a new spatial judgment'};
   return lastToolResult;
  });
-  const place=tool('memory_place','Read a persistent place profile and its revision history. Assertions are not fresh observations; use memory tools for source evidence.',Type.Object({placeId:Type.String({minLength:1,maxLength:120})}),async a=>{
+   const place=tool('memory_place','Read a place organized as visits -> chronological windows -> full source facts, plus notes and attribute revisions. Page using nextCursor/nextNoteCursor. Reading text delivers sources for memory_inspect, not proof that images were checked.',Type.Object({placeId:Type.String({minLength:1,maxLength:120}),cursor:Type.Optional(Type.Integer({minimum:0})),noteCursor:Type.Optional(Type.Integer({minimum:0}))}),async a=>{
    const input=requireCurrent();if(!input.readPlace)throw Error('Place profiles unavailable');
-   lastToolResult={kind:'place-profile',profile:input.readPlace(a.placeId)};return lastToolResult;
+    const profile=input.readPlace(a.placeId,a.cursor,a.noteCursor) as {visits?:Array<{windows:HistoryRecord[]}>}|null;
+    for(const visit of profile?.visits??[])for(const record of visit.windows)deliver(record);
+    lastToolResult={kind:'place-profile',profile};return lastToolResult;
   });
   const skippedSources=tool('memory_skipped_sources','Read facts or inspect up to three skipped sources already referenced by current or committed windows. No location was assigned to these sources.',Type.Object({ids:Type.Array(Type.String(),{minItems:1,maxItems:3}),inspect:Type.Optional(Type.Boolean())}),async a=>{
    const input=requireCurrent(),sources=[...(input.window?.skippedBefore??[]),...input.history.flatMap(r=>r.window?.skippedBefore??[])].flatMap(w=>w.observations);
@@ -97,12 +99,12 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   relations:Type.Array(Type.Object({kind:Type.Union([Type.Literal('same-facility'),Type.Literal('different-region')]),referenceId:Type.String(),reason:Type.String({minLength:1,maxLength:1200}),sourceIds:Type.Array(Type.String(),{minItems:2,maxItems:8})}),{maxItems:8}),
   revisions:Type.Optional(Type.Array(Type.Object({observationId:Type.String(),location:revisionLocation}),{maxItems:3}))
  });
- const record=tool('record_spatial_state','Commit the complete current assessment and end this observation.',Type.Object({assessment:assessmentSchema}),async a=>{
-  const input=requireCurrent(),assessment=validateAssessment(a.assessment as Assessment,input.row.id,inspected);
+  const record=tool('memory_add','Add current observations to spatial memory and end this window. Supply the location assessment and useful notes {text,sourceIds}. The database creates/chooses the place, visit and chronological window links automatically; do not design a tree, table, attribute key or ID. New place: capture distinguishing supported features. Repeated facts: notes may be empty. known requires contextRefs or inspected historical place evidence.',Type.Object({assessment:assessmentSchema,notes:Type.Optional(Type.Array(Type.Object({text:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}),{maxItems:6}))}),async a=>{
+   const input=requireCurrent(),assessment=validateAssessment({...a.assessment,memoryNotes:a.notes??[]} as Assessment,input.row.id,inspected);
   committed=await input.commit(assessment,{inspected,delivered:new Set(delivered.keys())});
   if(!committed)throw Error('Spatial commit returned no state');
   lastToolResult={kind:'committed',observationId:input.row.id,version:committed.version};
-   return {kind:'committed',observationId:input.row.id,version:committed.version,location:committed.assessment.location,visitId:committed.visitId,terminate:true};
+    return {kind:'committed',observationId:input.row.id,version:committed.version,location:committed.assessment.location,visitId:committed.visitId,memory:committed.memoryReceipt,terminate:true};
  });
   const tools=[timeline,find,read,inspect,place,skippedSources,record];
   const {harness,open}=await AgentHarness.create({session,...provider,tools,resources:{skills:skills.filter(s=>s.name===skillName)},systemPrompt:()=>skill.content,compaction:{enabled:true,reserveTokens:32000,keepRecentTokens:contextPolicy.keepRecentTokens},retry:{enabled:false,maxRetries:0,baseDelayMs:0}},BACKGROUND_CONTEXT);

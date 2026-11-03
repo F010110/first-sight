@@ -49,7 +49,7 @@ export class SpatialMemoryService{
    catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   } else await readFile(join(root,'spatial.sqlite')); // Explicit same-session recovery only.
   const store=new SpatialLongTermStore(root,options.now??Date.now),service=new SpatialMemoryService(root,models,options.reasoner??null,store,{extractionConcurrency:concurrency,maxReasonCalls:max,now:options.now??Date.now,maxPending,cooldownMs:cool,activeLimit:concurrency,coolUntil:0,windowMs});
-  if(windowMs&&!store.supportsWindowRevisions()){store.close();throw Error('Window memory requires a new schema-v3 database; legacy runs are preserved');}
+  if(windowMs&&!store.supportsWindowRevisions()){store.close();throw Error('Window memory requires a new schema-v4 database; legacy runs are preserved');}
   service.evidenceWaitMs=options.evidenceWaitMs??8000;
   service.evidencePolicy=options.evidencePolicy??'wait';
   service.busyPolicy=options.busyPolicy??'queue';
@@ -223,7 +223,7 @@ export class SpatialMemoryService{
      const assessment=await this.reasoner.judge({
        row:structuredClone(row),facts:this.store.facts(row.id)!,context:this.working.view(),history:structuredClone(prior),...this.previousRegion(row,window)?{previousRegion:this.previousRegion(row,window)!}:{},...window&&rows?{window,windowViews:rows.flatMap(r=>r.views)}:{},
        evaluate:(a,evidence)=>{validateAssessment(a,row.id,evidence.inspected);this.validateIdentity(a,byId,contextSources);this.validateContinuity(row,a,window);if(a.relations.length||a.revisions?.length)throw Error('Interim assessment cannot submit relations or revisions');this.working.evaluate(a.location);this.store.event('spatial-interim',{observationId:row.id,assessment:a});},
-       readPlace:id=>this.store.placeProfile(id,this.store.version(),this.options.now()),
+        readPlace:(id,cursor,noteCursor)=>this.store.placeMemory(id,this.store.version(),this.options.now(),cursor,noteCursor,(window?.startMs??row.atMs)-0.000001),
         inspect:async ids=>{
         const originals=ids.map(id=>{if(!byId.has(id)&&!skippedSourceIds.has(id))throw Error('Inspection source outside committed history or explicitly skipped inputs');return this.store.observation(id)!;});
        const images=originals.flatMap(o=>o.views);if(images.length>9)throw Error('Inspection image limit');
@@ -305,7 +305,7 @@ export class SpatialMemoryService{
    validateAssessment(assessment,row.id,inspected);this.validateIdentity(assessment,byId,contextSources);
    if(window?.missingFactIds?.includes(row.id)&&assessment.location.status!=='unknown')throw Error('Tail observation facts unavailable: current location must remain unknown');
    this.validateContinuity(row,assessment,window);
-   const state=this.store.commit(row,assessment,s=>{const next=new SpatialWorkingMemory();next.restore(row,this.working.view(),true);next.commit(s);return next.view();},window);
+   const state=this.store.add(row,assessment,s=>{const next=new SpatialWorkingMemory();next.restore(row,this.working.view(),true);next.commit(s);return next.view();},window);
    this.finalizeTask(row.id,state);
    this.working.commit(state);if(!this.published||state.atMs>=this.published.atMs)this.published=structuredClone(state);return state;
  }
@@ -379,7 +379,7 @@ export class SpatialMemoryService{
   const transitions=history.slice(1).map((r,i)=>({fromObservationId:history[i]!.observationId,toObservationId:r.observationId,fromPlaceId:history[i]!.location.placeId,toPlaceId:r.location.placeId,kind:'observed-order-not-traversability' as const}));
   return structuredClone({state,context:this.store.checkpoint(version)!,history,visits,transitions});
  }
-  reader(){return Object.freeze({latest:()=>this.latest(),snapshotAt:(version:number,knownAtMs:number)=>this.snapshotAt(version,knownAtMs),placeAt:(version:number,knownAtMs:number,id:string)=>{this.snapshotAt(version,knownAtMs);return structuredClone(this.store.placeProfile(id,version,knownAtMs));},inspectAt:async(version:number,knownAtMs:number,ids:string[])=>{
+  reader(){return Object.freeze({latest:()=>this.latest(),snapshotAt:(version:number,knownAtMs:number)=>this.snapshotAt(version,knownAtMs),placeAt:(version:number,knownAtMs:number,id:string,cursor=0,noteCursor=0)=>{const snapshot=this.snapshotAt(version,knownAtMs);return structuredClone(this.store.placeMemory(id,version,knownAtMs,cursor,noteCursor,snapshot.state.atMs));},inspectAt:async(version:number,knownAtMs:number,ids:string[])=>{
    const snapshot=this.snapshotAt(version,knownAtMs),allowed=new Set(snapshot.history.flatMap(r=>[r.observationId,...r.window?.observations.map(o=>o.id)??[],...r.window?.skippedBefore?.flatMap(w=>w.observations.map(o=>o.id))??[]]));
   if(!Array.isArray(ids)||!ids.length||ids.length>3||new Set(ids).size!==ids.length||ids.some(id=>!allowed.has(id)))throw Error('Read-only image access outside committed snapshot');
   const images=ids.flatMap(id=>this.store.observation(id)!.views);for(const image of images)if(createHash('sha256').update(await readFile(image.path)).digest('hex')!==image.sha256)throw Error('Read-only source changed');return structuredClone(images);

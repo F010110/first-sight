@@ -37,3 +37,38 @@ test('schema-v2 databases are refused before any automatic profile or skip-table
   const check=new DatabaseSync(join(root,'spatial.sqlite'));try{assert.deepEqual(check.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r=>r.name),['spatial_schema']);assert.equal(check.prepare('SELECT version FROM spatial_schema').get()!.version,2);}finally{check.close();}
  }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('add organizes a place by visits and time, deduplicates exact notes and rolls back organization with state',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'opencode/place-add-'));let now=100;const store=new SpatialLongTermStore(root,()=>now);
+ const checkpoint=(s:StoredState):WorkingContext=>({current:{id:s.observationId,atMs:s.atMs},location:s.assessment.location,recent:[s],anchors:[],retrieved:[]});
+ const add=(id:string,placeId:string|null,text:string):Assessment=>({location:{status:placeId?'known':'new',placeId,name:'corner',reason:'visible layout',sourceIds:[id]},hypotheses:[],unresolved:[],relations:[],memoryNotes:[{text,sourceIds:[id]}]});
+ try{
+  for(const [i,id] of ['a','b','c','d','e'].entries()){store.archive({id,atMs:i*2000,views:[]});store.saveFacts(id,{summary:'fact '+id,details:['detail '+id]});}
+  const a=store.add(store.observation('a')!,add('a',null,'red awning'),checkpoint),placeId=a.assessment.location.placeId!;
+  now=200;const b=store.add(store.observation('b')!,add('b',placeId,'red awning'),checkpoint);
+  assert.equal(a.memoryReceipt!.createdPlace,true);assert.equal(a.memoryReceipt!.notesAdded,1);assert.equal(b.memoryReceipt!.notesAdded,0);assert.equal(b.visitId,a.visitId);
+  const early=store.placeMemory(placeId,1)!;assert.equal(early.notes.length,1);assert.equal(early.notes[0]!.sources.length,1);assert.equal(early.totalWindows,1);
+  let memory=store.placeMemory(placeId,2)!;assert.equal(memory.visits.length,1);assert.deepEqual(memory.visits[0]!.windows.map(w=>w.observationId),['a','b']);assert.equal(memory.notes.length,1);assert.equal(memory.notes[0]!.sources.length,2);assert.equal(memory.originalMembership.length,2);
+  now=300;store.add(store.observation('c')!,add('c',null,'different corner'),checkpoint);
+  now=400;const d=store.add(store.observation('d')!,add('d',placeId,'green bin'),checkpoint);assert.notEqual(d.visitId,a.visitId);
+  memory=store.placeMemory(placeId)!;assert.equal(memory.visits.length,2);assert.deepEqual(memory.visits.map(v=>v.windows.map(w=>w.observationId)),[['a','b'],['d']]);assert.equal(memory.notes.length,2);assert.equal(store.placeMemory(placeId,4,150)!.totalWindows,1);
+  const causal=store.placeMemory(placeId,4,Number.MAX_SAFE_INTEGER,0,0,1000)!;assert.equal(causal.totalWindows,1);assert.equal(causal.notes.length,1);assert.equal(causal.notes[0]!.sources.length,1);assert.equal(causal.originalMembership.length,1);
+  assert.throws(()=>store.add(store.observation('e')!,add('e',placeId,'must rollback'),()=>{throw Error('checkpoint failed');}),/checkpoint failed/);
+  assert.equal(store.version(),4);assert.equal(store.placeMemory(placeId)!.notes.length,2);assert.equal(store.placeMemory(placeId)!.originalMembership.length,3);
+  const invalid=add('e',placeId,'unseen');invalid.memoryNotes![0]!.sourceIds=['a'];assert.throws(()=>validateAssessment(invalid,'e',new Set(['e'])),/original evidence/);
+ }finally{store.close();await rm(root,{recursive:true,force:true});}
+});
+
+test('place organization projects revisions without rewriting original membership or assigning unknown sources',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'opencode/place-revision-')),store=new SpatialLongTermStore(root);
+ const checkpoint=(s:StoredState):WorkingContext=>({current:{id:s.observationId,atMs:s.atMs},location:s.assessment.location,recent:[s],anchors:[],retrieved:[]});
+ const assessment=(id:string,status:'new'|'unknown'='new'):Assessment=>({location:{status,placeId:null,name:status==='new'?'region':'unknown',reason:'evidence',sourceIds:[id]},hypotheses:[],unresolved:[],relations:[]});
+ try{
+  for(const [i,id] of ['a','b','c'].entries()){store.archive({id,atMs:i*2000,views:[]});store.saveFacts(id,{summary:'fact '+id,details:['detail']});}
+  const a=store.add(store.observation('a')!,assessment('a'),checkpoint),aId=a.assessment.location.placeId!;
+  const b=store.add(store.observation('b')!,assessment('b'),checkpoint),bId=b.assessment.location.placeId!;
+  const correction=assessment('c','unknown');correction.revisions=[{observationId:'a',location:{status:'known',placeId:bId,name:'region',reason:'checked both originals',sourceIds:['a','b','c']}}];store.add(store.observation('c')!,correction,checkpoint);
+  assert.equal(store.placeMemory(aId,1)!.totalWindows,1);assert.equal(store.placeMemory(aId,3)!.totalWindows,0);assert.equal(store.placeMemory(aId,3)!.originalMembership.length,1);
+  const projected=store.placeMemory(bId,3)!;assert.equal(projected.totalWindows,2);assert.equal(projected.originalMembership.length,1);assert.ok(projected.visits.some(v=>v.visitId===null));assert.ok(projected.visits.every(v=>v.windows.every(w=>w.observationId!=='c')));
+ }finally{store.close();await rm(root,{recursive:true,force:true});}
+});

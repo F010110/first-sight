@@ -13,13 +13,18 @@ export class SpatialLongTermStore{
    if(tables.length&&!tables.some(t=>t.name==='spatial_schema')){this.db.close();throw Error('Refuse to initialize over a legacy database');}
    if(tables.some(t=>t.name==='spatial_schema')){
     const existing=this.db.prepare('SELECT version FROM spatial_schema').get() as {version:number}|undefined;
-    if(existing?.version!==3){this.db.close();throw Error('Spatial schema-v3 requires a new database; legacy databases are preserved without migration');}
+    if(existing?.version!==4){this.db.close();throw Error('Spatial schema-v4 requires a new database; legacy databases are preserved without migration');}
    }
   this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
    CREATE TABLE IF NOT EXISTS spatial_schema(version INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS observations(seq INTEGER PRIMARY KEY,id TEXT NOT NULL UNIQUE,at_ms REAL NOT NULL UNIQUE,raw TEXT NOT NULL,facts TEXT,error TEXT);
    CREATE TABLE IF NOT EXISTS places(id TEXT PRIMARY KEY,name TEXT NOT NULL,created_version INTEGER NOT NULL);
-   CREATE TABLE IF NOT EXISTS visits(id TEXT PRIMARY KEY,place_id TEXT NOT NULL REFERENCES places(id),start_version INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS visits(id TEXT PRIMARY KEY,place_id TEXT NOT NULL REFERENCES places(id),start_version INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS place_records(version INTEGER PRIMARY KEY REFERENCES states(version),place_id TEXT NOT NULL REFERENCES places(id),visit_id TEXT REFERENCES visits(id),at_ms REAL NOT NULL);
+    CREATE INDEX IF NOT EXISTS place_records_order ON place_records(place_id,at_ms,version);
+    CREATE INDEX IF NOT EXISTS visit_records_order ON place_records(visit_id,at_ms,version);
+    CREATE TABLE IF NOT EXISTS place_notes(id TEXT PRIMARY KEY,place_id TEXT NOT NULL REFERENCES places(id),text TEXT NOT NULL,created_version INTEGER NOT NULL REFERENCES states(version),UNIQUE(place_id,text));
+    CREATE TABLE IF NOT EXISTS place_note_sources(note_id TEXT NOT NULL REFERENCES place_notes(id),version INTEGER NOT NULL REFERENCES states(version),source_id TEXT NOT NULL REFERENCES observations(id),PRIMARY KEY(note_id,version,source_id));
     CREATE TABLE IF NOT EXISTS states(version INTEGER PRIMARY KEY,observation_id TEXT NOT NULL REFERENCES observations(id),at_ms REAL NOT NULL,available_ms REAL NOT NULL,raw TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS checkpoints(version INTEGER PRIMARY KEY REFERENCES states(version),raw TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS checkpoint_bindings(version INTEGER PRIMARY KEY REFERENCES states(version),raw TEXT NOT NULL);
@@ -32,11 +37,11 @@ export class SpatialLongTermStore{
    CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY,at_ms REAL NOT NULL,kind TEXT NOT NULL,raw TEXT NOT NULL);
    CREATE INDEX IF NOT EXISTS states_time ON states(at_ms,available_ms);`);
   const schema=this.db.prepare('SELECT version FROM spatial_schema').get() as any;
-    if(schema&&schema.version!==3)throw Error('Incompatible spatial memory schema');
-    if(!schema)this.db.prepare('INSERT INTO spatial_schema VALUES(3)').run();
+    if(schema&&schema.version!==4)throw Error('Incompatible spatial memory schema');
+    if(!schema)this.db.prepare('INSERT INTO spatial_schema VALUES(4)').run();
  }
   close(){this.db.close();}
-   supportsWindowRevisions(){return (this.db.prepare('SELECT version FROM spatial_schema').get() as any).version===3;}
+   supportsWindowRevisions(){return (this.db.prepare('SELECT version FROM spatial_schema').get() as any).version===4;}
  event(kind:string,value:unknown){this.db.prepare('INSERT INTO events(at_ms,kind,raw) VALUES(?,?,?)').run(this.now(),kind,JSON.stringify(value));}
  archive(row:Observation){
   const prior=this.observation(row.id);if(prior){if(JSON.stringify(prior)!==JSON.stringify(row))throw Error('Immutable observation changed');return;}
@@ -52,11 +57,26 @@ export class SpatialLongTermStore{
  version(){return (this.db.prepare('SELECT COALESCE(MAX(version),0) AS n FROM states').get() as any).n as number;}
  state(version:number):StoredState|null{const r=this.db.prepare('SELECT raw FROM states WHERE version=?').get(version) as any;return r?JSON.parse(r.raw):null;}
   checkpoint(version:number):WorkingContext|null{const r=this.db.prepare('SELECT raw FROM checkpoints WHERE version=?').get(version) as any;return r?JSON.parse(r.raw):null;}
-  placeProfile(id:string,version=this.version(),knownAtMs=Number.MAX_SAFE_INTEGER){
-   const place=this.db.prepare('SELECT p.id,p.name,p.created_version FROM places p JOIN states s ON s.version=p.created_version WHERE p.id=? AND p.created_version<=? AND s.available_ms<=?').get(id,version,knownAtMs);if(!place)return null;
-   const revisions=(this.db.prepare('SELECT p.version,p.raw FROM place_profile_revisions p JOIN states s ON s.version=p.version WHERE p.place_id=? AND p.version<=? AND s.available_ms<=? ORDER BY p.version').all(id,version,knownAtMs) as Array<{version:number;raw:string}>).map(r=>({version:r.version,...JSON.parse(r.raw)}));
+  placeProfile(id:string,version=this.version(),knownAtMs=Number.MAX_SAFE_INTEGER,cutoffMs=Number.MAX_SAFE_INTEGER){
+   const place=this.db.prepare('SELECT p.id,p.name,p.created_version FROM places p JOIN states s ON s.version=p.created_version WHERE p.id=? AND p.created_version<=? AND s.available_ms<=? AND s.at_ms<=?').get(id,version,knownAtMs,cutoffMs);if(!place)return null;
+   const revisions=(this.db.prepare('SELECT p.version,p.raw FROM place_profile_revisions p JOIN states s ON s.version=p.version WHERE p.place_id=? AND p.version<=? AND s.available_ms<=? AND s.at_ms<=? ORDER BY p.version').all(id,version,knownAtMs,cutoffMs) as Array<{version:number;raw:string}>).map(r=>({version:r.version,...JSON.parse(r.raw)}));
    const latest=new Map<string,(typeof revisions)[number]>();for(const r of revisions)latest.set(r.key,r);
    return {place,attributes:[...latest.values()],revisions,note:'Agent assertions with sources, not independent observations. Retracted values remain in history.'};
+  }
+  /** Fixed organization, not an agent-generated tree. Pages contain full facts;
+   * a window is the unit of location judgment, never four invented positions. */
+  placeMemory(id:string,version=this.version(),knownAtMs=Number.MAX_SAFE_INTEGER,cursor=0,noteCursor=0,cutoffMs=Number.MAX_SAFE_INTEGER){
+   if(!Number.isInteger(cursor)||cursor<0||!Number.isInteger(noteCursor)||noteCursor<0)throw Error('Invalid place memory cursor');
+   const profile=this.placeProfile(id,version,knownAtMs,cutoffMs);if(!profile)return null;
+   const history=this.history(version,cutoffMs,knownAtMs),records=history.filter(r=>r.location.placeId===id),page=records.slice(cursor,cursor+24);
+   const visits:Array<{visitId:string|null;windows:HistoryRecord[]}>=[];
+   for(const record of page){let visit=visits.find(v=>v.visitId===(record.visitId??null));if(!visit){visit={visitId:record.visitId??null,windows:[]};visits.push(visit);}const copy=structuredClone(record);if(copy.window)delete copy.window.skippedBefore;visit.windows.push(copy);}
+   const notes=(this.db.prepare('SELECT n.id,n.text,n.created_version FROM place_notes n JOIN states s ON s.version=n.created_version WHERE n.place_id=? AND n.created_version<=? AND s.available_ms<=? AND s.at_ms<=? ORDER BY n.created_version,n.id LIMIT 25 OFFSET ?').all(id,version,knownAtMs,cutoffMs,noteCursor) as Array<{id:string;text:string;created_version:number}>);
+   const notePage=notes.slice(0,24).map(n=>({...n,sources:this.db.prepare('SELECT x.version,x.source_id AS sourceId FROM place_note_sources x JOIN states s ON s.version=x.version WHERE x.note_id=? AND x.version<=? AND s.available_ms<=? AND s.at_ms<=? ORDER BY x.version,x.source_id').all(n.id,version,knownAtMs,cutoffMs)}));
+   return {...profile,organization:'place-visits-windows-sources-v1',version,visits,notes:notePage,totalWindows:records.length,nextCursor:cursor+page.length<records.length?cursor+page.length:null,nextNoteCursor:notes.length>24?noteCursor+24:null,
+    originalMembership:this.db.prepare('SELECT r.version,r.visit_id AS visitId,r.at_ms AS atMs FROM place_records r JOIN states s ON s.version=r.version WHERE r.place_id=? AND r.version<=? AND s.available_ms<=? AND s.at_ms<=? ORDER BY r.at_ms,r.version LIMIT 24 OFFSET ?').all(id,version,knownAtMs,cutoffMs,cursor),
+    unassignedSkippedSourceIds:page.flatMap(r=>r.window?.skippedBefore?.flatMap(w=>w.observations.map(o=>o.id))??[]),
+    note:'Visits/windows use the requested revision projection. Original membership is separate. Window members are original facts, not per-frame locations. Skipped sources have no assigned place. Notes are agent assertions, not independent observations.'};
   }
    pending():Observation[]{return (this.db.prepare('SELECT o.raw FROM observations o LEFT JOIN states s ON s.observation_id=o.id LEFT JOIN window_members w ON w.observation_id=o.id LEFT JOIN skipped_members k ON k.observation_id=o.id WHERE s.version IS NULL AND w.version IS NULL AND k.observation_id IS NULL ORDER BY o.seq').all() as any[]).map(r=>JSON.parse(r.raw));}
    skippedBefore(atMs:number):SkippedWindow[]{return (this.db.prepare('SELECT raw FROM skipped_windows WHERE consumed_version IS NULL AND at_ms<? ORDER BY at_ms').all(atMs) as Array<{raw:string}>).map(r=>JSON.parse(r.raw));}
@@ -73,7 +93,10 @@ export class SpatialLongTermStore{
   return records;
  }
    counts(){const n=(table:string)=>(this.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as any).n as number;const spatialStates=(this.db.prepare('SELECT COUNT(DISTINCT observation_id) AS n FROM states').get() as any).n as number;return {observations:n('observations'),spatialStates,stateVersions:n('states'),incompleteWindows:this.history(this.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).filter(r=>r.window?.missingFactIds?.length).length,missingFacts:(this.db.prepare('SELECT COUNT(*) AS n FROM observations WHERE facts IS NULL').get() as any).n as number,coveredObservations:n('observations')-this.pending().length-n('skipped_members'),skippedWindows:n('skipped_windows'),skippedObservations:n('skipped_members'),deferredObservations:this.skippedBefore(Number.MAX_SAFE_INTEGER).reduce((n,w)=>n+w.observations.length,0),places:n('places'),visits:n('visits'),pending:this.pending().length};}
-  commit(row:Observation,a:Assessment,makeCheckpoint:(s:StoredState)=>WorkingContext,window?:SpatialWindow):StoredState{
+   /** Agent-facing add: one atomic operation chooses/creates identity, attaches
+    * its visit/window/sources and appends simple evidence-backed note content. */
+   add(row:Observation,a:Assessment,makeCheckpoint:(s:StoredState)=>WorkingContext,window?:SpatialWindow):StoredState{return this.commit(row,a,makeCheckpoint,window);}
+   commit(row:Observation,a:Assessment,makeCheckpoint:(s:StoredState)=>WorkingContext,window?:SpatialWindow):StoredState{
   this.db.exec('BEGIN IMMEDIATE');try{
     const members=window?.observations.map(o=>o.id)??[row.id],pending=this.pending();
     const revising=window?.revisionOfVersion!==undefined,base=revising?this.state(window!.revisionOfVersion!):null;
@@ -87,17 +110,24 @@ export class SpatialLongTermStore{
     if(location.status==='known'&&!this.db.prepare('SELECT id FROM places WHERE id=?').get(location.placeId))throw Error('Unknown persistent place');
     if(location.continuityCandidate&&!this.db.prepare('SELECT id FROM places WHERE id=?').get(location.continuityCandidate.placeId))throw Error('Unknown provisional continuity place');
     const previous=revising?base:this.state(version-1),sameRecording=previous?this.observation(previous.observationId)?.recordingId===row.recordingId:false;
-    let visitId:string|null=null;
+    let visitId:string|null=null,createdVisit=false;
     if(location.placeId){
      const previousPlace=previous?.assessment.location.placeId??previous?.assessment.location.continuityCandidate?.placeId;
      visitId=previousPlace===location.placeId&&sameRecording&&row.atMs-previous!.atMs<=60000?(previous!.visitId??previous!.provisionalVisitId??randomUUID()):randomUUID();
-     if(visitId&&!this.db.prepare('SELECT id FROM visits WHERE id=?').get(visitId))this.db.prepare('INSERT INTO visits VALUES(?,?,?)').run(visitId,location.placeId,version);
+     if(visitId&&!this.db.prepare('SELECT id FROM visits WHERE id=?').get(visitId)){this.db.prepare('INSERT INTO visits VALUES(?,?,?)').run(visitId,location.placeId,version);createdVisit=true;}
     }
     let provisionalVisitId:string|null=null;
     if(location.continuityCandidate){const reference=this.history(version-1,row.atMs-0.000001,Number.MAX_SAFE_INTEGER).find(r=>r.observationId===location.continuityCandidate!.referenceId);provisionalVisitId=reference?.visitId??reference?.provisionalVisitId??null;}
-     const state:StoredState={version,observationId:row.id,atMs:row.atMs,availableAtMs:this.now(),facts,assessment,locationDecision,visitId,provisionalVisitId,...window?{window:structuredClone(window)}:{}};
+     const plannedNotes=new Map<string,{id:string;text:string;sourceIds:Set<string>;isNew:boolean}>();
+     for(const n of assessment.memoryNotes??[]){
+      if(!location.placeId||!n.text.trim()||!n.sourceIds.length||n.sourceIds.some(id=>!this.facts(id)))throw Error('Cannot add a place note without a confirmed place and durable evidence');
+      const text=n.text.trim();let plan=plannedNotes.get(text);if(!plan){const existing=this.db.prepare('SELECT id FROM place_notes WHERE place_id=? AND text=?').get(location.placeId,text) as {id:string}|undefined;plan={id:existing?.id??randomUUID(),text,sourceIds:new Set(),isNew:!existing};plannedNotes.set(text,plan);}for(const id of n.sourceIds)plan.sourceIds.add(id);
+     }
+     const state:StoredState={version,observationId:row.id,atMs:row.atMs,availableAtMs:this.now(),facts,assessment,locationDecision,visitId,provisionalVisitId,...window?{window:structuredClone(window)}:{},memoryReceipt:{operation:'add',version,placeId:location.placeId,visitId,createdPlace:locationDecision==='new',createdVisit,observationIds:members,grouped:location.placeId!==null,noteIds:[...plannedNotes.values()].map(n=>n.id),notesAdded:[...plannedNotes.values()].filter(n=>n.isNew).length,attributeRevisions:assessment.placeUpdates?.length??0}};
    const context=makeCheckpoint(structuredClone(state));
     this.db.prepare('INSERT INTO states VALUES(?,?,?,?,?)').run(version,row.id,row.atMs,state.availableAtMs,JSON.stringify(state));
+    if(location.placeId)this.db.prepare('INSERT INTO place_records VALUES(?,?,?,?)').run(version,location.placeId,visitId,row.atMs);
+    for(const n of plannedNotes.values()){if(n.isNew)this.db.prepare('INSERT INTO place_notes VALUES(?,?,?,?)').run(n.id,location.placeId,n.text,version);for(const source of n.sourceIds)this.db.prepare('INSERT INTO place_note_sources VALUES(?,?,?)').run(n.id,version,source);}
     if(window&&!revising)this.db.prepare('UPDATE skipped_windows SET consumed_version=? WHERE consumed_version IS NULL AND at_ms<?').run(version,window.startMs);
     for(const update of assessment.placeUpdates??[]){
      if(!location.placeId||!update.sourceIds.length||update.sourceIds.some(id=>!this.facts(id)))throw Error('Place profile requires an existing place and durable facts');

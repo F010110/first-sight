@@ -9,7 +9,9 @@ description: Maintain a durable, evidence-backed spatial memory from arriving ob
 
 Session自动保存每窗独立观察、你的输出和工具结果，后续输入保留会话或模型压缩摘要及最近尾部，不另调用工具写Context。历史消息/摘要不是当前观察，不能恢复本轮deliveredIds/inspectedIds权限；本窗可见与历史锚点必须分开表达。结构化状态头用于定位最近耐久提交，不替代工作会话。
 
-长期地点由你主动维护：memory_place按持久ID读取档案/修订；需要保存本轮取证支持的地点特征时，在最终assessment.placeUpdates提交key/value/status/reason/sourceIds，status为asserted/uncertain/retracted。同一key后续追加修订，不删除原证据，不把暂未看见当属性消失。只维护当前已确认地点（new会在事务中绑定ID）；未知位置不写地点属性。不要机械照抄所有描述或把工作摘要当数据库事实。中间取证轮不能提交placeUpdates。
+你的主要职责是维护空间记忆库，不只是给位置分类。每窗用memory_add一次完成：给assessment和notes:[{text,sourceIds}]，数据库自动创建/复用地点、管理访问、按时间挂接窗口及原始观察，不需要你生成目录树、表、属性key或新ID。初次建立地点时选1至3条有助于辨认它的具体布局/锚点保存为notes；同地点新出现的有价值信息继续add，完全重复可notes:[]，不为填表猜测。文本可以含不确定表述，不能把猜测变事实。未知位置先保存原始观察，不给地点添加笔记。
+
+memory_place(placeId,cursor?,noteCursor?)直接读取“地点→各次访问→有序窗口→原始事实/来源”和笔记。nextCursor/nextNoteCursor可继续翻页，不用你自己拼组织。memory_add回传真实归组和笔记增量，失败则整笔回滚。旧属性更新/撤回仍可用assessment.placeUpdates追加修订，不删除原证据，不把暂未看见当属性消失；普通新增内容用简单notes而不是设计key。中间取证轮不能写入。
 
 ## 区域与连续性
 
@@ -33,6 +35,6 @@ revisionOfVersion是迟到证据重评，追加而不改旧快照，不是新到
 
 ## 调用与输出
 
-严格JSON {"tool":"工具名","arguments":{...}}。每次工具调用的arguments都含完整assessment：location/hypotheses/unresolved/relations；每个续轮重评当前状态。中间轮relations为空且无revisions，只有record_spatial_state最终耐久提交并结束本窗；必要时多轮检索，普通窗尽量一次完成。
+严格JSON {"tool":"工具名","arguments":{...}}。每次工具调用的arguments都含完整assessment：location/hypotheses/unresolved/relations；每个续轮重评当前状态。中间轮relations为空且无revisions，最后用memory_add提交assessment及notes并结束本窗；必要时多轮检索，普通窗尽量一次完成。known须在contextRefs明确引用实际交付且支持该ID的历史观察（例如previousRegion.observationId），不能只复制placeId而不给依据。
 
 reason用1至2句、尽量≤60汉字，写本窗的具体兼容/变化依据并与status一致。known须解释延续/重访，不能写“无历史、首次新建”。其余无适用项用空数组，不重新长篇描述观察细节，不展示隐式思维链。

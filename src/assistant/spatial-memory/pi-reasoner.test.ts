@@ -21,7 +21,7 @@ test('persistent work history is delivered across turns and budget compaction us
    }
    const {current,messages,runtimeContext}=input.data;
    if(current.id==='c'){historySeen=true;assert.ok(JSON.stringify(messages).includes('WORK-SUMMARY'),JSON.stringify({compactions,roles:messages.map((m:any)=>m.role)}));assert.deepEqual(runtimeContext.inspectedIds,['c']);assert.deepEqual(runtimeContext.deliveredIds,[]);}
-   return {output:{tool:'record_spatial_state',arguments:{assessment:{location:{status:'new',placeId:null,name:'place '+current.id,reason:'current evidence',sourceIds:[current.id]},hypotheses:[],unresolved:['pending source check'],relations:[]}}},usage};
+   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'place '+current.id,reason:'current evidence',sourceIds:[current.id]},hypotheses:[],unresolved:['pending source check'],relations:[]}}},usage};
   };
   const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request,{maxContextChars:1000,keepRecentTokens:400});
   service=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(r){return {summary:'independent '+r.id+' visible '.repeat(100),details:['detail']};}},{reasoner});
@@ -39,11 +39,11 @@ test('Pi session and skill run the spatial tool loop, commit durably and record 
  const row=async(id:string,atMs:number):Promise<Observation>=>{const views=[];for(const direction of ['front','left','right']){const bytes=Buffer.from(id+direction),path=join(sources,id+'-'+direction+'.png');await writeFile(path,bytes);views.push({id,direction,path,sha256:createHash('sha256').update(bytes).digest('hex')});}return {id,atMs,views};};
   let timelineChecked=false,profileChecked=false;
  const request=async(input:any)=>{
-   const data=input.data as any;assert.ok(Array.isArray(data.tools));assert.ok(data.tools.some((t:any)=>t.name==='record_spatial_state'));
+   const data=input.data as any;assert.ok(Array.isArray(data.tools));assert.ok(data.tools.some((t:any)=>t.name==='memory_add'));
    if(data.current.id==='b'&&!profileChecked){profileChecked=true;return {output:{tool:'memory_place',arguments:{placeId:data.runtimeContext.workingContext.recent[0].assessment.location.placeId,assessment:{location:{status:'unknown',placeId:null,name:'待确认',reason:'read place profile',sourceIds:['b']},hypotheses:[],unresolved:[],relations:[]}}},usage};}
-   if(data.current.id==='b'&&!timelineChecked){assert.equal(data.runtimeContext.lastToolResult.kind,'place-profile');assert.equal(data.runtimeContext.lastToolResult.profile.attributes[0].value,'red awning');assert.deepEqual(data.runtimeContext.inspectedIds,['b']);}
-   if(data.current.id==='b'&&!timelineChecked){timelineChecked=true;assert.ok(JSON.stringify(data.messages).includes('record_spatial_state'));assert.ok(JSON.stringify(data.messages).includes('事实a'));assert.ok(!JSON.stringify(data.messages).includes('"kind":"timeline"'));return {output:{tool:'memory_timeline',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'未知',reason:'先浏览历史',sourceIds:['b']},hypotheses:[],unresolved:[],relations:[]}}},usage};}
-   return {output:{tool:'record_spatial_state',arguments:{assessment:{location:{status:'new',placeId:null,name:'区域'+data.current.id,reason:'当前三摄布局',sourceIds:[data.current.id]},hypotheses:[],unresolved:[],relations:[],...data.current.id==='a'?{placeUpdates:[{key:'landmark',value:'red awning',status:'asserted',reason:'current image',sourceIds:['a']}]}:{}}}},usage};
+   if(data.current.id==='b'&&!timelineChecked){assert.equal(data.runtimeContext.lastToolResult.kind,'place-profile');assert.equal(data.runtimeContext.lastToolResult.profile.attributes[0].value,'red awning');assert.equal(data.runtimeContext.lastToolResult.profile.notes[0].text,'red awning');assert.equal(data.runtimeContext.lastToolResult.profile.visits[0].windows[0].observationId,'a');assert.deepEqual(data.runtimeContext.inspectedIds,['b']);assert.ok(data.runtimeContext.deliveredIds.includes('a'));}
+   if(data.current.id==='b'&&!timelineChecked){timelineChecked=true;assert.ok(JSON.stringify(data.messages).includes('memory_add'));assert.ok(JSON.stringify(data.messages).includes('事实a'));assert.ok(!JSON.stringify(data.messages).includes('"kind":"timeline"'));return {output:{tool:'memory_timeline',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'未知',reason:'先浏览历史',sourceIds:['b']},hypotheses:[],unresolved:[],relations:[]}}},usage};}
+   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'区域'+data.current.id,reason:'当前三摄布局',sourceIds:[data.current.id]},hypotheses:[],unresolved:[],relations:[],...data.current.id==='a'?{placeUpdates:[{key:'landmark',value:'red awning',status:'asserted',reason:'current image',sourceIds:['a']}]}:{}},notes:data.current.id==='a'?[{text:'red awning',sourceIds:['a']}]:[]}},usage};
  };
  const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request);
  const service=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(r){return {summary:'事实'+r.id,details:['细节'+r.id]};}},{reasoner});
@@ -66,7 +66,7 @@ test('windowed Pi session keeps memory tools, rejects missing interim assessment
   const unknown={location:{status:'unknown',placeId:null,name:'待确认',reason:'当前窗口待检查历史',sourceIds:[id]},hypotheses:[],unresolved:['确认历史身份'],relations:[]};
   if(id==='w3'){
    assert.equal(input.images.length,12);
-   return {output:{tool:'record_spatial_state',arguments:{assessment:{...unknown,location:{...unknown.location,status:'new',name:'甲区域'}}}},usage};
+    return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{...unknown.location,status:'new',name:'甲区域'}}}},usage};
   }
   secondCalls++;
   if(secondCalls===1)return {output:{tool:'memory_timeline',arguments:{}} ,usage};
@@ -74,7 +74,7 @@ test('windowed Pi session keeps memory tools, rejects missing interim assessment
   if(secondCalls===3){assert.equal(runtime.lastToolResult.kind,'timeline');assert.equal(runtime.workingContext.location.status,'unknown');return {output:{tool:'memory_read',arguments:{ids:['w0'],assessment:unknown}},usage};}
   if(secondCalls===4){assert.equal(runtime.lastToolResult.records[0].window.observations.length,4);return {output:{tool:'memory_inspect',arguments:{ids:['w0'],assessment:unknown}},usage};}
   assert.equal(input.images.length,6);assert.deepEqual(runtime.inspectedIds,['w7','w0']);
-  return {output:{tool:'record_spatial_state',arguments:{assessment:{...unknown,unresolved:[],location:{status:'known',placeId:runtime.workingContext.recent[0].assessment.location.placeId,name:'甲区域',reason:'检查过的历史原图支持重访',sourceIds:['w7','w0']}}}},usage};
+   return {output:{tool:'memory_add',arguments:{assessment:{...unknown,unresolved:[],location:{status:'known',placeId:runtime.workingContext.recent[0].assessment.location.placeId,name:'甲区域',reason:'检查过的历史原图支持重访',sourceIds:['w7','w0']}}}},usage};
  };
  try{
   const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request);
