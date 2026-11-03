@@ -31,7 +31,6 @@ export class SpatialMemoryService{
  private sealedAt=new Map<string,number>();
  private perceptionTiming=new Map<string,{start:number;end?:number;calls:number}>();
  private judgmentStartedAt=new Map<string,number>();
- private completedTasks:Array<Record<string,unknown>>=[];
  private peakAdmitted=0;
  private backpressureRejections=0;
  private published:StoredState|null=null;
@@ -59,7 +58,7 @@ export class SpatialMemoryService{
   service.admitted=store.pending().length+store.counts().deferredObservations+incomplete.reduce((n,r)=>n+r.window!.observations.length,0);
   const recoveredDeferred=store.counts().deferredObservations;if(recoveredDeferred)service.deferredReleases.push(()=>{service.admitted-=recoveredDeferred;});
   if(service.admitted>maxPending){store.close();throw Error('Recovered pending exceeds configured capacity');}
-  try{if(options.resume&&store.version()){
+   try{if(options.resume){await service.reasoner?.recover?.(Array.from({length:store.version()},(_,i)=>store.state(i+1)!));}if(options.resume&&store.version()){
    const latest=store.history(store.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).at(-1)!;
    const state=store.state(latest.version)!,context=store.checkpoint(state.version);if(!context)throw Error('Missing durable working checkpoint');
    service.working.restore(store.observation(state.observationId)!,context);service.published=state;
@@ -80,7 +79,7 @@ export class SpatialMemoryService{
    if(!source.id||!Number.isFinite(source.atMs)||source.atMs<0||source.views.length!==3||new Set(source.views.map(v=>v.direction)).size!==3||source.views.some(v=>v.id!==source.id||!['front','left','right'].includes(v.direction)))throw Error('Require source-bound three-camera observation');
     const row:Observation={id:source.id,atMs:source.atMs,...source.sourceAtMs!==undefined?{sourceAtMs:source.sourceAtMs}:{},...source.recordingId?{recordingId:source.recordingId}:{},views:source.views.map(v=>({id:source.id,direction:v.direction,path:v.path,sha256:v.sha256}))};
    for(const view of row.views){const bytes=await readFile(view.path);if(createHash('sha256').update(bytes).digest('hex')!==view.sha256)throw Error('Original source hash mismatch');const path=join(this.root,'originals',view.sha256+'.png');await mkdir(join(this.root,'originals'),{recursive:true});try{await writeFile(path,bytes,{flag:'wx'});}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST')throw e;if(createHash('sha256').update(await readFile(path)).digest('hex')!==view.sha256)throw Error('Archived source changed');}view.path=path;}
-    this.store.archive(row);archived=true;this.deliveredAt.set(row.id,this.options.now());this.schedule(row);
+     this.store.archive(row);archived=true;this.deliveredAt.set(row.id,this.options.now());this.store.event('spatial-observation-archived',{id:row.id});this.schedule(row);
    });
    this.archiveTail=archive.catch(()=>{});try{return await archive;}catch(error){if(!archived)this.admitted--;throw error;}
  }
@@ -127,7 +126,7 @@ export class SpatialMemoryService{
   const tailId=batch.at(-1)!.row.id;
   this.queuedWindows.add(tailId);
   if(!this.sealedAt.has(tailId))this.sealedAt.set(tailId,this.options.now());
-  const release=()=>{if(released)return;released=true;this.admitted-=batch.length;for(const b of batch)this.scheduled.delete(b.row.id);};
+   const release=()=>{if(released)return;released=true;this.admitted-=batch.length;this.clearTaskTiming(batch.map(b=>b.row.id));for(const b of batch)this.scheduled.delete(b.row.id);};
   const finish=()=>{
    if(!done||initialVersion===null)return;
    const state=this.store.state(initialVersion)!;
@@ -149,7 +148,6 @@ export class SpatialMemoryService{
      for(const b of batch)this.deliveredAt.delete(b.row.id);
      this.sealedAt.delete(tailId);this.perceptionTiming.delete(tailId);return;
     }
-    this.judgmentStartedAt.set(tailId,this.options.now());
     await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);initialVersion=this.store.version();finish();
     for(const free of this.deferredReleases.splice(0))free();
    }
@@ -204,6 +202,7 @@ export class SpatialMemoryService{
   return true;
  }
   private async associate(row:Observation,rows?:Observation[],revisionOfVersion?:number){
+    this.judgmentStartedAt.set(row.id,this.options.now());
     const skipped=rows&&revisionOfVersion===undefined?this.store.skippedBefore(rows[0]!.atMs):[];
     const window:SpatialWindow|undefined=rows?{startMs:rows[0]!.atMs,endExclusiveMs:(Math.floor(row.atMs/8000)+1)*8000,observations:rows.map(r=>({id:r.id,atMs:r.atMs,facts:this.store.facts(r.id)})),missingFactIds:rows.filter(r=>!this.store.facts(r.id)).map(r=>r.id),...skipped.length?{skippedBefore:skipped}:{},...revisionOfVersion!==undefined?{revisionOfVersion}:{}}:undefined;
    for(const view of (rows??[row]).flatMap(r=>r.views))if(createHash('sha256').update(await readFile(view.path)).digest('hex')!==view.sha256)throw Error('Archived current source changed');
@@ -221,7 +220,7 @@ export class SpatialMemoryService{
     for(let attempt=0;attempt<3;attempt++){
     try{
      const assessment=await this.reasoner.judge({
-       row:structuredClone(row),facts:this.store.facts(row.id)!,context:this.working.view(),history:structuredClone(prior),...this.previousRegion(row,window)?{previousRegion:this.previousRegion(row,window)!}:{},...window&&rows?{window,windowViews:rows.flatMap(r=>r.views)}:{},
+        row:structuredClone(row),facts:this.store.facts(row.id)!,context:this.working.view(),history:structuredClone(prior),expectedVersion:this.store.version()+1,...this.previousRegion(row,window)?{previousRegion:this.previousRegion(row,window)!}:{},...window&&rows?{window,windowViews:rows.flatMap(r=>r.views)}:{},
        evaluate:(a,evidence)=>{validateAssessment(a,row.id,evidence.inspected);this.validateIdentity(a,byId,contextSources);this.validateContinuity(row,a,window);if(a.relations.length||a.revisions?.length)throw Error('Interim assessment cannot submit relations or revisions');this.working.evaluate(a.location);this.store.event('spatial-interim',{observationId:row.id,assessment:a});},
         readPlace:(id,cursor,noteCursor)=>this.store.placeMemory(id,this.store.version(),this.options.now(),cursor,noteCursor,(window?.startMs??row.atMs)-0.000001),
         inspect:async ids=>{
@@ -315,29 +314,33 @@ export class SpatialMemoryService{
   const delivered=members.map(id=>this.deliveredAt.get(id)).filter((v):v is number=>typeof v==='number');
   const sealed=this.sealedAt.get(tailId),perception=this.perceptionTiming.get(tailId),judgment=this.judgmentStartedAt.get(tailId);
   const committed=state.availableAtMs;
-  this.completedTasks.push({taskId:tailId,version:state.version,observationIds:members,
+   const previous=this.store.lastTaskTiming(tailId),priorNumber=(key:string)=>typeof previous?.[key]==='number'?previous[key] as number:undefined;
+   const oldest=delivered.length?Math.min(...delivered):priorNumber('deliveredAtMs'),tailDelivery=delivered.length?Math.max(...delivered):priorNumber('tailDeliveredAtMs');
+   const originalSeal=sealed??priorNumber('sealedAtMs'),perceptionStart=perception?.start??priorNumber('perceptionStartMs'),perceptionEnd=perception?.end??priorNumber('perceptionEndMs');
+   this.store.event('spatial-task-timing',{taskId:tailId,version:state.version,observationIds:members,
    ...state.window?.revisionOfVersion!==undefined?{repairOfVersion:state.window.revisionOfVersion}:{},
-   deliveredAtMs:delivered.length?Math.min(...delivered):null,
-   sealedAtMs:sealed??null,perceptionStartMs:perception?.start??null,perceptionEndMs:perception?.end??null,
-   perceptionCalls:perception?.calls??0,judgmentStartMs:judgment??null,committedAtMs:committed,
-   sealedToCommitMs:sealed===undefined?null:committed-sealed,
-   oldestDeliveryToCommitMs:delivered.length?committed-Math.min(...delivered):null,
-   tailDeliveryToCommitMs:delivered.length?committed-Math.max(...delivered):null,
-   perceptionToCommitMs:perception?.end===undefined?null:committed-perception.end,
+    deliveredAtMs:oldest??null,tailDeliveredAtMs:tailDelivery??null,
+    sealedAtMs:originalSeal??null,perceptionStartMs:perceptionStart??null,perceptionEndMs:perceptionEnd??null,
+    perceptionCalls:perception?.calls??priorNumber('perceptionCalls')??0,judgmentStartMs:judgment??null,committedAtMs:committed,
+    phase:state.window?.revisionOfVersion===undefined?'initial':'revision',
+    sealedToCommitMs:originalSeal===undefined?null:committed-originalSeal,
+    oldestDeliveryToCommitMs:oldest===undefined?null:committed-oldest,
+    tailDeliveryToCommitMs:tailDelivery===undefined?null:committed-tailDelivery,
+    perceptionToCommitMs:perceptionEnd===undefined?null:committed-perceptionEnd,
    missingFactCount:state.window?.missingFactIds?.length??0,
    missingFactIds:state.window?.missingFactIds??[]});
-  for(const id of members)this.deliveredAt.delete(id);
-  this.sealedAt.delete(tailId);this.perceptionTiming.delete(tailId);this.judgmentStartedAt.delete(tailId);
- }
+   this.judgmentStartedAt.delete(tailId);
+  }
+  private clearTaskTiming(members:string[]){for(const id of members){this.deliveredAt.delete(id);this.sealedAt.delete(id);this.perceptionTiming.delete(id);this.judgmentStartedAt.delete(id);}}
  /** Copy of completed task timings. */
- taskTimings(){return structuredClone(this.completedTasks);}
+  taskTimings(){return this.store.taskTimings();}
   async resumePending(){
    if(this.closed||this.scheduled.size||this.failure)throw Error('Resume requires a newly reopened service');
-   for(const row of this.store.pending())this.schedule(row);
+    for(const row of this.store.pending()){const archived=this.store.archivedAt(row.id);if(archived!==undefined)this.deliveredAt.set(row.id,archived);this.schedule(row);}
    for(const record of this.store.history(this.store.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).filter(r=>r.window?.missingFactIds?.length)){
     const rows=record.window!.observations.map(o=>this.store.observation(o.id)!);for(const row of rows)this.scheduled.add(row.id);
     const task=this.trackExtraction(this.models.perceiveWindow?this.extractWindow(rows):Promise.all(rows.map(row=>this.extract(row))).then(()=>{}));
-    void task.then(()=>this.enqueueRepair(rows,record.version,()=>{this.admitted-=rows.length;for(const row of rows)this.scheduled.delete(row.id);}),error=>{this.failure=String(error);});
+     void task.then(()=>this.enqueueRepair(rows,record.version,()=>{this.admitted-=rows.length;this.clearTaskTiming(rows.map(row=>row.id));for(const row of rows)this.scheduled.delete(row.id);}),error=>{this.failure=String(error);});
    }
   }
  private previousRegion(row:Observation,window?:SpatialWindow){

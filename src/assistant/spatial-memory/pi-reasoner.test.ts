@@ -53,7 +53,19 @@ test('Pi session and skill run the spatial tool loop, commit durably and record 
   assert.equal(service.latest()!.state.assessment.location.status,'known');
   const session=JSON.parse(await readFile(join(dir,'pi','session.json'),'utf8'));assert.ok(session.id);
   const checkpoints=(await readFile(join(dir,'pi','pi-checkpoints.jsonl'),'utf8')).trim().split('\n').map(line=>JSON.parse(line));
-  assert.equal(checkpoints.length,2);assert.ok(checkpoints[0].tipId);assert.ok(checkpoints[0].skillVersions['spatial-memory-v2']);
+   assert.equal(checkpoints.length,2);assert.ok(checkpoints[0].tipId);assert.ok(checkpoints[0].skillVersions['spatial-memory-v2']);
+   await service.close();
+   await rm(join(dir,'pi','pi-checkpoints.jsonl'));
+   let recoveryCalls=0;
+   const restored=await createPiSpatialReasoner(join(dir,'pi'),async()=>{recoveryCalls++;throw Error('No network during recovery');},{resume:true});
+   const recovered=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(){throw Error('No extraction during recovery');}},{reasoner:restored,resume:true});
+   try{assert.equal(recovered.progress().spatialStates,2);assert.equal(recoveryCalls,0);
+    const rebuilt=(await readFile(join(dir,'pi','pi-checkpoints.jsonl'),'utf8')).trim().split('\n').map(line=>JSON.parse(line));
+    assert.deepEqual(rebuilt.map(c=>c.tipId),checkpoints.map(c=>c.tipId));assert.ok(rebuilt.every(c=>c.recovery==='verified-sqlite-tool-effect'));
+   }finally{await recovered.close();}
+   const corrupted=JSON.parse((await readFile(join(dir,'pi','pi-checkpoints.jsonl'),'utf8')).split('\n')[0]!);corrupted.session.id='foreign-session';
+   await writeFile(join(dir,'pi','pi-checkpoints.jsonl'),JSON.stringify(corrupted)+'\n');
+   await assert.rejects(createPiSpatialReasoner(join(dir,'pi'),async()=>{throw Error('No network');},{resume:true}),/Pi recovery Session mismatch/);
  }finally{await service.close();if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true});}
 });
 

@@ -42,7 +42,10 @@ export class SpatialLongTermStore{
  }
   close(){this.db.close();}
    supportsWindowRevisions(){return (this.db.prepare('SELECT version FROM spatial_schema').get() as any).version===4;}
- event(kind:string,value:unknown){this.db.prepare('INSERT INTO events(at_ms,kind,raw) VALUES(?,?,?)').run(this.now(),kind,JSON.stringify(value));}
+  event(kind:string,value:unknown){this.db.prepare('INSERT INTO events(at_ms,kind,raw) VALUES(?,?,?)').run(this.now(),kind,JSON.stringify(value));}
+  taskTimings():Array<Record<string,unknown>>{return (this.db.prepare("SELECT raw FROM events WHERE kind='spatial-task-timing' ORDER BY seq").all() as Array<{raw:string}>).map(r=>JSON.parse(r.raw));}
+  lastTaskTiming(id:string):Record<string,unknown>|undefined{const r=this.db.prepare("SELECT raw FROM events WHERE kind='spatial-task-timing' AND json_extract(raw,'$.taskId')=? ORDER BY seq DESC LIMIT 1").get(id) as {raw:string}|undefined;return r?JSON.parse(r.raw):undefined;}
+  archivedAt(id:string):number|undefined{const r=this.db.prepare("SELECT at_ms FROM events WHERE kind='spatial-observation-archived' AND json_extract(raw,'$.id')=? ORDER BY seq LIMIT 1").get(id) as {at_ms:number}|undefined;return r?.at_ms;}
  archive(row:Observation){
   const prior=this.observation(row.id);if(prior){if(JSON.stringify(prior)!==JSON.stringify(row))throw Error('Immutable observation changed');return;}
   const latest=this.db.prepare('SELECT at_ms FROM observations ORDER BY seq DESC LIMIT 1').get() as any;
