@@ -208,6 +208,7 @@ test('automatic visual recall proposes an older place, excludes the previous pla
   assert.equal(input.revisit?.status,'ok');checkedPrevious=!!secondPlace;
   const candidate=input.revisit!.candidates[0]!;assert.equal(candidate.placeId,firstPlace);
   assert.ok(input.revisit!.candidates.every(c=>c.placeId!==secondPlace));
+  await assert.rejects(input.commit(assessment(input.row.id,'new'),{inspected:new Set([input.row.id]),delivered:new Set()}),/Cannot submit a new place without inspecting/);
   const a=assessment(input.row.id,'known',firstPlace,[input.row.id,candidate.matchedObservationId]);
   a.location.contextRefs=[candidate.matchedObservationId];
   await input.commit(a,{inspected:new Set([input.row.id,candidate.matchedObservationId]),delivered:new Set()});return a;

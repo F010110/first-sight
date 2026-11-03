@@ -71,7 +71,7 @@ test('Pi session and skill run the spatial tool loop, commit durably and record 
 
 test('Pi receives automatically recalled older-place images and can cite the inspected candidate as revisit evidence',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-revisit-pi-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
- await mkdir(join(dir,'sources'));let service:SpatialMemoryService|undefined,firstPlace:string|null=null,secondPlace:string|null=null,candidateSeen=false;
+ await mkdir(join(dir,'sources'));let service:SpatialMemoryService|undefined,firstPlace:string|null=null,secondPlace:string|null=null,candidateSeen=false,candidateInspected=false;
  const request=async(input:any)=>{
   const id=input.data.current.id,unknown={location:{status:'unknown',placeId:null,name:'待确认',reason:'窗口判断',sourceIds:[id]},hypotheses:[],unresolved:[],relations:[]};
   const prior=input.data.runtimeContext.workingContext.recent.at(-1)?.assessment.location.placeId??null;
@@ -80,8 +80,12 @@ test('Pi receives automatically recalled older-place images and can cite the ins
   if(!secondPlace){secondPlace='created';return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{status:'new',placeId:null,name:'另一地点',reason:'正面换区证据',sourceIds:[id],regionChangeEvidence:['从旧区域移动到另一区域']}},notes:[]}},usage};}
   const candidate=input.data.runtimeContext.revisit?.candidates?.[0];if(!candidate)throw Error('missing automatic revisit candidate');
   candidateSeen=candidate.placeId===firstPlace;
+  if(!candidateInspected){
+   candidateInspected=true;assert.equal(input.images.length,12,'candidate images must not displace current window images');
+   return {output:{tool:'memory_inspect',arguments:{ids:[candidate.matchedObservationId],assessment:unknown}},usage};
+  }
   assert.ok(input.data.runtimeContext.inspectedIds.includes(candidate.matchedObservationId),'candidate evidence not inspected');
-  assert.equal(input.images.length,13);
+  assert.equal(input.images.length,6);
   return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{status:'known',placeId:firstPlace,name:'旧地点',reason:'召回候选原图支持重访',sourceIds:[id,candidate.matchedObservationId],contextRefs:[candidate.matchedObservationId]}},notes:[]}},usage};
  };
  try{

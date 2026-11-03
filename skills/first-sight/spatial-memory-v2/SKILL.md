@@ -19,7 +19,7 @@ window含最多4次观察、每次三摄同时不同方向；8秒窗是调度单
 
 先检查延续：previousRegion是同录制、相接窗口的历史参考，不是当前位置。当前证据支持则known复用ID，contextRefs引用工作Context的观察；重访也复用旧ID。转头、左右互换、小幅移动、光照及新物体不自动换区。人行道/门口到车道等观察者占据边界优先于“仍看到同一店招”，不能把整条街强行合为一区。
 
-每窗runtimeContext.revisit是程序自动执行的旧地点视觉候选召回（排除紧邻上一地点），并已交付候选代表图。它用于识别较早的重访，不是只和上一窗比较；分数只导航，不等于同地。判断new前必须核对有候选的图与来源；确认是旧地则known复用其placeId，并在sourceIds/contextRefs引用实际看过且支持该地点的候选观察ID。未命中、算法不可用或候选不相似都不证明历史从未到访。临时可用memory_inspect继续查看已交付候选来源。
+每窗runtimeContext.revisit是程序自动执行的旧地点视觉候选召回（排除紧邻上一地点），给出候选地点、分数和可交付来源。它用于识别较早的重访，不是只和上一窗比较；分数只导航，不等于同地。候选原图不预载以免挤掉当前三摄；判断new前必须用memory_inspect实际查看每个候选的matchedObservationId并核对来源，确认是旧地则known复用其placeId，并在sourceIds/contextRefs引用实际看过且支持该地点的候选观察ID。未命中、算法不可用或候选不相似都不证明历史从未到访。
 
 new须有具体布局；若有previousRegion，还须regionChangeEvidence正面换区依据，“没匹配上”不够。未知时unknown/placeId=null；无明确换区可选continuityCandidate:{placeId,referenceId,reason}暂挂previousRegion，但不是确认身份或known的唯一依据。断档、录制切换、边界、尾事实缺失时不用候选。
 

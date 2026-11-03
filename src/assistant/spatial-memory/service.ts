@@ -6,7 +6,7 @@ import {SpatialLongTermStore} from './long-term-store.js';
 import {SpatialWorkingMemory} from './working-context.js';
 import {validateFacts,validateAssessment,type Observation,type SpatialModels,type SpatialReasoner,type Assessment,type StoredState,type WorkingContext,type HistoryRecord,type SpatialWindow} from './contracts.js';
 import {SpatialOutputProtocolError} from '../../agent/spatial-protocol-retry.js';
-import {summarizeRevisitRecall,revisitRecallUnavailable,type PlaceMatcher,type RevisitPlace,type RevisitImage} from './revisit-candidates.js';
+import {summarizeRevisitRecall,revisitRecallUnavailable,type PlaceMatcher,type RevisitPlace,type RevisitRecall} from './revisit-candidates.js';
 
 /** Parallel perception, one ordered spatial writer. No questions or oracle input. */
 export class SpatialMemoryService{
@@ -224,7 +224,7 @@ export class SpatialMemoryService{
      candidates:revisit.candidates.map(c=>({placeId:c.placeId,name:c.name,matchedObservationId:c.matchedObservationId,matchedAtMs:c.matchedAtMs,bestInliers:c.bestInliers,bestSimilarity:c.bestSimilarity,supportedMembers:c.supportedMembers}))});
     if(revisit.status==='unavailable'&&this.options.revisitPolicy==='required')throw Error('Revisit candidate recall unavailable: '+revisit.error);
    }
-   const commit=(assessment:Assessment,inspected:ReadonlySet<string>)=>this.commitValidated(row,assessment,inspected,byId,contextSources,window);
+   const commit=(assessment:Assessment,inspected:ReadonlySet<string>)=>{this.validateRevisitNew(assessment,revisit,inspected);return this.commitValidated(row,assessment,inspected,byId,contextSources,window);};
   if(this.reasoner){
    let feedback:string|null=null,lastError:unknown=null;
     let committed:StoredState|null=null;
@@ -379,6 +379,14 @@ export class SpatialMemoryService{
   const recall=summarizeRevisitRecall(places,previousPlaceId,result,this.options.revisitLimit);
   for(const candidate of recall.candidates)for(const image of candidate.images)if(createHash('sha256').update(await readFile(image.path)).digest('hex')!==image.sha256)throw Error('Revisit candidate source changed');
   return recall;
+ }
+ /** A changed scene is not proof of a historically new place. If local recall
+  * proposed older places, the agent must actually inspect every candidate before
+  * submitting `new`; otherwise it is forced to continue, reuse evidence, or say unknown. */
+ private validateRevisitNew(assessment:Assessment,revisit:RevisitRecall|undefined,inspected:ReadonlySet<string>){
+  if(assessment.location.status!=='new'||!revisit?.candidates.length)return;
+  const unseen=revisit.candidates.filter(c=>!inspected.has(c.matchedObservationId));
+  if(unseen.length)throw Error('Cannot submit a new place without inspecting automatically recalled older-place candidates: '+unseen.map(c=>`${c.name} [${c.matchedObservationId}] inliers=${c.bestInliers}`).join('; '));
  }
  private previousRegion(row:Observation,window?:SpatialWindow){
   if(!window)return null;

@@ -166,15 +166,15 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    current=input;delivered=new Map();images=[];inspected=new Set();lastToolResult=null;committed=null;turnRequests=0;
    const windowImages=input.windowViews??input.row.views;
    images=[...windowImages];inspected=new Set(windowImages.map(v=>v.id));
-   // Automatic local visual recalls are delivered for judgment, one representative
-   // image per candidate. They are historical evidence, not current visibility.
+   // Automatic recall is delivered as text/source identifiers. Candidate images
+   // stay lazy so they cannot displace the twelve current-window images; the
+   // agent must memory_inspect them before treating a change as a new place.
    for(const candidate of input.revisit?.candidates??[]){
     const record=input.history.find(r=>r.observationId===candidate.matchedObservationId)??input.history.find(r=>r.window?.observations.some(o=>o.id===candidate.matchedObservationId));
     if(record){delivered.set(record.observationId,record);delivered.set(candidate.matchedObservationId,record);}
-    for(const image of candidate.images.slice(0,1)){images.push(image);inspected.add(image.id);}
    }
     if(contextChars>=contextPolicy.maxChars){getOrThrow(await lane.compact(undefined,BACKGROUND_CONTEXT));if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);}
-    const outcome=getOrThrow(await lane.prompt(JSON.stringify({observationId:input.row.id,atMs:input.row.atMs,role:'current-independent-observation',facts:input.facts,window:input.window,revisit:input.revisit??null,stateHead:{previousRegion:input.previousRegion,lastCommittedVersion:input.context.recent.at(-1)?.version??null},sourceRefs:windowImages.map(v=>({id:v.id,direction:v.direction,sha256:v.sha256})),evidencePolicy:'Prior messages describe history. Only current runtime deliveredIds/inspectedIds authorize sources; prior visibility is not current visibility. Revisit candidates were recalled automatically from older places using images only; scores are not identity. Their historical images are not evidence of what is currently visible.'}),undefined,BACKGROUND_CONTEXT));
+    const outcome=getOrThrow(await lane.prompt(JSON.stringify({observationId:input.row.id,atMs:input.row.atMs,role:'current-independent-observation',facts:input.facts,window:input.window,revisit:input.revisit??null,stateHead:{previousRegion:input.previousRegion,lastCommittedVersion:input.context.recent.at(-1)?.version??null},sourceRefs:windowImages.map(v=>({id:v.id,direction:v.direction,sha256:v.sha256})),evidencePolicy:'Prior messages describe history. Only current runtime deliveredIds/inspectedIds authorize sources; prior visibility is not current visibility. Revisit candidates were recalled automatically from older places using images only; scores are not identity. Their historical images are not preloaded; memory_inspect the candidate before concluding that a changed scene is a new place. Historical images are not evidence of what is currently visible.'}),undefined,BACKGROUND_CONTEXT));
    if(outcome.status!=='completed'||!committed)throw Error('Spatial Pi turn did not commit: '+JSON.stringify(outcome));
    const tipId=await lane.getTipId(BACKGROUND_CONTEXT);
     await appendFile(join(root,'pi-checkpoints.jsonl'),JSON.stringify(checkpointRecord(committed,tipId!))+'\n');
