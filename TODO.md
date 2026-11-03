@@ -2,6 +2,9 @@
 
 ## 当前状态与约定（2026-11-02）
 
+- **用户授权连续移动小段测试与直接原图审核（2026-11-03）**：新增纯选择脚本 `scripts/evaluation/prepare-spatial-moving-slice.mjs`，从公开输入原样截取连续193–208共16观察（原192–207秒，未用标注），运行 `run/unioncity-moving-slice-v1/agent/`。16/16事实与覆盖、4窗口/状态/Context/Pi检查点、1地点/1访问、缺失与pending均0；4提取＋4Pi请求，总40.054秒，估算USD0.0074634468，未知预留0，无协议重试。工作时钟显式2秒投影，原时间保留sourceAtMs，不能当原始1fps实时证明；未自动重跑旧失败样本或启动813。
+- **逐窗看48张原图后的语义结论：基本连续，但不是全部正确**。门口边缘/人行道→斑马线附近→沿街移动，没有看到进入另一店铺；一直复用原区域ID、没有按视角/店招不断建点，有一定合理性。但第2与第4窗reason逐字复制首次“无历史上下文、判新候选”的句子，与known/contextRefs矛盾；第3窗“车辆行驶/驶过”无直接依据，独立事实阶段也已有该猜测，空间判断随后放大；首窗门口/街边过渡与后续人行道/车道边界表达不足，具体区域粒度偏宽。来源拼图和逐窗审核保存在 `run/unioncity-moving-slice-v1/review.md`，没有改原始事实或模型判断，没有裁判/真值写回。只证明这段运行完整及连续关联有用，不认证长期重访或正式准确率；下一步应聚焦理由随当前证据更新、移动方式猜测和边界表达，不重新扩架构。
+
 - **用户最新收敛：先做好已有连续分组/重访复用（2026-11-03）**：停止新增通用merge流程与另建经历结构，拆分/层级不作当前阻断。核验实际tag：`v1.1.0-test.1:src/agent/scene-agent.ts` 的SYSTEM_PROMPT/parseScene/observe明确same/known/new/unresolved，新建需正面regionChangeEvidence，转头/小幅位移不自动切区；unresolved可暂挂previousSceneId但identityStatus仍unresolved/provisional。`v1.2.0:src/agent/spatial-topology-vlm.ts`则使用历史ID或new-N并允许unknown，不等于程序无条件继承。早期CV/位姿/自动review及问答耦合未恢复，只参考连续性语义。
 - **已落地当前链路**：为同录制、相接、仍在Context的窗口显式提供previousRegion；Agent优先判断延续，known直接复用旧ID，new必须给正面的区域变化依据，不能因为视角新或匹配不足反复建点。身份不足但无明确换区时，可在unknown/placeId=null下保存独立continuityCandidate；暂定访问引用provisionalVisitId与确认访问分开保存，下一窗证据恢复后可续原访问，不制造虚假重访。断档/录制切换/边界/尾事实缺失不允许默认候选。未知窗口未被改写成已确认事实；真实离开到另一地点再返回旧ID仍是不同访问。迟到修订刷新已有短期引用，避免最新窗继续拿过时unknown判断新建地点，不从长期重建过期Context。active01/02/03仅同步用户这次澄清及其理由。
 - **验证与失败保留**：连续/转头等价脚本序列覆盖6窗24观察：延续A、暂定A、恢复A、正面换区B、返回A，只保留2地点/3访问；无正面依据NEW被拒绝，暂定来源独立可见，历史修订投影不因原visitId强行拆出新访问。初步31项专项通过。真实 `run/unioncity-spatial-continuity-preflight-v1/` **未通过完整性**：第二批提取只返回1/4，旧整批拒绝逻辑造成该批4条事实未入库；覆盖8、窗口2、版本4、缺事实4、不完整窗1，89.926秒，2提取＋7Pi调用，估算USD0.00906823，未知预留0。出现同地点ID复用输出，但事实缺失门禁正确拒绝确认，不把它当通过。失败目录原样保留，未自动付费重跑/恢复。
