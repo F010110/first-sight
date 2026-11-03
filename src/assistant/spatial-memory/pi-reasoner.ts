@@ -82,8 +82,9 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   const input=requireCurrent(),ids=checkDelivered(a.ids,3),originals=await input.inspect(ids);
   images=[...input.row.views,...originals];
   if(images.length>12)throw Error('Inspection would exceed 12 images');
-  inspected=new Set([input.row.id,...ids]);
-  lastToolResult={kind:'inspect',requestedSourceIds:ids,records:ids.map(id=>delivered.get(id)!),imageCount:originals.length,note:'Only current tail and requested historical images remain delivered; earlier window images removed. Not a new spatial judgment'};
+  const currentWindowIds=input.window?.observations.map(o=>o.id)??[input.row.id];
+   inspected=new Set([...currentWindowIds,...ids]);
+  lastToolResult={kind:'inspect',requestedSourceIds:ids,records:ids.map(id=>delivered.get(id)!),imageCount:originals.length,note:'Current-window member IDs remain valid evidence for this window; earlier historical images not inspected now are no longer citable. Not a new spatial judgment'};
   return lastToolResult;
  });
    const place=tool('memory_place','Read a place organized as visits -> chronological windows -> full source facts, plus notes and attribute revisions. Page using nextCursor/nextNoteCursor. Reading text delivers sources for memory_inspect, not proof that images were checked.',Type.Object({placeId:Type.String({minLength:1,maxLength:120}),cursor:Type.Optional(Type.Integer({minimum:0})),noteCursor:Type.Optional(Type.Integer({minimum:0}))}),async a=>{
@@ -96,7 +97,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    const input=requireCurrent(),sources=[...(input.window?.skippedBefore??[]),...input.history.flatMap(r=>r.window?.skippedBefore??[])].flatMap(w=>w.observations);
    if(new Set(a.ids).size!==a.ids.length)throw Error('Duplicate skipped source IDs');
    const records=(a.ids as string[]).map(id=>{const source=sources.find(s=>s.id===id);if(!source)throw Error('Skipped source not delivered by causal windows');return source;});
-   if(a.inspect){const originals=await input.inspect(a.ids);images=[...input.row.views,...originals];if(images.length>12)throw Error('Inspection image limit');inspected=new Set([input.row.id,...a.ids]);}
+   if(a.inspect){const originals=await input.inspect(a.ids);images=[...input.row.views,...originals];if(images.length>12)throw Error('Inspection image limit');const currentWindowIds=input.window?.observations.map(o=>o.id)??[input.row.id];inspected=new Set([...currentWindowIds,...a.ids]);}
    lastToolResult={kind:'skipped-sources',records,spatialJudgmentAvailable:false,originalsInspected:a.inspect===true};return lastToolResult;
   });
   const revisionLocation=Type.Object({status:Type.Union([Type.Literal('known'),Type.Literal('unknown')]),placeId:Type.Union([Type.String(),Type.Null()]),name:Type.String({maxLength:240}),reason:Type.String({minLength:1,maxLength:1600}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12}),contextRefs:Type.Optional(Type.Array(Type.String(),{maxItems:10}))});
@@ -109,6 +110,20 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
  });
   const record=tool('memory_add','Add current observations to spatial memory and end this window. Supply the location assessment and useful notes {text,sourceIds}. The database creates/chooses the place, visit and chronological window links automatically; do not design a tree, table, attribute key or ID. New place: capture distinguishing supported features. Repeated facts: notes may be empty. known requires contextRefs or inspected historical place evidence.',Type.Object({assessment:assessmentSchema,notes:Type.Optional(Type.Array(Type.Object({text:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}),{maxItems:6}))}),async(a,invocation)=>{
    const input=requireCurrent(),assessment=validateAssessment({...a.assessment,memoryNotes:a.notes??[]} as Assessment,input.row.id,inspected);
+   // A changed scene is not a new place until recalled older places are checked.
+   // Perform that check on the agent's first NEW attempt and return the images;
+   // this avoids relying on the model to remember a separate inspect call, while
+   // still leaving identity entirely to the next judgment.
+   const unchecked=assessment.location.status==='new'?(input.revisit?.candidates??[]).filter(c=>!inspected.has(c.matchedObservationId)):[];
+   if(unchecked.length){
+    const ids=unchecked.map(c=>c.matchedObservationId),originals=await input.inspect(ids);
+    images=[...input.row.views,...originals];
+    if(images.length>12)throw Error('Revisit inspection would exceed 12 images');
+    const currentWindowIds=input.window?.observations.map(o=>o.id)??[input.row.id];
+    inspected=new Set([...currentWindowIds,...ids]);
+    lastToolResult={kind:'revisit-inspection',candidates:unchecked.map(c=>({placeId:c.placeId,name:c.name,observationId:c.matchedObservationId,bestInliers:c.bestInliers})),imageCount:originals.length,note:'Recalled older-place images are now supplied. Re-evaluate whether this is a continuation/revisit or a genuinely new place; no identity was accepted automatically.'};
+    return lastToolResult;
+   }
    if(!input.expectedVersion)throw Error('Missing durable spatial commit version');
    await invocation.setMemo('spatial-commit',{sessionId:session.metadata.id,version:input.expectedVersion,observationId:input.row.id,memberIds:input.window?.observations.map(o=>o.id)??[input.row.id],assessmentHash:digest(assessment),contextChars});
   committed=await input.commit(assessment,{inspected,delivered:new Set(delivered.keys())});

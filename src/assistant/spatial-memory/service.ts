@@ -302,7 +302,7 @@ export class SpatialMemoryService{
      const originals=action.observationIds.map(id=>this.store.observation(id)!);
      imageWindow=[...row.views,...originals.flatMap(o=>o.views)]; // <=12 original images.
      for(const image of imageWindow)if(createHash('sha256').update(await readFile(image.path)).digest('hex')!==image.sha256)throw Error('Inspection source changed');
-     inspected=new Set([row.id,...action.observationIds]);
+     inspected=new Set([...(window?.observations.map(o=>o.id)??[row.id]),...action.observationIds]);
      const records=action.observationIds.map(id=>byId.get(id)!);this.working.deliver(records);toolResult={kind:'inspected-originals',records};
     }else throw Error('Unknown spatial action');
    }catch(e){if(committing)throw e;feedback=String(e);this.store.event('rejected-spatial-action',{observationId:row.id,error:feedback});}

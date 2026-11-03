@@ -82,11 +82,13 @@ test('Pi receives automatically recalled older-place images and can cite the ins
   candidateSeen=candidate.placeId===firstPlace;
   if(!candidateInspected){
    candidateInspected=true;assert.equal(input.images.length,12,'candidate images must not displace current window images');
-   return {output:{tool:'memory_inspect',arguments:{ids:[candidate.matchedObservationId],assessment:unknown}},usage};
+   return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{status:'new',placeId:null,name:'待核对的新地点',reason:'场景变化但尚未核对旧候选',sourceIds:input.data.runtimeContext.window.observations.map((o:any)=>o.id),regionChangeEvidence:['室内外环境变化']}},notes:[]}},usage};
   }
+  assert.equal(input.data.runtimeContext.lastToolResult.kind,'revisit-inspection');
   assert.ok(input.data.runtimeContext.inspectedIds.includes(candidate.matchedObservationId),'candidate evidence not inspected');
   assert.equal(input.images.length,6);
-  return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{status:'known',placeId:firstPlace,name:'旧地点',reason:'召回候选原图支持重访',sourceIds:[id,candidate.matchedObservationId],contextRefs:[candidate.matchedObservationId]}},notes:[]}},usage};
+  const currentWindow=input.data.runtimeContext.window.observations.map((o:any)=>o.id);
+  return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{status:'known',placeId:firstPlace,name:'旧地点',reason:'召回候选原图支持重访',sourceIds:[...currentWindow,candidate.matchedObservationId],contextRefs:[candidate.matchedObservationId]}},notes:[]}},usage};
  };
  try{
   const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request);
@@ -113,7 +115,7 @@ test('windowed Pi session keeps memory tools, rejects missing interim assessment
   if(secondCalls===2){assert.ok(JSON.stringify(input.data.messages).includes('assessment'));return {output:{tool:'memory_timeline',arguments:{assessment:unknown}},usage};}
   if(secondCalls===3){assert.equal(runtime.lastToolResult.kind,'timeline');assert.equal(runtime.workingContext.location.status,'unknown');return {output:{tool:'memory_read',arguments:{ids:['w0'],assessment:unknown}},usage};}
   if(secondCalls===4){assert.equal(runtime.lastToolResult.records[0].window.observations.length,4);return {output:{tool:'memory_inspect',arguments:{ids:['w0'],assessment:unknown}},usage};}
-  assert.equal(input.images.length,6);assert.deepEqual(runtime.inspectedIds,['w7','w0']);
+  assert.equal(input.images.length,6);assert.deepEqual(runtime.inspectedIds,['w4','w5','w6','w7','w0']);
    return {output:{tool:'memory_add',arguments:{assessment:{...unknown,unresolved:[],location:{status:'known',placeId:runtime.workingContext.recent[0].assessment.location.placeId,name:'甲区域',reason:'检查过的历史原图支持重访',sourceIds:['w7','w0']}}}},usage};
  };
  try{
