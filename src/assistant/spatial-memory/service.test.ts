@@ -80,7 +80,7 @@ test('missing tail facts cannot block the next window; late facts append revisio
   await input.commit(a,{inspected:new Set(input.window!.observations.map(o=>o.id)),delivered:new Set()});if(input.row.id==='n7'&&!input.window!.revisionOfVersion)second();return a;
  },async close(){}};
  try{
-  service=await SpatialMemoryService.create(f.root,{async perceive(row){if(row.id==='n3')await blocked;return facts(row);}},{windowMs:8000,evidenceWaitMs:5,extractionConcurrency:8,reasoner});
+   service=await SpatialMemoryService.create(f.root,{async perceive(row){if(row.id==='n3')await blocked;return facts(row);}},{windowMs:8000,evidencePolicy:'deadline',evidenceWaitMs:5,extractionConcurrency:8,reasoner});
   for(let i=0;i<8;i++)await service.observe(await f.row('n'+i,i*2000));
   await Promise.race([secondCommitted,new Promise((_,reject)=>setTimeout(()=>reject(Error('Next window was blocked')),2000))]);
   assert.equal(service.latest()!.state.observationId,'n7');assert.equal(service.progress().incompleteWindows,1);assert.ok(service.progress().admitted<=12);
@@ -100,6 +100,29 @@ test('production batch perception uses one worker, not two per-observation lanes
  }finally{spaceStarted();prepared();await service?.close().catch(()=>{});await f.cleanup();}
 });
 
+test('busy latest policy skips obsolete calls, delivers their facts to the successor and never claims full judgment coverage',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,started!:()=>void,release!:()=>void,calls=0;
+ const firstStarted=new Promise<void>(r=>started=r),blocked=new Promise<void>(r=>release=r);
+ const reasoner:SpatialReasoner={async judge(input){
+  calls++;
+  if(input.row.id==='s3'){started();await blocked;}
+  else{assert.equal(input.row.id,'s11');assert.equal(input.window!.skippedBefore!.length,1);assert.deepEqual(input.window!.skippedBefore![0]!.observations.map(o=>o.id),['s4','s5','s6','s7']);assert.ok(input.window!.skippedBefore![0]!.observations.every(o=>o.facts));assert.equal(input.windowViews!.length,12);assert.equal(service!.progress().deferredObservations,4);assert.equal((await input.inspect(['s4'])).length,3);await assert.rejects(input.inspect(['not-delivered']),/outside/);}
+  const a=input.row.id==='s3'?assessment(input.row.id):assessment(input.row.id,'known',input.context.recent[0]!.assessment.location.placeId!,[input.row.id]);
+  if(input.row.id!=='s3')a.location.contextRefs=['s3'];
+  await input.commit(a,{inspected:new Set(input.window!.observations.map(o=>o.id)),delivered:new Set()});return a;
+ },async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(r){return facts(r);}},{windowMs:8000,extractionConcurrency:1,maxPending:12,busyPolicy:'skip-obsolete',reasoner});
+  for(let i=0;i<4;i++)await service.observe(await f.row('s'+i,i*2000));await firstStarted;
+  for(let i=4;i<12;i++)await service.observe(await f.row('s'+i,i*2000));
+  await assert.rejects(service.observe(await f.row('overflow',24000)),/backpressure/);
+  release();await service.finishInput();
+  const p=service.progress();assert.equal(calls,2);assert.equal(p.observations,12);assert.equal(p.spatialStates,2);assert.equal(p.skippedWindows,1);assert.equal(p.skippedObservations,4);assert.equal(p.coveredObservations,8);assert.equal(p.deferredObservations,0);assert.equal(p.admitted,0);assert.equal(p.pending,0);assert.equal(service.latest()!.state.observationId,'s11');
+  assert.equal(service.snapshotAt(2,Number.MAX_SAFE_INTEGER).state.window!.skippedBefore![0]!.reason,'busy-superseded');
+  assert.equal((await service.reader().inspectAt(2,Number.MAX_SAFE_INTEGER,['s4'])).length,3);
+ }finally{release();await service?.close().catch(()=>{});await f.cleanup();}
+});
+
 test('partial batch extraction keeps valid sources and bounded feedback requests only the missing originals',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
  try{
@@ -108,11 +131,22 @@ test('partial batch extraction keeps valid sources and bounded feedback requests
  }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });
 
+test('recovery retains skipped facts and capacity until the successor commits without inventing old locations',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
+ const store=new SpatialLongTermStore(f.root),rows=await Promise.all(Array.from({length:8},(_,i)=>f.row('r'+i,i*2000)));
+ for(const row of rows){store.archive(row);store.saveFacts(row.id,facts(row));}store.skipWindow(rows.slice(0,4));store.close();
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('Durable facts must be reused');}},{resume:true,windowMs:8000,maxPending:12,busyPolicy:'skip-obsolete',reasoner:{async judge(input){calls++;assert.equal(input.window!.skippedBefore![0]!.observations[0]!.id,'r0');const a=assessment(input.row.id);await input.commit(a,{inspected:new Set(input.window!.observations.map(o=>o.id)),delivered:new Set()});return a;},async close(){}}});
+  assert.equal(service.progress().admitted,8);assert.equal(service.progress().deferredObservations,4);
+  await service.resumePending();await service.finishInput();assert.equal(calls,1);assert.equal(service.progress().admitted,0);assert.equal(service.progress().spatialStates,1);assert.equal(service.progress().coveredObservations,4);assert.equal(service.progress().skippedObservations,4);assert.equal(service.progress().deferredObservations,0);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
+
 test('persistent partial extraction stays incomplete without discarding valid facts or retrying forever',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
  try{
   service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('No per-observation lane');},async perceiveWindow(rows){calls++;return [{id:rows[0]!.id,facts:facts(rows[0]!)}];}},{windowMs:8000,reasoner:{async judge(input){const a=assessment(input.row.id,'unknown');await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}}});
-  for(let i=0;i<4;i++)await service.observe(await f.row('z'+i,i*2000));await service.finishInput();assert.equal(calls,2);assert.equal(service.progress().missingFacts,2);assert.equal(service.progress().incompleteWindows,1);assert.equal(service.latest()!.state.window!.observations[0]!.facts!.summary,'当前观察z0');assert.equal(service.latest()!.state.window!.observations[1]!.facts!.summary,'当前观察z1');assert.equal(service.progress().admitted,0);
+   for(let i=0;i<4;i++)await service.observe(await f.row('z'+i,i*2000));await assert.rejects(service.finishInput(),/Independent window facts unavailable/);assert.equal(calls,2);assert.equal(service.progress().missingFacts,2);assert.equal(service.progress().spatialStates,0);assert.equal(service.progress().coveredObservations,0);assert.equal(service.progress().observations,4);
  }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });
 
@@ -264,7 +298,7 @@ test('failed spatial prefix preserves later extracted observations and resumes f
 });
 
 test('long-term transaction failure cannot create place/state/checkpoint or publish short-term changes',async()=>{
- const f=await fixture();const store=new SpatialLongTermStore(f.root);try{const row=await f.row('a',0);store.archive(row);store.saveFacts('a',facts(row));assert.throws(()=>store.commit(row,assessment('a'),()=>{throw Error('checkpoint failure');}),/checkpoint failure/);assert.deepEqual(store.counts(),{observations:1,spatialStates:0,stateVersions:0,incompleteWindows:0,missingFacts:0,coveredObservations:0,places:0,visits:0,pending:1});assert.equal(store.checkpoint(1),null);}finally{store.close();await f.cleanup();}
+  const f=await fixture();const store=new SpatialLongTermStore(f.root);try{const row=await f.row('a',0);store.archive(row);store.saveFacts('a',facts(row));assert.throws(()=>store.commit(row,assessment('a'),()=>{throw Error('checkpoint failure');}),/checkpoint failure/);assert.deepEqual(store.counts(),{observations:1,spatialStates:0,stateVersions:0,incompleteWindows:0,missingFacts:0,coveredObservations:0,places:0,visits:0,pending:1,skippedWindows:0,skippedObservations:0,deferredObservations:0});assert.equal(store.checkpoint(1),null);}finally{store.close();await f.cleanup();}
 });
 
 test('new observation does not inherit location; cold start never rebuilds context from archive',async()=>{
@@ -289,7 +323,7 @@ test('later sourced revisions change current historical view, never prior snapsh
   assert.notEqual(before.history[0]!.location.placeId,before.history[1]!.location.placeId);
   assert.equal(after.history[0]!.location.placeId,after.history[1]!.location.placeId);assert.equal(after.visits.length,2);
   assert.deepEqual(before.history[1]!.facts,after.history[1]!.facts);assert.notEqual(service.snapshotAt(2,Number.MAX_SAFE_INTEGER).history[1]!.location.placeId,after.history[1]!.location.placeId);
-  assert.deepEqual(Object.keys(service.reader()).sort(),['inspectAt','latest','snapshotAt']);
+   assert.deepEqual(Object.keys(service.reader()).sort(),['inspectAt','latest','placeAt','snapshotAt']);
   assert.equal((await service.reader().inspectAt(2,Number.MAX_SAFE_INTEGER,['a'])).length,3);
   await assert.rejects(service.reader().inspectAt(2,Number.MAX_SAFE_INTEGER,['c']),/outside committed snapshot/);
  }finally{await service?.close();await f.cleanup();}

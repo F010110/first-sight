@@ -6,7 +6,7 @@ import {firstSightSkills} from '../harness/skill-registry.js';
 import {accountedPiProvider} from '../harness/provider-boundary.js';
 import type {SpatialJsonImage,SpatialJsonRequest} from '../../agent/spatial-json-vlm.js';
 import {validateAssessment,type Assessment,type JudgeInput,type SpatialReasoner,type HistoryRecord,type StoredState} from './contracts.js';
-import {projectSpatialContext} from './context-projection.js';
+import {spatialStateHead} from './context-projection.js';
 
 const skillName='spatial-memory-v2';
 const asText=(value:unknown)=>[{type:'text' as const,text:JSON.stringify(value)}];
@@ -17,8 +17,11 @@ const strings=(max:number)=>Type.Array(Type.String({maxLength:1200}),{maxItems:m
  * explicit working context, tool authorization, durable SQLite commit and
  * skill versioning; Pi supplies the session, tool loop and compaction.
  */
-export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJsonRequest)=>Promise<unknown>,options:{maxRequests?:number;resume?:boolean}={}):Promise<SpatialReasoner>{
- const root=resolve(rootArg);await mkdir(root,{recursive:true});
+export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJsonRequest)=>Promise<unknown>,options:{maxRequests?:number;resume?:boolean;maxContextChars?:number;keepRecentTokens?:number}={}):Promise<SpatialReasoner>{
+  const root=resolve(rootArg);await mkdir(root,{recursive:true});
+  const contextPolicy={version:'spatial-session-context-v1',maxChars:options.maxContextChars??48000,keepRecentTokens:options.keepRecentTokens??2000};
+  if(!Number.isInteger(contextPolicy.maxChars)||contextPolicy.maxChars<1000||!Number.isInteger(contextPolicy.keepRecentTokens)||contextPolicy.keepRecentTokens<1)throw Error('Invalid spatial session context budget');
+  let recoveredContextChars=0;
  const {env,skills,versions}=await firstSightSkills(),skill=skills.find(s=>s.name===skillName);
  if(!skill)throw Error('Missing '+skillName+' skill');
  const repo=new JsonlSessionRepo({fileSystem:env,sessionsRoot:join(root,'sessions')});
@@ -28,14 +31,15 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   const metadata=JSON.parse(await readFile(join(root,'session.json'),'utf8'));
   try{
    const checkpoints=(await readFile(join(root,'pi-checkpoints.jsonl'),'utf8')).trim().split('\n').filter(Boolean).map(line=>JSON.parse(line));
-   for(const checkpoint of checkpoints){if(checkpoint.session?.id!==metadata.id)throw Error('Pi recovery Session mismatch');for(const name of [skillName,'context-compaction'])if(checkpoint.skillVersions?.[name]!==versions[name])throw Error('Pi recovery skill version mismatch: '+name);}
+    for(const checkpoint of checkpoints){if(checkpoint.session?.id!==metadata.id)throw Error('Pi recovery Session mismatch');if(JSON.stringify(checkpoint.contextPolicy)!==JSON.stringify(contextPolicy))throw Error('Pi recovery context policy mismatch');for(const name of [skillName,'context-compaction'])if(checkpoint.skillVersions?.[name]!==versions[name])throw Error('Pi recovery skill version mismatch: '+name);}
+    recoveredContextChars=checkpoints.at(-1)?.contextChars??0;
   }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   session=await repo.open(metadata,BACKGROUND_CONTEXT);
  }else session=await repo.create({cwd:process.cwd()},BACKGROUND_CONTEXT);
- let current:JudgeInput|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null;
+  let current:JudgeInput|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null,contextChars=recoveredContextChars;
  const provider=accountedPiProvider({request,singleToolArguments:false,view:()=>{
   if(!current)throw Error('No active spatial judgment');
-  return {current:{id:current.row.id,atMs:current.row.atMs},runtimeContext:{mode:'spatial-memory-v2',currentObservation:{id:current.row.id,atMs:current.row.atMs},...current.window?{window:current.window}:{facts:current.facts},previousRegion:current.previousRegion,workingContext:projectSpatialContext(current.context),deliveredIds:[...delivered.keys()],inspectedIds:[...inspected],lastToolResult,feedback:current.feedback??null},images,...current.window?{windowSources:current.window.observations.filter(o=>images.some(v=>v.id===o.id)).map(o=>({id:o.id,atMs:o.atMs}))}:{}};
+   return {current:{id:current.row.id,atMs:current.row.atMs},runtimeContext:{mode:'spatial-memory-v2',currentObservation:{id:current.row.id,atMs:current.row.atMs},...current.window?{window:current.window}:{facts:current.facts},previousRegion:current.previousRegion,workingContext:spatialStateHead(current.context),deliveredIds:[...delivered.keys()],inspectedIds:[...inspected],lastToolResult,feedback:current.feedback??null},images,...current.window?{windowSources:current.window.observations.filter(o=>images.some(v=>v.id===o.id)).map(o=>({id:o.id,atMs:o.atMs}))}:{}};
  },onRequest:()=>{if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);if(++turnRequests>8||++requests>(options.maxRequests??8000))throw Error('Spatial Pi request guard exhausted');}});
  const requireCurrent=()=>{if(!current)throw Error('No active spatial judgment');return current;};
  const deliver=(record:HistoryRecord)=>{delivered.set(record.observationId,record);for(const member of record.window?.observations??[])delivered.set(member.id,record);};
@@ -44,7 +48,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   const input=requireCurrent(),a=args as any;
   if(name!=='record_spatial_state'){
    const assessment=validateAssessment(a.assessment,input.row.id,inspected);
-   if(assessment.relations.length||assessment.revisions?.length)throw Error('Interim assessment cannot commit relations/revisions');
+    if(assessment.relations.length||assessment.revisions?.length||assessment.placeUpdates?.length)throw Error('Interim assessment cannot commit relations/revisions/place updates');
    input.evaluate?.(assessment,{inspected,delivered:new Set(delivered.keys())});input.context.location=assessment.location;
   }
   const result=await run(a);return {content:asText(result),details:{},...(result&&typeof result==='object'&&result.terminate===true?{terminate:true}:{})};}});
@@ -74,10 +78,22 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   lastToolResult={kind:'inspect',requestedSourceIds:ids,records:ids.map(id=>delivered.get(id)!),imageCount:originals.length,note:'Only current tail and requested historical images remain delivered; earlier window images removed. Not a new spatial judgment'};
   return lastToolResult;
  });
- const revisionLocation=Type.Object({status:Type.Union([Type.Literal('known'),Type.Literal('unknown')]),placeId:Type.Union([Type.String(),Type.Null()]),name:Type.String({maxLength:240}),reason:Type.String({minLength:1,maxLength:1600}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12}),contextRefs:Type.Optional(Type.Array(Type.String(),{maxItems:10}))});
+  const place=tool('memory_place','Read a persistent place profile and its revision history. Assertions are not fresh observations; use memory tools for source evidence.',Type.Object({placeId:Type.String({minLength:1,maxLength:120})}),async a=>{
+   const input=requireCurrent();if(!input.readPlace)throw Error('Place profiles unavailable');
+   lastToolResult={kind:'place-profile',profile:input.readPlace(a.placeId)};return lastToolResult;
+  });
+  const skippedSources=tool('memory_skipped_sources','Read facts or inspect up to three skipped sources already referenced by current or committed windows. No location was assigned to these sources.',Type.Object({ids:Type.Array(Type.String(),{minItems:1,maxItems:3}),inspect:Type.Optional(Type.Boolean())}),async a=>{
+   const input=requireCurrent(),sources=[...(input.window?.skippedBefore??[]),...input.history.flatMap(r=>r.window?.skippedBefore??[])].flatMap(w=>w.observations);
+   if(new Set(a.ids).size!==a.ids.length)throw Error('Duplicate skipped source IDs');
+   const records=(a.ids as string[]).map(id=>{const source=sources.find(s=>s.id===id);if(!source)throw Error('Skipped source not delivered by causal windows');return source;});
+   if(a.inspect){const originals=await input.inspect(a.ids);images=[...input.row.views,...originals];if(images.length>12)throw Error('Inspection image limit');inspected=new Set([input.row.id,...a.ids]);}
+   lastToolResult={kind:'skipped-sources',records,spatialJudgmentAvailable:false,originalsInspected:a.inspect===true};return lastToolResult;
+  });
+  const revisionLocation=Type.Object({status:Type.Union([Type.Literal('known'),Type.Literal('unknown')]),placeId:Type.Union([Type.String(),Type.Null()]),name:Type.String({maxLength:240}),reason:Type.String({minLength:1,maxLength:1600}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12}),contextRefs:Type.Optional(Type.Array(Type.String(),{maxItems:10}))});
  const assessmentSchema=Type.Object({
   location:Type.Object({status:Type.Union([Type.Literal('new'),Type.Literal('known'),Type.Literal('unknown')]),placeId:Type.Union([Type.String(),Type.Null()]),name:Type.String({maxLength:240}),reason:Type.String({minLength:1,maxLength:1600}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12}),contextRefs:Type.Optional(Type.Array(Type.String(),{maxItems:10})),boundary:Type.Optional(Type.Object({regions:Type.Array(Type.String({maxLength:240}),{minItems:2,maxItems:2})})),regionChangeEvidence:Type.Optional(Type.Array(Type.String({minLength:1,maxLength:400}),{maxItems:4})),continuityCandidate:Type.Optional(Type.Object({placeId:Type.String(),referenceId:Type.String(),reason:Type.String({minLength:1,maxLength:400})}))}),
-  hypotheses:strings(8),unresolved:strings(8),
+   hypotheses:strings(8),unresolved:strings(8),
+   placeUpdates:Type.Optional(Type.Array(Type.Object({key:Type.String({minLength:1,maxLength:120}),value:Type.String({minLength:1,maxLength:1200}),status:Type.Union([Type.Literal('asserted'),Type.Literal('uncertain'),Type.Literal('retracted')]),reason:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}),{maxItems:8})),
   relations:Type.Array(Type.Object({kind:Type.Union([Type.Literal('same-facility'),Type.Literal('different-region')]),referenceId:Type.String(),reason:Type.String({minLength:1,maxLength:1200}),sourceIds:Type.Array(Type.String(),{minItems:2,maxItems:8})}),{maxItems:8}),
   revisions:Type.Optional(Type.Array(Type.Object({observationId:Type.String(),location:revisionLocation}),{maxItems:3}))
  });
@@ -86,34 +102,42 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   committed=await input.commit(assessment,{inspected,delivered:new Set(delivered.keys())});
   if(!committed)throw Error('Spatial commit returned no state');
   lastToolResult={kind:'committed',observationId:input.row.id,version:committed.version};
-  return {kind:'committed',observationId:input.row.id,version:committed.version,terminate:true};
+   return {kind:'committed',observationId:input.row.id,version:committed.version,location:committed.assessment.location,visitId:committed.visitId,terminate:true};
  });
- const tools=[timeline,find,read,inspect,record];
- const {harness,open}=await AgentHarness.create({session,...provider,tools,resources:{skills:skills.filter(s=>s.name===skillName)},systemPrompt:()=>skill.content,compaction:{enabled:true,reserveTokens:32000,keepRecentTokens:12000},retry:{enabled:false,maxRetries:0,baseDelayMs:0}},BACKGROUND_CONTEXT);
+  const tools=[timeline,find,read,inspect,place,skippedSources,record];
+  const {harness,open}=await AgentHarness.create({session,...provider,tools,resources:{skills:skills.filter(s=>s.name===skillName)},systemPrompt:()=>skill.content,compaction:{enabled:true,reserveTokens:32000,keepRecentTokens:contextPolicy.keepRecentTokens},retry:{enabled:false,maxRetries:0,baseDelayMs:0}},BACKGROUND_CONTEXT);
  if(open.length)throw Error('Unexpected open spatial operation');
  const lane=await harness.lane('space',BACKGROUND_CONTEXT);
  harness.hooks.on('transform_context',event=>{
-  let start=-1;
-  for(let i=event.messages.length-1;i>=0;i--){const message=event.messages[i]!;if(message.role!=='user')continue;const text=typeof message.content==='string'?message.content:message.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');try{if(JSON.parse(text).observationId===current?.row.id){start=i;break;}}catch{}}
-  return {messages:start<0?[]:event.messages.slice(start)};
+   // Keep Pi's summary and retained operations: past activity is work memory,
+   // not fresh evidence or renewed permission to cite historical images.
+   contextChars=JSON.stringify(event.messages).length;
+   return {messages:event.messages};
  });
  harness.hooks.on('before_compaction',async event=>{
   try{
-   const input=requireCurrent(),compaction=skills.find(s=>s.name==='context-compaction');if(!compaction)throw Error('Missing compaction skill');
-   const response=await request({phase:'identity',prompt:compaction.content,data:{current:{id:input.row.id,atMs:input.row.atMs},role:'spatial-compaction',originalQuestion:null,task:'spatial-memory-v2',previousSummary:event.preparation.previousSummary,messages:event.preparation.messagesToSummarize,retainedMessageCount:event.preparation.retainedTail.length,knownMemoryRefs:input.history.map(r=>r.observationId)},images:[],textOnlyIdentity:true,includeUsage:true}) as any;
+    const input=requireCurrent(),compaction=skills.find(s=>s.name==='context-compaction');if(!compaction)throw Error('Missing compaction skill');
+    // A cut may split a turn: its prefix must also be summarized, otherwise
+    // observations/tool actions before the retained tail silently disappear.
+    const messagesToSummarize=[...event.preparation.messagesToSummarize,...event.preparation.turnPrefixMessages];
+    if(!messagesToSummarize.length)return {decline:true}; // Entire tail retained; nothing may be discarded or invented.
+    if(++requests>(options.maxRequests??8000))throw Error('Spatial Pi compaction request guard exhausted');
+    const response=await request({phase:'identity',prompt:compaction.content+'\nPreserve the spatial task, observation cutoff, location uncertainty, source/place/visit IDs, failed investigations, pending observations and unresolved conflicts. Historical visibility is not current evidence. This is working memory, not a database assertion.',data:{current:{id:input.row.id,atMs:input.row.atMs},role:'spatial-compaction',originalQuestion:null,task:'spatial-memory-v2',previousSummary:event.preparation.previousSummary,messages:messagesToSummarize,retainedMessageCount:event.preparation.retainedTail.length,knownMemoryRefs:input.context.recent.map(r=>r.observationId)},images:[],textOnlyIdentity:true,includeUsage:true}) as any;
    const result=response.output??response;
    if(typeof result.summary!=='string'||!result.summary.trim()||result.summary.length>4000)throw Error('Invalid spatial compaction summary');
-   return {compaction:{summary:result.summary,retainedTail:event.preparation.retainedTail,tokensBefore:event.preparation.tokensBefore,details:{semanticCoverageCertified:false}}};
+    contextChars=result.summary.length+JSON.stringify(event.preparation.retainedTail).length;
+    return {compaction:{summary:result.summary,retainedTail:event.preparation.retainedTail,tokensBefore:event.preparation.tokensBefore,details:{semanticCoverageCertified:false,contextPolicy}}};
   }catch(error){compactionFailure=String(error);await appendFile(join(root,'compaction-failures.jsonl'),JSON.stringify({atMs:current?.row.atMs,error:compactionFailure,fallbackSent:false})+'\n');return {decline:true};}
  });
  await writeFile(join(root,'session.json'),JSON.stringify(session.metadata,null,2),{flag:'wx'}).catch(e=>{if((e as NodeJS.ErrnoException).code!=='EEXIST')throw e;});
  return {
   async judge(input:JudgeInput){
    current=input;delivered=new Map();images=input.windowViews??input.row.views;inspected=new Set(images.map(v=>v.id));lastToolResult=null;committed=null;turnRequests=0;
-   const outcome=getOrThrow(await lane.prompt(JSON.stringify({observationId:input.row.id,atMs:input.row.atMs}),undefined,BACKGROUND_CONTEXT));
+    if(contextChars>=contextPolicy.maxChars){getOrThrow(await lane.compact(undefined,BACKGROUND_CONTEXT));if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);}
+    const outcome=getOrThrow(await lane.prompt(JSON.stringify({observationId:input.row.id,atMs:input.row.atMs,role:'current-independent-observation',facts:input.facts,window:input.window,stateHead:{previousRegion:input.previousRegion,lastCommittedVersion:input.context.recent.at(-1)?.version??null},sourceRefs:(input.windowViews??input.row.views).map(v=>({id:v.id,direction:v.direction,sha256:v.sha256})),evidencePolicy:'Prior messages describe history. Only current runtime deliveredIds/inspectedIds authorize sources; prior visibility is not current visibility.'}),undefined,BACKGROUND_CONTEXT));
    if(outcome.status!=='completed'||!committed)throw Error('Spatial Pi turn did not commit: '+JSON.stringify(outcome));
    const tipId=await lane.getTipId(BACKGROUND_CONTEXT);
-   await appendFile(join(root,'pi-checkpoints.jsonl'),JSON.stringify({version:(committed as StoredState).version,observationId:input.row.id,atMs:input.row.atMs,window:input.window?{startMs:input.window.startMs,endExclusiveMs:input.window.endExclusiveMs,memberIds:input.window.observations.map(o=>o.id),missingFactIds:input.window.missingFactIds??[],revisionOfVersion:input.window.revisionOfVersion}:undefined,session:session.metadata,tipId,skillVersions:versions})+'\n');
+    await appendFile(join(root,'pi-checkpoints.jsonl'),JSON.stringify({version:(committed as StoredState).version,observationId:input.row.id,atMs:input.row.atMs,window:input.window?{startMs:input.window.startMs,endExclusiveMs:input.window.endExclusiveMs,memberIds:input.window.observations.map(o=>o.id),missingFactIds:input.window.missingFactIds??[],revisionOfVersion:input.window.revisionOfVersion,skippedBefore:input.window.skippedBefore?.map(w=>w.observations.map(o=>o.id))}:undefined,session:session.metadata,tipId,skillVersions:versions,contextPolicy,contextChars})+'\n');
    return committed;
   },
   async close(){await harness.close(BACKGROUND_CONTEXT);await repo.close(BACKGROUND_CONTEXT);}

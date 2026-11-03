@@ -1,5 +1,11 @@
 import type {StoredState,WorkingContext} from './contracts.js';
 
+/** Transaction/identity references only. Session messages carry work history. */
+export function spatialStateHead(context:WorkingContext){
+ const ref=(s:StoredState)=>({observationId:s.observationId,atMs:s.atMs,version:s.version,visitId:s.visitId,assessment:{location:{status:s.assessment.location.status,placeId:s.assessment.location.placeId,name:s.assessment.location.name}},decisionAtThatTime:s.locationDecision});
+ return {policy:'spatial-state-head-v1',current:context.current,location:context.location,recent:context.recent.map(ref),anchors:context.anchors.filter(a=>!context.recent.some(r=>r.observationId===a.observationId)).map(ref),unresolved:context.unresolved??[],note:'Identity reference index only; Session holds work history. References do not authorize historical image citations.'};
+}
+
 /** Model input only. Full observations, reasons and checkpoints stay immutable in SQLite. */
 export function projectSpatialContext(context:WorkingContext){
  const seen=new Set<string>();

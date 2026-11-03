@@ -2,7 +2,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
-import type {Observation,Facts,Assessment,StoredState,HistoryRecord,WorkingContext,SpatialWindow} from './contracts.js';
+import type {Observation,Facts,Assessment,StoredState,HistoryRecord,WorkingContext,SpatialWindow,SkippedWindow} from './contracts.js';
 
 /** New isolated schema: append-only spatial versions, not a transcript or fact-only ledger. */
 export class SpatialLongTermStore{
@@ -10,7 +10,11 @@ export class SpatialLongTermStore{
  constructor(root:string,private now=Date.now){
   mkdirSync(root,{recursive:true});this.db=new DatabaseSync(join(root,'spatial.sqlite'));
   const tables=this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as Array<{name:string}>;
-  if(tables.length&&!tables.some(t=>t.name==='spatial_schema')){this.db.close();throw Error('Refuse to initialize over a legacy database');}
+   if(tables.length&&!tables.some(t=>t.name==='spatial_schema')){this.db.close();throw Error('Refuse to initialize over a legacy database');}
+   if(tables.some(t=>t.name==='spatial_schema')){
+    const existing=this.db.prepare('SELECT version FROM spatial_schema').get() as {version:number}|undefined;
+    if(existing?.version!==3){this.db.close();throw Error('Spatial schema-v3 requires a new database; legacy databases are preserved without migration');}
+   }
   this.db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
    CREATE TABLE IF NOT EXISTS spatial_schema(version INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS observations(seq INTEGER PRIMARY KEY,id TEXT NOT NULL UNIQUE,at_ms REAL NOT NULL UNIQUE,raw TEXT NOT NULL,facts TEXT,error TEXT);
@@ -19,17 +23,20 @@ export class SpatialLongTermStore{
     CREATE TABLE IF NOT EXISTS states(version INTEGER PRIMARY KEY,observation_id TEXT NOT NULL REFERENCES observations(id),at_ms REAL NOT NULL,available_ms REAL NOT NULL,raw TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS checkpoints(version INTEGER PRIMARY KEY REFERENCES states(version),raw TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS checkpoint_bindings(version INTEGER PRIMARY KEY REFERENCES states(version),raw TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS place_profile_revisions(place_id TEXT NOT NULL REFERENCES places(id),version INTEGER NOT NULL REFERENCES states(version),key TEXT NOT NULL,raw TEXT NOT NULL,PRIMARY KEY(place_id,version,key));
+    CREATE TABLE IF NOT EXISTS skipped_windows(tail_id TEXT PRIMARY KEY REFERENCES observations(id),at_ms REAL NOT NULL,raw TEXT NOT NULL,consumed_version INTEGER REFERENCES states(version));
+    CREATE TABLE IF NOT EXISTS skipped_members(observation_id TEXT PRIMARY KEY REFERENCES observations(id),tail_id TEXT NOT NULL REFERENCES skipped_windows(tail_id));
     CREATE TABLE IF NOT EXISTS window_members(observation_id TEXT PRIMARY KEY REFERENCES observations(id),version INTEGER NOT NULL REFERENCES states(version));
    CREATE TABLE IF NOT EXISTS relation_assertions(version INTEGER NOT NULL REFERENCES states(version),raw TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS revisions(version INTEGER NOT NULL REFERENCES states(version),observation_id TEXT NOT NULL REFERENCES observations(id),raw TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY,at_ms REAL NOT NULL,kind TEXT NOT NULL,raw TEXT NOT NULL);
    CREATE INDEX IF NOT EXISTS states_time ON states(at_ms,available_ms);`);
   const schema=this.db.prepare('SELECT version FROM spatial_schema').get() as any;
-   if(schema&&![1,2].includes(schema.version))throw Error('Incompatible spatial memory schema');
-   if(!schema)this.db.prepare('INSERT INTO spatial_schema VALUES(2)').run();
+    if(schema&&schema.version!==3)throw Error('Incompatible spatial memory schema');
+    if(!schema)this.db.prepare('INSERT INTO spatial_schema VALUES(3)').run();
  }
   close(){this.db.close();}
-  supportsWindowRevisions(){return (this.db.prepare('SELECT version FROM spatial_schema').get() as any).version===2;}
+   supportsWindowRevisions(){return (this.db.prepare('SELECT version FROM spatial_schema').get() as any).version===3;}
  event(kind:string,value:unknown){this.db.prepare('INSERT INTO events(at_ms,kind,raw) VALUES(?,?,?)').run(this.now(),kind,JSON.stringify(value));}
  archive(row:Observation){
   const prior=this.observation(row.id);if(prior){if(JSON.stringify(prior)!==JSON.stringify(row))throw Error('Immutable observation changed');return;}
@@ -44,8 +51,20 @@ export class SpatialLongTermStore{
  fail(id:string,error:unknown){this.db.prepare('UPDATE observations SET error=? WHERE id=?').run(String(error),id);this.event('failure',{id,error:String(error)});}
  version(){return (this.db.prepare('SELECT COALESCE(MAX(version),0) AS n FROM states').get() as any).n as number;}
  state(version:number):StoredState|null{const r=this.db.prepare('SELECT raw FROM states WHERE version=?').get(version) as any;return r?JSON.parse(r.raw):null;}
- checkpoint(version:number):WorkingContext|null{const r=this.db.prepare('SELECT raw FROM checkpoints WHERE version=?').get(version) as any;return r?JSON.parse(r.raw):null;}
-  pending():Observation[]{return (this.db.prepare('SELECT o.raw FROM observations o LEFT JOIN states s ON s.observation_id=o.id LEFT JOIN window_members w ON w.observation_id=o.id WHERE s.version IS NULL AND w.version IS NULL ORDER BY o.seq').all() as any[]).map(r=>JSON.parse(r.raw));}
+  checkpoint(version:number):WorkingContext|null{const r=this.db.prepare('SELECT raw FROM checkpoints WHERE version=?').get(version) as any;return r?JSON.parse(r.raw):null;}
+  placeProfile(id:string,version=this.version(),knownAtMs=Number.MAX_SAFE_INTEGER){
+   const place=this.db.prepare('SELECT p.id,p.name,p.created_version FROM places p JOIN states s ON s.version=p.created_version WHERE p.id=? AND p.created_version<=? AND s.available_ms<=?').get(id,version,knownAtMs);if(!place)return null;
+   const revisions=(this.db.prepare('SELECT p.version,p.raw FROM place_profile_revisions p JOIN states s ON s.version=p.version WHERE p.place_id=? AND p.version<=? AND s.available_ms<=? ORDER BY p.version').all(id,version,knownAtMs) as Array<{version:number;raw:string}>).map(r=>({version:r.version,...JSON.parse(r.raw)}));
+   const latest=new Map<string,(typeof revisions)[number]>();for(const r of revisions)latest.set(r.key,r);
+   return {place,attributes:[...latest.values()],revisions,note:'Agent assertions with sources, not independent observations. Retracted values remain in history.'};
+  }
+   pending():Observation[]{return (this.db.prepare('SELECT o.raw FROM observations o LEFT JOIN states s ON s.observation_id=o.id LEFT JOIN window_members w ON w.observation_id=o.id LEFT JOIN skipped_members k ON k.observation_id=o.id WHERE s.version IS NULL AND w.version IS NULL AND k.observation_id IS NULL ORDER BY o.seq').all() as any[]).map(r=>JSON.parse(r.raw));}
+   skippedBefore(atMs:number):SkippedWindow[]{return (this.db.prepare('SELECT raw FROM skipped_windows WHERE consumed_version IS NULL AND at_ms<? ORDER BY at_ms').all(atMs) as Array<{raw:string}>).map(r=>JSON.parse(r.raw));}
+   skipWindow(rows:Observation[]){
+    const pending=this.pending();if(!rows.length||rows.some((r,i)=>pending[i]?.id!==r.id||!this.facts(r.id)))throw Error('Only a complete pending source prefix may skip spatial inference');
+    const window:SkippedWindow={startMs:rows[0]!.atMs,endExclusiveMs:(Math.floor(rows.at(-1)!.atMs/8000)+1)*8000,...rows[0]!.recordingId?{recordingId:rows[0]!.recordingId}:{},observations:rows.map(r=>({id:r.id,atMs:r.atMs,facts:this.facts(r.id)!})),reason:'busy-superseded'};
+    this.db.exec('BEGIN IMMEDIATE');try{this.db.prepare('INSERT INTO skipped_windows VALUES(?,?,?,NULL)').run(rows.at(-1)!.id,rows.at(-1)!.atMs,JSON.stringify(window));for(const row of rows)this.db.prepare('INSERT INTO skipped_members VALUES(?,?)').run(row.id,rows.at(-1)!.id);this.db.exec('COMMIT');}catch(e){this.db.exec('ROLLBACK');throw e;}
+   }
  history(version:number,cutoffMs:number,knownAtMs:number):HistoryRecord[]{
    const latest=new Map<string,StoredState>();for(const row of this.db.prepare('SELECT raw FROM states WHERE version<=? AND at_ms<=? AND available_ms<=? ORDER BY version').all(version,cutoffMs,knownAtMs) as any[]){const state:StoredState=JSON.parse(row.raw);latest.set(state.observationId,state);}
    const records:HistoryRecord[]=[...latest.values()].sort((a,b)=>a.atMs-b.atMs).map(s=>({version:s.version,observationId:s.observationId,atMs:s.atMs,facts:s.facts,location:s.assessment.location,...s.locationDecision?{locationDecision:s.locationDecision}:{},visitId:s.visitId,provisionalVisitId:s.provisionalVisitId??null,...s.window?{window:s.window}:{}}));
@@ -53,14 +72,15 @@ export class SpatialLongTermStore{
    for(const revision of revisions){const record=records.find(r=>r.observationId===revision.observation_id);if(record){const location=JSON.parse(revision.raw).location;if(location.placeId!==record.location.placeId){record.visitId=null;record.provisionalVisitId=null;}record.location=location;}}
   return records;
  }
-  counts(){const n=(table:string)=>(this.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as any).n as number;const spatialStates=(this.db.prepare('SELECT COUNT(DISTINCT observation_id) AS n FROM states').get() as any).n as number;return {observations:n('observations'),spatialStates,stateVersions:n('states'),incompleteWindows:this.history(this.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).filter(r=>r.window?.missingFactIds?.length).length,missingFacts:(this.db.prepare('SELECT COUNT(*) AS n FROM observations WHERE facts IS NULL').get() as any).n as number,coveredObservations:n('observations')-this.pending().length,places:n('places'),visits:n('visits'),pending:this.pending().length};}
+   counts(){const n=(table:string)=>(this.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as any).n as number;const spatialStates=(this.db.prepare('SELECT COUNT(DISTINCT observation_id) AS n FROM states').get() as any).n as number;return {observations:n('observations'),spatialStates,stateVersions:n('states'),incompleteWindows:this.history(this.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).filter(r=>r.window?.missingFactIds?.length).length,missingFacts:(this.db.prepare('SELECT COUNT(*) AS n FROM observations WHERE facts IS NULL').get() as any).n as number,coveredObservations:n('observations')-this.pending().length-n('skipped_members'),skippedWindows:n('skipped_windows'),skippedObservations:n('skipped_members'),deferredObservations:this.skippedBefore(Number.MAX_SAFE_INTEGER).reduce((n,w)=>n+w.observations.length,0),places:n('places'),visits:n('visits'),pending:this.pending().length};}
   commit(row:Observation,a:Assessment,makeCheckpoint:(s:StoredState)=>WorkingContext,window?:SpatialWindow):StoredState{
   this.db.exec('BEGIN IMMEDIATE');try{
     const members=window?.observations.map(o=>o.id)??[row.id],pending=this.pending();
     const revising=window?.revisionOfVersion!==undefined,base=revising?this.state(window!.revisionOfVersion!):null;
     if(revising&&(!base||base.observationId!==row.id||JSON.stringify(base.window?.observations.map(o=>o.id))!==JSON.stringify(members)))throw Error('Invalid window revision target');
     if(!members.length||members.at(-1)!==row.id||!revising&&members.some((id,i)=>pending[i]?.id!==id))throw Error('Spatial commit must follow contiguous source order');
-    if(window&&(window.endExclusiveMs<=row.atMs||window.startMs!==window.observations[0]!.atMs||window.observations.some(o=>{const raw=this.observation(o.id);return !raw||raw.atMs!==o.atMs||o.facts!==null&&JSON.stringify(this.facts(o.id))!==JSON.stringify(o.facts);})||JSON.stringify(window.missingFactIds??[])!==JSON.stringify(window.observations.filter(o=>o.facts===null).map(o=>o.id))))throw Error('Invalid window source binding');
+     if(window&&(window.endExclusiveMs<=row.atMs||window.startMs!==window.observations[0]!.atMs||window.observations.some(o=>{const raw=this.observation(o.id);return !raw||raw.atMs!==o.atMs||o.facts!==null&&JSON.stringify(this.facts(o.id))!==JSON.stringify(o.facts);})||JSON.stringify(window.missingFactIds??[])!==JSON.stringify(window.observations.filter(o=>o.facts===null).map(o=>o.id))))throw Error('Invalid window source binding');
+     if(window&&!revising&&JSON.stringify(window.skippedBefore??[])!==JSON.stringify(this.skippedBefore(window.startMs)))throw Error('Skipped source binding mismatch');
     const facts=window?window.observations.at(-1)!.facts:this.facts(row.id);if(!facts&&!window)throw Error('No independent facts');
     const version=this.version()+1,assessment=structuredClone(a),location=assessment.location,locationDecision=a.location.status;
    if(location.status==='new'){location.placeId=randomUUID();location.status='known';this.db.prepare('INSERT INTO places VALUES(?,?,?)').run(location.placeId,location.name,version);}
@@ -78,6 +98,12 @@ export class SpatialLongTermStore{
      const state:StoredState={version,observationId:row.id,atMs:row.atMs,availableAtMs:this.now(),facts,assessment,locationDecision,visitId,provisionalVisitId,...window?{window:structuredClone(window)}:{}};
    const context=makeCheckpoint(structuredClone(state));
     this.db.prepare('INSERT INTO states VALUES(?,?,?,?,?)').run(version,row.id,row.atMs,state.availableAtMs,JSON.stringify(state));
+    if(window&&!revising)this.db.prepare('UPDATE skipped_windows SET consumed_version=? WHERE consumed_version IS NULL AND at_ms<?').run(version,window.startMs);
+    for(const update of assessment.placeUpdates??[]){
+     if(!location.placeId||!update.sourceIds.length||update.sourceIds.some(id=>!this.facts(id)))throw Error('Place profile requires an existing place and durable facts');
+     if(update.status==='retracted'&&!this.db.prepare('SELECT key FROM place_profile_revisions WHERE place_id=? AND key=?').get(location.placeId,update.key))throw Error('Cannot retract an absent place attribute');
+     this.db.prepare('INSERT INTO place_profile_revisions VALUES(?,?,?,?)').run(location.placeId,version,update.key,JSON.stringify(update));
+    }
     if(window&&!revising)for(const id of members)this.db.prepare('INSERT INTO window_members VALUES(?,?)').run(id,version);
     this.db.prepare('INSERT INTO checkpoints VALUES(?,?)').run(version,JSON.stringify(context));
     this.db.prepare('INSERT INTO checkpoint_bindings VALUES(?,?)').run(version,JSON.stringify({policy:'spatial-checkpoint-v2',inputIds:members,knowledgeCutoffMs:row.atMs,availableAtMs:state.availableAtMs,contextSHA256:createHash('sha256').update(JSON.stringify(context)).digest('hex'),sourceHashes:members.flatMap(id=>this.observation(id)!.views.map(v=>v.sha256)),compaction:context.summary??null}));
