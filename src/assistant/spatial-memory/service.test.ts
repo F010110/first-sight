@@ -133,6 +133,15 @@ test('partial batch extraction keeps valid sources and bounded feedback requests
  }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });
 
+test('progressive partial extraction gets one additional bounded feedback round instead of discarding the remaining tail',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;const requested:string[][]=[];
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('No per-observation lane');},async perceiveWindow(rows,feedback){calls++;requested.push(rows.map(r=>r.id));if(calls>1)assert.match(feedback??'',/remaining source/);if(calls===1)return [{id:rows[0]!.id,facts:facts(rows[0]!)}];if(calls===2)return [{id:rows[0]!.id,facts:facts(rows[0]!)}];return rows.map(r=>({id:r.id,facts:facts(r)}));}},{windowMs:8000,reasoner:{async judge(input){const a=assessment(input.row.id);await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}}});
+  for(let i=0;i<4;i++)await service.observe(await f.row('n'+i,i*2000));await service.finishInput();
+  assert.equal(calls,3);assert.deepEqual(requested,[['n0','n1','n2','n3'],['n1','n2','n3'],['n2','n3']]);assert.equal(service.progress().missingFacts,0);assert.equal(service.progress().incompleteWindows,0);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
+
 test('recovery retains skipped facts and capacity until the successor commits without inventing old locations',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
  const store=new SpatialLongTermStore(f.root),rows=await Promise.all(Array.from({length:8},(_,i)=>f.row('r'+i,i*2000)));
@@ -144,11 +153,11 @@ test('recovery retains skipped facts and capacity until the successor commits wi
  }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });
 
-test('persistent partial extraction stays incomplete without discarding valid facts or retrying forever',async()=>{
+test('persistent one-at-a-time extraction keeps valid facts and stops after the third bounded feedback',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
  try{
   service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('No per-observation lane');},async perceiveWindow(rows){calls++;return [{id:rows[0]!.id,facts:facts(rows[0]!)}];}},{windowMs:8000,reasoner:{async judge(input){const a=assessment(input.row.id,'unknown');await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}}});
-   for(let i=0;i<4;i++)await service.observe(await f.row('z'+i,i*2000));await assert.rejects(service.finishInput(),/Independent window facts unavailable/);assert.equal(calls,2);assert.equal(service.progress().missingFacts,2);assert.equal(service.progress().spatialStates,0);assert.equal(service.progress().coveredObservations,0);assert.equal(service.progress().observations,4);
+   for(let i=0;i<4;i++)await service.observe(await f.row('z'+i,i*2000));await assert.rejects(service.finishInput(),/Independent window facts unavailable/);assert.equal(calls,3);assert.equal(service.progress().missingFacts,1);assert.equal(service.progress().spatialStates,0);assert.equal(service.progress().coveredObservations,0);assert.equal(service.progress().observations,4);
  }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });
 

@@ -106,7 +106,8 @@ export class SpatialMemoryService{
    this.extractionActive++;
    try{
     let feedback:string|undefined;
-    for(let protocolAttempt=0;protocolAttempt<2;protocolAttempt++){
+    for(let protocolAttempt=0;protocolAttempt<3;protocolAttempt++){
+     const before=missing.length;
      try{
       let result:Array<{id:string;facts:import('./contracts.js').Facts}>|undefined;
       for(let attempt=0;attempt<3;attempt++){try{result=await this.models.perceiveWindow!(structuredClone(missing),feedback);break;}catch(error){if(attempt===2||!await this.congest(error))throw error;}}
@@ -116,7 +117,10 @@ export class SpatialMemoryService{
       missing=missing.filter(r=>!this.store.facts(r.id));if(!missing.length)return;
       feedback='Incomplete batch. Return every supplied remaining source exactly once: '+JSON.stringify(missing.map(r=>r.id));
       this.store.event('partial-window-perception',{remainingIds:missing.map(r=>r.id),protocolAttempt});
-     }catch(error){if(!(error instanceof SpatialOutputProtocolError)||protocolAttempt===1)throw error;feedback=String(error);}
+      // A second feedback round is justified only when it made real progress;
+      // otherwise stop bounded instead of resending an identical request.
+      if(missing.length>=before)break;
+     }catch(error){if(!(error instanceof SpatialOutputProtocolError)||protocolAttempt===2)throw error;feedback=String(error);}
     }
     throw new SpatialOutputProtocolError('Batch perception incomplete after bounded feedback: '+missing.map(r=>r.id).join(','));
    }catch(error){for(const row of missing.filter(r=>!this.store.facts(r.id)))this.store.fail(row.id,error);throw error;}
