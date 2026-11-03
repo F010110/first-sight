@@ -69,6 +69,30 @@ test('Pi session and skill run the spatial tool loop, commit durably and record 
  }finally{await service.close();if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true});}
 });
 
+test('Pi receives automatically recalled older-place images and can cite the inspected candidate as revisit evidence',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-revisit-pi-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
+ await mkdir(join(dir,'sources'));let service:SpatialMemoryService|undefined,firstPlace:string|null=null,secondPlace:string|null=null,candidateSeen=false;
+ const request=async(input:any)=>{
+  const id=input.data.current.id,unknown={location:{status:'unknown',placeId:null,name:'待确认',reason:'窗口判断',sourceIds:[id]},hypotheses:[],unresolved:[],relations:[]};
+  const prior=input.data.runtimeContext.workingContext.recent.at(-1)?.assessment.location.placeId??null;
+  if(!prior)return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{status:'new',placeId:null,name:'旧地点',reason:'首个窗口建立当前区域',sourceIds:[id],regionChangeEvidence:['首次建立']}},notes:[]}},usage};
+  firstPlace??=prior;
+  if(!secondPlace){secondPlace='created';return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{status:'new',placeId:null,name:'另一地点',reason:'正面换区证据',sourceIds:[id],regionChangeEvidence:['从旧区域移动到另一区域']}},notes:[]}},usage};}
+  const candidate=input.data.runtimeContext.revisit?.candidates?.[0];if(!candidate)throw Error('missing automatic revisit candidate');
+  candidateSeen=candidate.placeId===firstPlace;
+  assert.ok(input.data.runtimeContext.inspectedIds.includes(candidate.matchedObservationId),'candidate evidence not inspected');
+  assert.equal(input.images.length,13);
+  return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{status:'known',placeId:firstPlace,name:'旧地点',reason:'召回候选原图支持重访',sourceIds:[id,candidate.matchedObservationId],contextRefs:[candidate.matchedObservationId]}},notes:[]}},usage};
+ };
+ try{
+  const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request);
+  service=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(row){return {summary:'观察'+row.id,details:['布局']};}},{reasoner,windowMs:8000,revisitPolicy:'required',revisitMatcher:{async match(current,candidates){const c=candidates[0]!;return {ok:true,best:null,nearest:null,results:[{placeId:c.placeId,observationId:c.image.id,path:c.image.path,queryPath:current[0]!.path,inliers:28,similarity:0.8}]};}}});
+  for(let i=0;i<12;i++){const id='p'+i,views=[];for(const direction of ['front','left','right']){const bytes=Buffer.from(id+direction),path=join(dir,'sources',id+'-'+direction+'.png');await writeFile(path,bytes);views.push({id,direction,path,sha256:createHash('sha256').update(bytes).digest('hex')});}await service.observe({id,atMs:i*2000,views});}
+  await service.finishInput();
+  const states=service.snapshotAt(3,Number.MAX_SAFE_INTEGER);assert.equal(states.state.assessment.location.status,'known');assert.match(states.state.assessment.location.reason,/召回候选原图支持重访/);assert.equal(candidateSeen,true);assert.equal(service.progress().places,2);
+ }finally{await service?.close().catch(()=>{});await new Promise(resolve=>setTimeout(resolve,50));if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true,maxRetries:3,retryDelay:100});}
+});
+
 test('windowed Pi session keeps memory tools, rejects missing interim assessment and inspects delivered history',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-window-pi-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
  await mkdir(join(dir,'sources'));let service:SpatialMemoryService|undefined,secondCalls=0;

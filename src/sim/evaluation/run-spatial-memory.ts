@@ -9,6 +9,7 @@ import {spatialJsonVlm} from '../../agent/spatial-json-vlm.js';
 import type {Observation} from '../../assistant/spatial-memory/contracts.js';
 import {projectReplayClock} from './spatial-window-plan.js';
 import {validateRealtimeInterval,deliveryDueAt,attemptArtifact,appendRunRecord,readRunRecords} from './spatial-run-runtime.js';
+import {imageMatchPlaceMatcher} from '../../assistant/spatial-memory/visual-revisit.js';
 
 // Production reconstruction entry: no annotation bundle, judge, or user questions.
 const [inputArg,outArg,confirm,...flags]=process.argv.slice(2);
@@ -31,12 +32,12 @@ const sampled=projectReplayClock(all,intervalMs,2);
 const rows=limit?sampled.slice(0,limit):sampled;
 let plannedStates=0,lastBucket:number|undefined,lastRecording:string|undefined;
 for(const row of rows){const bucket=Math.floor(row.atMs/8000);if(lastBucket!==bucket||lastRecording!==row.recordingId)plannedStates++;lastBucket=bucket;lastRecording=row.recordingId;}
-const binding={inputSHA256:createHash('sha256').update(raw).digest('hex'),planned:rows.length,sourcePlanned:all.length,windowMs:8000,samplingMs:2000,plannedStates,mode:accelerated?'accelerated-replay':'realtime',intervalMs,replayTimeScale:2,replayMinimumIntervalMs:2000,sourceCoverage:rows.length===all.length?'all-original-observations':'original-prefix-no-sampling',extractionMode:'single-window-worker',evidencePolicy:'wait-for-independent-facts',contextPolicy:'spatial-session-context-v1',memoryLibraryPolicy:'place-visits-windows-sources-v1',runtimePolicy:'projected-suffix-clock-durable-timing-v1',busyPolicy};
+const binding={inputSHA256:createHash('sha256').update(raw).digest('hex'),planned:rows.length,sourcePlanned:all.length,windowMs:8000,samplingMs:2000,plannedStates,mode:accelerated?'accelerated-replay':'realtime',intervalMs,replayTimeScale:2,replayMinimumIntervalMs:2000,sourceCoverage:rows.length===all.length?'all-original-observations':'original-prefix-no-sampling',extractionMode:'single-window-worker',evidencePolicy:'wait-for-independent-facts',contextPolicy:'spatial-session-context-v1',memoryLibraryPolicy:'place-visits-windows-sources-v1',runtimePolicy:'projected-suffix-clock-durable-timing-v1',revisitPolicy:'sift-ransac-required/v1',revisitLimit:2,busyPolicy};
 if(resume){const manifest=JSON.parse(await readFile(join(out,'manifest.json'),'utf8'));for(const [key,value] of Object.entries(binding))if(manifest[key]!==value)throw Error('Resume manifest mismatch: '+key);}
 if(!resume)await mkdir(out,{recursive:false});
 const start=Date.now(),attemptId=Date.now()+'-'+randomUUID();
 const reasoner=await createPiSpatialReasoner(join(out,'pi'),spatialJsonVlm(join(out,'pi-requests'),8000,8,true,1600),{resume});
-const service=await SpatialMemoryService.create(out,spatialPerceptionModel(out),{reasoner,resume,maxPending:12,extractionConcurrency:1,maxReasonCalls:8,windowMs:8000,evidencePolicy:'wait',busyPolicy});
+const service=await SpatialMemoryService.create(out,spatialPerceptionModel(out),{reasoner,resume,maxPending:12,extractionConcurrency:1,maxReasonCalls:8,windowMs:8000,evidencePolicy:'wait',busyPolicy,revisitMatcher:imageMatchPlaceMatcher(undefined,{timeoutMs:20000,maxDim:640,minInliers:20}),revisitPolicy:'required',revisitLimit:2});
 if(!resume)await writeFile(join(out,'manifest.json'),JSON.stringify({schema:'spatial-memory-run-v6',...binding,producer:'spatial-memory-pi-v6',storageSchema:4,agent:'pi-spatial-memory-v2',spatialAssessmentRequired:true,context:'persistent-session-with-structured-state-head',longTerm:'organized-place-visits-with-add-notes',extractionConcurrency:1,maxReasonCalls:8,maxPending:12,questions:false,judge:false,resume:false},null,2),{flag:'wx'});
 const timer=setInterval(()=>console.log(JSON.stringify({stage:'spatial-memory',elapsedMs:Date.now()-start,...service.progress()})),10000);timer.unref();
 type Delivery={observationId:string;index:number;attemptId:string;plannedDueMs:number|null;deliveredAtMs:number;deliveredWallMs:number;deliveryLagMs:number|null};

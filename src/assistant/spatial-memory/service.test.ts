@@ -190,6 +190,49 @@ test('admission capacity rejects excess callers before archiving and is released
  }finally{release();await service?.close();await f.cleanup();}
 });
 
+test('automatic visual recall proposes an older place, excludes the previous place and supplies inspectable candidates',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,firstPlace:string|null=null,secondPlace:string|null=null,matcherCalls=0,checkedPrevious=false;
+ const matcher={async match(current:any[],candidates:any[]){
+  matcherCalls++;assert.ok(current.length>=3);assert.ok(candidates.length>0);assert.ok(candidates.every(c=>c.placeId!==secondPlace));
+  const first=candidates.find(c=>c.placeId===firstPlace)!;assert.ok(first);
+  return {ok:true,best:null,nearest:null,results:[{placeId:firstPlace!,observationId:first.image.id,path:first.image.path,queryPath:current[0].path,inliers:29,similarity:0.8}]};
+ }};
+ const reasoner:SpatialReasoner={async judge(input){
+  if(!firstPlace){
+   const state=await input.commit(assessment(input.row.id),{inspected:new Set([input.row.id]),delivered:new Set()});firstPlace=state.assessment.location.placeId;return state.assessment;
+  }
+  if(!secondPlace){
+   const state=await input.commit(assessment(input.row.id),{inspected:new Set([input.row.id]),delivered:new Set()});secondPlace=state.assessment.location.placeId;
+   assert.notEqual(secondPlace,firstPlace);return state.assessment;
+  }
+  assert.equal(input.revisit?.status,'ok');checkedPrevious=!!secondPlace;
+  const candidate=input.revisit!.candidates[0]!;assert.equal(candidate.placeId,firstPlace);
+  assert.ok(input.revisit!.candidates.every(c=>c.placeId!==secondPlace));
+  const a=assessment(input.row.id,'known',firstPlace,[input.row.id,candidate.matchedObservationId]);
+  a.location.contextRefs=[candidate.matchedObservationId];
+  await input.commit(a,{inspected:new Set([input.row.id,candidate.matchedObservationId]),delivered:new Set()});return a;
+ },async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(row){return facts(row);}},{windowMs:8000,reasoner,revisitMatcher:matcher,revisitPolicy:'required',revisitLimit:2});
+  for(let i=0;i<12;i++)await service.observe(await f.row('v'+i,i*2000));await service.finishInput();
+  assert.equal(matcherCalls,1);assert.equal(checkedPrevious,true);assert.equal(service.progress().places,2);assert.equal(service.progress().visits,3);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
+
+test('required visual recall fails closed instead of silently creating a new place',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,first:string|null=null;
+ const reasoner:SpatialReasoner={async judge(input){
+  if(!first){const state=await input.commit(assessment(input.row.id),{inspected:new Set([input.row.id]),delivered:new Set()});first=state.assessment.location.placeId;return state.assessment;}
+  const a=assessment(input.row.id,'new');await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;
+ },async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(row){return facts(row);}},{windowMs:8000,reasoner,revisitMatcher:{async match(){return {ok:false,best:null,nearest:null,results:[],error:'opencv unavailable'};}},revisitPolicy:'required'});
+  for(let i=0;i<12;i++)await service.observe(await f.row('u'+i,i*2000));
+  await assert.rejects(service.finishInput(),/Revisit candidate recall unavailable/);
+  assert.equal(service.progress().places,2);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
+
 test('a checkpoint failure after durable commit cannot trigger another model judgment',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
  const reasoner:SpatialReasoner={async judge(input){calls++;await input.commit(assessment(input.row.id),{inspected:new Set([input.row.id]),delivered:new Set()});throw Error('Pi journal disk failure');},async close(){}};
