@@ -19,8 +19,12 @@ VLM a score for the closest candidate when SIFT fails.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import pickle
 import sys
+import tempfile
 
 try:
     import cv2  # type: ignore
@@ -71,6 +75,63 @@ def global_similarity(a, b) -> float:
     return round(0.5 * (0.5 + 0.5 * layout) + 0.5 * hist, 3)
 
 
+CACHE_VERSION = 1
+
+
+def cache_key(path: str, detector_name: str, max_dim: int) -> str | None:
+    """Include file identity so changed/replaced originals never reuse old features."""
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return None
+    identity = f"{CACHE_VERSION}|{os.path.abspath(path)}|{stat.st_mtime_ns}|{stat.st_size}|{detector_name}|{max_dim}".encode()
+    return hashlib.sha256(identity).hexdigest()
+
+
+def cached_global_features(path: str, detector, detector_name: str, max_dim: int, cache: bool):
+    """Keypoints, descriptors and global descriptor, optionally cached outside the archive.
+
+    This cache is only an acceleration of deterministic image features; it never
+    stores identity decisions or candidate scores. File mtime/size are part of the
+    key, and an unreadable or ancient cache entry simply falls back to recompute.
+    """
+    key = cache_key(path, detector_name, max_dim) if cache else None
+    cache_path = os.path.join(tempfile.gettempdir(), "first-sight-image-match", key + ".pickle") if key else None
+    if cache_path and os.path.exists(cache_path):
+        try:
+            with open(cache_path, "rb") as handle:
+                payload = pickle.load(handle)
+            points = [cv2.KeyPoint(float(x), float(y), 1.0) for x, y in payload["points"]]
+            return points, payload["descriptors"], (payload["layout"], payload["hist"]), payload["keypoints"]
+        except Exception:
+            try:
+                os.remove(cache_path)
+            except OSError:
+                pass
+    keypoints, descriptors, image = features(path, detector, max_dim)
+    global_desc = global_descriptor(image)
+    if cache_path and descriptors is not None and keypoints is not None and global_desc is not None:
+        temporary = cache_path + f".{os.getpid()}.tmp"
+        try:
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            payload = {
+                "points": [list(point.pt) for point in keypoints],
+                "descriptors": descriptors,
+                "layout": global_desc[0],
+                "hist": global_desc[1],
+                "keypoints": len(keypoints),
+            }
+            with open(temporary, "wb") as handle:
+                pickle.dump(payload, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(temporary, cache_path)
+        except Exception:
+            try:
+                os.remove(temporary)
+            except OSError:
+                pass
+    return keypoints, descriptors, global_desc, len(keypoints) if keypoints else 0
+
+
 def bbox(points):
     if not len(points):
         return None
@@ -116,22 +177,23 @@ def main() -> int:
         print(json.dumps({"ok": False, "error": "query/queries required"}))
         return 1
 
-    detector, norm = make_detector(request.get("detector", "sift"))
+    detector_name = str(request.get("detector", "sift")).lower()
+    detector, norm = make_detector(detector_name)
     ratio = float(request.get("ratio", 0.75))
     min_inliers = int(request.get("minInliers", 20))
     max_dim = int(request.get("maxDim", 900))
+    cache = bool(request.get("cache", False))
 
     queries = []
     for path in query_paths:
-        keypoints, descriptors, image = features(path, detector, max_dim)
-        queries.append({"path": path, "keypoints": len(keypoints) if keypoints else 0, "feature": (keypoints, descriptors), "global": global_descriptor(image)})
+        keypoints, descriptors, query_global, keypoint_count = cached_global_features(path, detector, detector_name, max_dim, cache)
+        queries.append({"path": path, "keypoints": keypoint_count, "feature": (keypoints, descriptors), "global": query_global})
 
     results = []
     best = None
     nearest = None
     for candidate in candidates:
-        keypoints, descriptors, image = features(candidate.get("path", ""), detector, max_dim)
-        candidate_global = global_descriptor(image)
+        keypoints, descriptors, candidate_global, _ = cached_global_features(candidate.get("path", ""), detector, detector_name, max_dim, cache)
         candidate_best = None
         candidate_similarity = 0.0
         for query in queries:

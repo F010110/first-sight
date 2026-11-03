@@ -9,7 +9,7 @@ export function imageMatchPlaceMatcher(script=resolve('scripts','media','image_m
  return {async match(current,candidates){
   if(!current.length||!candidates.length)return {ok:true,best:null,nearest:null,results:[]};
   if(!existsSync(script))return {ok:false,best:null,nearest:null,results:[],error:'image matcher script not found'};
-  const payload=JSON.stringify({queries:current.map(i=>i.path),candidates:candidates.map(c=>({id:c.placeId,path:c.image.path})),minInliers:options.minInliers??20,maxDim:options.maxDim??640,ratio:0.75});
+  const payload=JSON.stringify({queries:current.map(i=>i.path),candidates:candidates.map(c=>({id:c.placeId,path:c.image.path})),minInliers:options.minInliers??20,maxDim:options.maxDim??640,ratio:0.75,cache:true});
   return await new Promise<RevisitMatchResult>(resolvePromise=>{
    let child;try{child=spawn(python(),[script],{stdio:['pipe','pipe','pipe']});}catch(error){resolvePromise({ok:false,best:null,nearest:null,results:[],error:String(error)});return;}
    let out='',err='',settled=false;const finish=(value:RevisitMatchResult)=>{if(!settled){settled=true;resolvePromise(value);}};
