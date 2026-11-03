@@ -7,6 +7,10 @@ description: Maintain a durable, evidence-backed spatial memory from arriving ob
 
 ## 每次判断
 
+先检查连续性，再考虑新建：`previousRegion`是程序从同一录制、时间相接、仍在短期Context中的上一窗口提供的历史区域参考，不是已判定的当前位置。当前证据支持仍处于同一区域时，直接known复用该ID，并以contextRefs引用依据；转头、画面左右交换、小幅移动、光照变化、看到新物体不等于换区。已有ID的重访也直接known复用，不为“重访”另造地点。
+
+若有previousRegion而要选new，必须在location.regionChangeEvidence给出1至4条当前可见的正面区域变化依据，例如跨到门/通道另一侧或进入不同布局区域；“没匹配上”“视角不同”不是依据。当前匹配不足、但没有正面换区证据时，不强行known也不新建：保持unknown，可明确给 `continuityCandidate:{"placeId":"previousRegion.placeId","referenceId":"previousRegion.observationId","reason":"暂时延续的依据与不确定性"}`。它只是上一场景的暂定关联，不是确认同地；不能把候选当后续known的唯一证据。录制切换、时间断档、边界窗口、当前尾事实缺失时不使用这种延续候选。仍没有证据就单纯unknown，不要求填候选。
+
 若输入包含 `window`，其 observations 是一个固定8秒窗口中的最多4次、间隔至少2秒的观察。把整窗视为一个整体，只提交一个区域判断，不逐帧重复输出。所有原始观察及独立事实仍分别保留；当前ID是窗口尾观察，sourceIds必须包含它。依据可引用本轮仍实际交付原图的其他窗口成员。窗口是调度单位，不是永久地点或经历片段。
 
 整窗处于一个具体区域时按new/known/unknown判断持久身份；类别名如“城市街道”不是已认证的地点。整窗处于两个区域之间的边界/过渡时，location使用status=unknown、placeId=null，并加 `boundary:{"regions":["区域A暂名","区域B暂名"]}`，name可写“区域A与区域B边界”。这不认证连通、进入，也不意味着批尾确定处于任一区域。复杂多区域/无法判断时保持unknown。不把一个整窗结果复制成逐帧身份，不假装早帧当时已经知道后帧证据。

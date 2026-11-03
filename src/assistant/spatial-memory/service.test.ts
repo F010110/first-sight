@@ -17,15 +17,63 @@ async function fixture(){
  const row=async(id:string,atMs:number):Promise<Observation>=>({id,atMs,recordingId:'recording',views:await Promise.all(['front','left','right'].map(async direction=>{const bytes=Buffer.from(id+direction),path=join(dir,'sources',id+'-'+direction+'.png');await writeFile(path,bytes);return {id,direction,path,sha256:createHash('sha256').update(bytes).digest('hex')};}))});
  return {dir,row,root:join(dir,'new-spatial'),cleanup:()=>rm(dir,{recursive:true,force:true})};
 }
-const assessment=(id:string,status:'new'|'known'|'unknown'='new',placeId:string|null=null,sourceIds=[id]):Assessment=>({location:{status,placeId,name:status==='unknown'?'无法确定':'区域'+id,reason:'独立当前布局与实际交付来源',sourceIds},hypotheses:[],unresolved:[],relations:[]});
+const assessment=(id:string,status:'new'|'known'|'unknown'='new',placeId:string|null=null,sourceIds=[id]):Assessment=>({location:{status,placeId,name:status==='unknown'?'无法确定':'区域'+id,reason:'独立当前布局与实际交付来源',sourceIds,...status==='new'?{regionChangeEvidence:['脚本模型声明的当前区域变化证据']}:{ }},hypotheses:[],unresolved:[],relations:[]});
 const commit=(a:Assessment):SpatialAction=>({kind:'commit',assessment:a});
 const facts=(row:Observation)=>({summary:'当前观察'+row.id,details:['当前细节'+row.id]});
+
+test('continuous views reuse identity; unsupported NEW is rejected and uncertainty stays provisional, not inherited truth',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,firstPlace:string|null=null,rejected=0;
+ const reasoner:SpatialReasoner={async judge(input){
+  let a:Assessment;
+  if(input.row.id==='t3')a=assessment(input.row.id);
+  else{
+   assert.ok(input.previousRegion);firstPlace??=input.previousRegion!.placeId;
+   if(input.row.id==='t7'){
+    const bad=assessment(input.row.id);delete bad.location.regionChangeEvidence;
+    await assert.rejects(input.commit(bad,{inspected:new Set([input.row.id]),delivered:new Set()}),/positive regionChangeEvidence/);rejected++;
+    a=assessment(input.row.id,'known',firstPlace);a.location.contextRefs=['t3'];
+   }else if(input.row.id==='t11'){
+    a=assessment(input.row.id,'unknown');a.location.continuityCandidate={placeId:firstPlace,referenceId:'t7',reason:'部分遮挡，未见新的区域边界，仅暂定延续'};
+   }else if(input.row.id==='t15'){
+    assert.equal(input.previousRegion!.uncertain,true);a=assessment(input.row.id,'known',firstPlace);a.location.contextRefs=['t7'];
+   }else if(input.row.id==='t19'){a=assessment(input.row.id);}
+   else{a=assessment(input.row.id,'known',firstPlace);a.location.contextRefs=['t15'];}
+  }
+  await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;
+ },async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(row){return facts(row);}},{windowMs:8000,reasoner});
+  for(let i=0;i<24;i++)await service.observe(await f.row('t'+i,i*2000));await service.finishInput();
+  assert.equal(rejected,1);assert.equal(service.progress().places,2);assert.equal(service.progress().spatialStates,6);
+  const uncertain=service.snapshotAt(3,Number.MAX_SAFE_INTEGER).state;assert.equal(uncertain.assessment.location.status,'unknown');assert.equal(uncertain.assessment.location.placeId,null);assert.equal(uncertain.assessment.location.continuityCandidate!.placeId,firstPlace);assert.equal(uncertain.visitId,null);
+  assert.equal(service.progress().visits,3);assert.equal(uncertain.provisionalVisitId,service.snapshotAt(2,Number.MAX_SAFE_INTEGER).state.visitId);assert.equal(service.snapshotAt(4,Number.MAX_SAFE_INTEGER).state.visitId,uncertain.provisionalVisitId);assert.notEqual(service.latest()!.state.visitId,uncertain.provisionalVisitId);
+  const visits=service.snapshotAt(4,Number.MAX_SAFE_INTEGER).visits;assert.equal(visits.length,1);assert.deepEqual(visits[0]!.provisionalObservationIds,['t11']);assert.ok(!visits[0]!.observationIds.includes('t11'));
+  assert.equal(service.latest()!.state.assessment.location.placeId,firstPlace);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
+
+test('continuity candidate cannot jump a recording boundary or a source-time gap',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,first:string|null=null;
+ const reasoner:SpatialReasoner={async judge(input){
+  if(!first){const s=await input.commit(assessment(input.row.id),{inspected:new Set([input.row.id]),delivered:new Set()});first=s.assessment.location.placeId;return s.assessment;}
+  assert.equal(input.previousRegion,undefined);
+  const bad=assessment(input.row.id,'unknown');bad.location.continuityCandidate={placeId:first,referenceId:'g3',reason:'仅因之前在这里'};
+  await assert.rejects(input.commit(bad,{inspected:new Set([input.row.id]),delivered:new Set()}),/adjacent same-recording/);
+  const a=assessment(input.row.id,'unknown');await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;
+ },async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(row){return facts(row);}},{windowMs:8000,reasoner});
+  for(let i=0;i<4;i++)await service.observe(await f.row('g'+i,i*2000));await service.finishInput();
+  for(let i=0;i<4;i++){const row=await f.row('h'+i,16000+i*2000);row.recordingId='other-recording';await service.observe(row);}await service.finishInput();assert.equal(service.progress().places,1);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
 
 test('missing tail facts cannot block the next window; late facts append revisions without changing old snapshots',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,release!:()=>void,second!:()=>void,calls=0;
  const blocked=new Promise<void>(r=>release=r),secondCommitted=new Promise<void>(r=>second=r);
  const reasoner:SpatialReasoner={async judge(input){
   calls++;const missing=input.window!.missingFactIds??[],old=input.context.recent.find(r=>r.observationId===input.row.id);
+  if(input.row.id==='n7'&&input.window!.revisionOfVersion)assert.equal(input.previousRegion?.observationId,'n3');
   const a=missing.includes(input.row.id)?assessment(input.row.id,'unknown'):old?.assessment.location.placeId?assessment(input.row.id,'known',old.assessment.location.placeId):assessment(input.row.id);
   if(a.location.status==='known')a.location.contextRefs=[input.row.id];
   await input.commit(a,{inspected:new Set(input.window!.observations.map(o=>o.id)),delivered:new Set()});if(input.row.id==='n7'&&!input.window!.revisionOfVersion)second();return a;
@@ -49,6 +97,22 @@ test('production batch perception uses one worker, not two per-observation lanes
   service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('Per-observation lane must not run');},async perceiveWindow(rows){active++;peak=Math.max(peak,active);batches++;if(batches===2){await firstSpace;prepared();}active--;return rows.map(row=>({id:row.id,facts:facts(row)}));}},{windowMs:8000,reasoner});
   for(let i=0;i<8;i++)await service.observe(await f.row('b'+i,i*2000));await service.finishInput();assert.equal(batches,2);assert.equal(peak,1);assert.equal(service.progress().coveredObservations,8);
  }finally{spaceStarted();prepared();await service?.close().catch(()=>{});await f.cleanup();}
+});
+
+test('partial batch extraction keeps valid sources and bounded feedback requests only the missing originals',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('No per-observation lane');},async perceiveWindow(rows,feedback){calls++;if(calls===1)return [{id:rows[0]!.id,facts:facts(rows[0]!)}];assert.deepEqual(rows.map(r=>r.id),['q1','q2','q3']);assert.match(feedback??'',/q3/);return rows.map(r=>({id:r.id,facts:facts(r)}));}},{windowMs:8000,reasoner:{async judge(input){const a=assessment(input.row.id);await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}}});
+  for(let i=0;i<4;i++)await service.observe(await f.row('q'+i,i*2000));await service.finishInput();assert.equal(calls,2);assert.equal(service.progress().missingFacts,0);assert.equal(service.progress().incompleteWindows,0);assert.equal(service.latest()!.state.window!.observations[0]!.facts!.summary,'当前观察q0');
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
+
+test('persistent partial extraction stays incomplete without discarding valid facts or retrying forever',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('No per-observation lane');},async perceiveWindow(rows){calls++;return [{id:rows[0]!.id,facts:facts(rows[0]!)}];}},{windowMs:8000,reasoner:{async judge(input){const a=assessment(input.row.id,'unknown');await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}}});
+  for(let i=0;i<4;i++)await service.observe(await f.row('z'+i,i*2000));await service.finishInput();assert.equal(calls,2);assert.equal(service.progress().missingFacts,2);assert.equal(service.progress().incompleteWindows,1);assert.equal(service.latest()!.state.window!.observations[0]!.facts!.summary,'当前观察z0');assert.equal(service.latest()!.state.window!.observations[1]!.facts!.summary,'当前观察z1');assert.equal(service.progress().admitted,0);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });
 
 test('recovery resumes durable incomplete windows instead of treating coverage as completion',async()=>{

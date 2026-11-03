@@ -24,7 +24,16 @@ export class SpatialWorkingMemory{
   const state=this.recent.find(s=>s.observationId===this.current!.id);
    return structuredClone({current:{id:this.current.id,atMs:this.current.atMs},location:this.awaiting?this.pendingLocation:state?.assessment.location??this.pendingLocation,recent:this.recent,anchors:this.anchors,retrieved:this.retrieved,...this.summary?{summary:this.summary}:{},unresolved:this.unresolved});
  }
- evaluate(location:Location){if(!this.current)throw Error('No active observation');this.pendingLocation=structuredClone(location);}
+  evaluate(location:Location){if(!this.current)throw Error('No active observation');this.pendingLocation=structuredClone(location);}
+  reconcile(state:StoredState){
+   if(!this.current||state.atMs>=this.current.atMs)throw Error('Only historical interpretations can refresh current working references');
+   const present=this.recent.some(s=>s.observationId===state.observationId)||this.anchors.some(s=>s.observationId===state.observationId);
+   if(!present)return; // Never rebuild expired/cold working context from the archive.
+   this.recent=this.recent.map(s=>s.observationId===state.observationId?structuredClone(state):s);
+   this.anchors=this.anchors.filter(s=>s.observationId!==state.observationId);
+   if(state.assessment.location.placeId&&!this.anchors.some(s=>s.assessment.location.placeId===state.assessment.location.placeId))this.anchors.push(structuredClone(state));
+   this.anchors=this.anchors.slice(-this.anchorLimit);
+  }
  deliver(records:HistoryRecord[]){
   if(!this.current||records.some(r=>r.atMs>=this.current!.atMs))throw Error('Future working evidence');
   for(const r of records){this.retrieved=this.retrieved.filter(v=>v.observationId!==r.observationId);this.retrieved.push(structuredClone(r));}

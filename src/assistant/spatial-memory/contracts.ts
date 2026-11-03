@@ -3,16 +3,17 @@ import type {SpatialJsonImage} from '../../agent/spatial-json-vlm.js';
 /** Business memory contracts; independent of Pi transcripts and evaluation labels. */
 export type Observation={id:string;atMs:number;sourceAtMs?:number;recordingId?:string;views:SpatialJsonImage[]};
 export type Facts={summary:string;details:string[]};
-export type Location={status:'new'|'known'|'unknown';placeId:string|null;name:string;reason:string;sourceIds:string[];contextRefs?:string[];boundary?:{regions:string[]}};
+export type Location={status:'new'|'known'|'unknown';placeId:string|null;name:string;reason:string;sourceIds:string[];contextRefs?:string[];boundary?:{regions:string[]};regionChangeEvidence?:string[];continuityCandidate?:{placeId:string;referenceId:string;reason:string}};
 export type Relation={kind:'same-facility'|'different-region';referenceId:string;reason:string;sourceIds:string[]};
 export type SpatialRevision={observationId:string;location:Location};
 export type Assessment={location:Location;hypotheses:string[];unresolved:string[];relations:Relation[];revisions?:SpatialRevision[]};
 export type SpatialWindow={startMs:number;endExclusiveMs:number;observations:Array<{id:string;atMs:number;facts:Facts|null}>;missingFactIds?:string[];revisionOfVersion?:number};
-export type StoredState={version:number;observationId:string;atMs:number;availableAtMs:number;facts:Facts|null;assessment:Assessment;visitId:string|null;window?:SpatialWindow};
+export type StoredState={version:number;observationId:string;atMs:number;availableAtMs:number;facts:Facts|null;assessment:Assessment;visitId:string|null;provisionalVisitId?:string|null;window?:SpatialWindow};
 export type AgentCheckpoint={sessionId:string;tipId:string;skillVersions:Record<string,string>};
-export type JudgeInput={row:Observation;facts:Facts|null;context:WorkingContext;history:HistoryRecord[];window?:SpatialWindow;windowViews?:SpatialJsonImage[];evaluate?:(assessment:Assessment,evidence:JudgeEvidence)=>void;inspect:(ids:string[])=>Promise<SpatialJsonImage[]>;commit:(assessment:Assessment,evidence:JudgeEvidence)=>Promise<StoredState>;feedback?:string|null};
+export type ContinuityReference={observationId:string;placeId:string;name:string;uncertain:boolean};
+export type JudgeInput={row:Observation;facts:Facts|null;context:WorkingContext;history:HistoryRecord[];previousRegion?:ContinuityReference;window?:SpatialWindow;windowViews?:SpatialJsonImage[];evaluate?:(assessment:Assessment,evidence:JudgeEvidence)=>void;inspect:(ids:string[])=>Promise<SpatialJsonImage[]>;commit:(assessment:Assessment,evidence:JudgeEvidence)=>Promise<StoredState>;feedback?:string|null};
 export interface SpatialReasoner{judge(input:JudgeInput):Promise<Assessment>;close():Promise<void>}
-export type HistoryRecord={observationId:string;atMs:number;facts:Facts|null;location:Location;version:number;window?:SpatialWindow};
+export type HistoryRecord={observationId:string;atMs:number;facts:Facts|null;location:Location;version:number;visitId?:string|null;provisionalVisitId?:string|null;window?:SpatialWindow};
 export type WorkingContext={current:{id:string;atMs:number};location:Location|null;recent:StoredState[];anchors:StoredState[];retrieved:HistoryRecord[];summary?:{policy:string;text:string;sourceIds:string[];throughAtMs:number};unresolved?:string[]};
 export type SpatialAction=
  |{kind:'find';terms:string[];assessment:Assessment}
@@ -22,7 +23,7 @@ export type SpatialAction=
 export type ReasonInput={current:Observation;facts:Facts;context:WorkingContext;toolResult:unknown;inspectedIds:string[];remainingCalls:number;feedback:string|null};
 export interface SpatialModels{
  perceive(row:Observation):Promise<Facts>;
- perceiveWindow?(rows:Observation[]):Promise<Array<{id:string;facts:Facts}>>;
+ perceiveWindow?(rows:Observation[],feedback?:string):Promise<Array<{id:string;facts:Facts}>>;
  reason?(input:ReasonInput,images:SpatialJsonImage[]):Promise<SpatialAction>;
 }
 export type JudgeEvidence={inspected:Set<string>;delivered:Set<string>};
@@ -36,7 +37,9 @@ export function validateAssessment(a:Assessment,current:string,inspected:Readonl
  if(l.status==='known'?(typeof l.placeId!=='string'||!l.placeId):l.placeId!==null)throw Error('Invalid location identity');
  if(l.status!=='unknown'&&!l.name.trim())throw Error('Known/new location needs a human-readable name');
   if(l.contextRefs!==undefined&&(!Array.isArray(l.contextRefs)||l.contextRefs.length>10||new Set(l.contextRefs).size!==l.contextRefs.length||l.contextRefs.some(r=>typeof r!=='string'||!r)))throw Error('Invalid working context references');
-  if(l.boundary!==undefined&&(l.status!=='unknown'||l.placeId!==null||!Array.isArray(l.boundary.regions)||l.boundary.regions.length!==2||l.boundary.regions.some(r=>typeof r!=='string'||!r.trim())||new Set(l.boundary.regions).size!==2))throw Error('Boundary requires two candidate regions and no asserted current place');
+   if(l.boundary!==undefined&&(l.status!=='unknown'||l.placeId!==null||!Array.isArray(l.boundary.regions)||l.boundary.regions.length!==2||l.boundary.regions.some(r=>typeof r!=='string'||!r.trim())||new Set(l.boundary.regions).size!==2))throw Error('Boundary requires two candidate regions and no asserted current place');
+   if(l.regionChangeEvidence!==undefined&&(!Array.isArray(l.regionChangeEvidence)||l.regionChangeEvidence.length>4||l.regionChangeEvidence.some(v=>typeof v!=='string'||!v.trim()||v.length>400)))throw Error('Invalid positive region change evidence');
+   if(l.continuityCandidate!==undefined&&(l.status!=='unknown'||l.boundary!==undefined||!l.continuityCandidate.placeId||typeof l.continuityCandidate.placeId!=='string'||typeof l.continuityCandidate.referenceId!=='string'||!l.continuityCandidate.referenceId||typeof l.continuityCandidate.reason!=='string'||!l.continuityCandidate.reason.trim()||l.continuityCandidate.reason.length>400))throw Error('Continuity candidate is an explicitly uncertain association, not a known location or boundary');
  for(const list of [a.hypotheses,a.unresolved])if(!Array.isArray(list)||list.length>8||list.some(v=>typeof v!=='string'||!v.trim()||v.length>800))throw Error('Invalid active spatial state');
  if(!Array.isArray(a.relations)||a.relations.length>8)throw Error('Invalid relations');
  for(const r of a.relations)if(!['same-facility','different-region'].includes(r.kind)||r.referenceId===current||!inspected.has(r.referenceId)||typeof r.reason!=='string'||!r.reason.trim()||!Array.isArray(r.sourceIds)||!r.sourceIds.includes(current)||!r.sourceIds.includes(r.referenceId)||r.sourceIds.some(id=>!inspected.has(id)))throw Error('Uninspected relation evidence');

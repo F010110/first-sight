@@ -82,15 +82,24 @@ export class SpatialMemoryService{
  private flushWindow(){if(this.bucketTimer){clearTimeout(this.bucketTimer);this.bucketTimer=null;}if(this.bucket.length){const batch=this.bucket;this.bucket=[];if(this.models.perceiveWindow){const task=this.trackExtraction(this.extractWindow(batch.map(b=>b.row)));for(const item of batch)item.extract=task;}this.enqueue(batch);}}
  private extractWindow(rows:Observation[]){
   const task=this.windowExtractionTail.then(async()=>{
-   const missing=rows.filter(r=>!this.store.facts(r.id));if(!missing.length)return;
+   let missing=rows.filter(r=>!this.store.facts(r.id));if(!missing.length)return;
    this.extractionActive++;
    try{
-    let result:Array<{id:string;facts:import('./contracts.js').Facts}>|undefined;
-    for(let attempt=0;attempt<3;attempt++){try{result=await this.models.perceiveWindow!(structuredClone(missing));break;}catch(error){if(attempt===2||!await this.congest(error))throw error;}}
-    if(!Array.isArray(result)||result.length!==missing.length||result.some((r,i)=>r.id!==missing[i]!.id))throw Error('Batch perception must cover every source exactly once in order');
-    const validated=result.map(r=>({id:r.id,facts:validateFacts(r.facts)}));
-    for(const r of validated)this.store.saveFacts(r.id,r.facts);
-   }catch(error){for(const row of missing)this.store.fail(row.id,error);throw error;}
+    let feedback:string|undefined;
+    for(let protocolAttempt=0;protocolAttempt<2;protocolAttempt++){
+     try{
+      let result:Array<{id:string;facts:import('./contracts.js').Facts}>|undefined;
+      for(let attempt=0;attempt<3;attempt++){try{result=await this.models.perceiveWindow!(structuredClone(missing),feedback);break;}catch(error){if(attempt===2||!await this.congest(error))throw error;}}
+      if(!Array.isArray(result)||!result.length||new Set(result.map(r=>r.id)).size!==result.length||result.some(r=>!missing.some(row=>row.id===r.id)))throw new SpatialOutputProtocolError('Batch perception returned missing, duplicate or foreign source IDs');
+      let validated;try{validated=result.map(r=>({id:r.id,facts:validateFacts(r.facts)}));}catch(error){throw new SpatialOutputProtocolError(String(error));}
+      for(const r of validated)this.store.saveFacts(r.id,r.facts);
+      missing=missing.filter(r=>!this.store.facts(r.id));if(!missing.length)return;
+      feedback='Incomplete batch. Return every supplied remaining source exactly once: '+JSON.stringify(missing.map(r=>r.id));
+      this.store.event('partial-window-perception',{remainingIds:missing.map(r=>r.id),protocolAttempt});
+     }catch(error){if(!(error instanceof SpatialOutputProtocolError)||protocolAttempt===1)throw error;feedback=String(error);}
+    }
+    throw new SpatialOutputProtocolError('Batch perception incomplete after bounded feedback: '+missing.map(r=>r.id).join(','));
+   }catch(error){for(const row of missing.filter(r=>!this.store.facts(r.id)))this.store.fail(row.id,error);throw error;}
    finally{this.extractionActive--;}
   });
   this.windowExtractionTail=task.catch(()=>{});return task;
@@ -101,7 +110,7 @@ export class SpatialMemoryService{
   const finish=()=>{
    if(!done||initialVersion===null)return;
    const state=this.store.state(initialVersion)!;
-   if(state.window?.missingFactIds?.length&&!batch.some(b=>!this.store.facts(b.row.id))&&!repairQueued){repairQueued=true;this.enqueueRepair(batch.map(b=>b.row),initialVersion,release);}
+   if(state.window?.observations.some(o=>o.facts===null&&this.store.facts(o.id))&&!repairQueued){repairQueued=true;this.enqueueRepair(batch.map(b=>b.row),initialVersion,release);}
    else if(!repairQueued)release();
   };
   void settled.then(()=>{done=true;finish();});
@@ -126,6 +135,7 @@ export class SpatialMemoryService{
     await this.associate(tail,rows,targetVersion);
     if(published&&published.atMs>tail.atMs){
      this.working=working;this.published=published;
+     this.working.reconcile(this.store.state(this.store.version())!);
      const latestRow=this.store.observation(published.observationId)!;
      await this.associate(latestRow,published.window!.observations.map(o=>this.store.observation(o.id)!),published.version);
     }
@@ -175,8 +185,8 @@ export class SpatialMemoryService{
     for(let attempt=0;attempt<3;attempt++){
     try{
      const assessment=await this.reasoner.judge({
-       row:structuredClone(row),facts:this.store.facts(row.id)!,context:this.working.view(),history:structuredClone(prior),...window&&rows?{window,windowViews:rows.flatMap(r=>r.views)}:{},
-       evaluate:(a,evidence)=>{validateAssessment(a,row.id,evidence.inspected);this.validateIdentity(a,byId,contextSources);if(a.relations.length||a.revisions?.length)throw Error('Interim assessment cannot submit relations or revisions');this.working.evaluate(a.location);this.store.event('spatial-interim',{observationId:row.id,assessment:a});},
+       row:structuredClone(row),facts:this.store.facts(row.id)!,context:this.working.view(),history:structuredClone(prior),...this.previousRegion(row,window)?{previousRegion:this.previousRegion(row,window)!}:{},...window&&rows?{window,windowViews:rows.flatMap(r=>r.views)}:{},
+       evaluate:(a,evidence)=>{validateAssessment(a,row.id,evidence.inspected);this.validateIdentity(a,byId,contextSources);this.validateContinuity(row,a,window);if(a.relations.length||a.revisions?.length)throw Error('Interim assessment cannot submit relations or revisions');this.working.evaluate(a.location);this.store.event('spatial-interim',{observationId:row.id,assessment:a});},
       inspect:async ids=>{
        const originals=ids.map(id=>{const record=byId.get(id);if(!record)throw Error('Inspection source outside committed history');return this.store.observation(id)!;});
        const images=originals.flatMap(o=>o.views);if(images.length>9)throw Error('Inspection image limit');
@@ -257,6 +267,7 @@ export class SpatialMemoryService{
   private commitValidated(row:Observation,assessment:Assessment,inspected:ReadonlySet<string>,byId:Map<string,HistoryRecord>,contextSources:Array<{observationId:string;assessment:{location:{placeId:string|null}}}>,window?:SpatialWindow){
    validateAssessment(assessment,row.id,inspected);this.validateIdentity(assessment,byId,contextSources);
    if(window?.missingFactIds?.includes(row.id)&&assessment.location.status!=='unknown')throw Error('Tail observation facts unavailable: current location must remain unknown');
+   this.validateContinuity(row,assessment,window);
    const state=this.store.commit(row,assessment,s=>{const next=new SpatialWorkingMemory();next.restore(row,this.working.view(),true);next.commit(s);return next.view();},window);
    this.working.commit(state);if(!this.published||state.atMs>=this.published.atMs)this.published=structuredClone(state);return state;
  }
@@ -269,6 +280,19 @@ export class SpatialMemoryService{
     void task.then(()=>this.enqueueRepair(rows,record.version,()=>{this.admitted-=rows.length;for(const row of rows)this.scheduled.delete(row.id);}),error=>{this.failure=String(error);});
    }
   }
+ private previousRegion(row:Observation,window?:SpatialWindow){
+  if(!window)return null;
+  const previous=this.working.view().recent.filter(s=>s.atMs<window.startMs).at(-1);
+  if(!previous?.window||previous.window.endExclusiveMs!==window.startMs||this.store.observation(previous.observationId)?.recordingId!==row.recordingId||previous.window.missingFactIds?.includes(previous.observationId)||previous.assessment.location.boundary)return null;
+  const location=previous.assessment.location,placeId=location.placeId??location.continuityCandidate?.placeId;
+  return placeId?{observationId:previous.observationId,placeId,name:location.name,uncertain:location.status!=='known'}:null;
+ }
+ private validateContinuity(row:Observation,assessment:Assessment,window?:SpatialWindow){
+  const previous=this.previousRegion(row,window),location=assessment.location;
+  if(previous&&location.status==='new'&&!location.regionChangeEvidence?.length)throw Error('New region requires positive regionChangeEvidence, not merely a new view or failure to match. Continue the supported previous identity, or remain unknown.');
+  const candidate=location.continuityCandidate;
+  if(candidate&&(!previous||candidate.referenceId!==previous.observationId||candidate.placeId!==previous.placeId||window?.missingFactIds?.includes(row.id)))throw Error('Continuity candidate must reference the adjacent same-recording context region with available current evidence; gaps, boundaries and missing tail facts cannot inherit identity');
+ }
  knows(id:string){return !!this.store.observation(id);}
   async finishInput(){await this.archiveTail;this.flushWindow();await Promise.allSettled([...this.extractionTasks]);let tail:Promise<void>;do{tail=this.commitTail;await tail;}while(tail!==this.commitTail);if(this.failure)throw Error(this.failure);return this.store.counts();}
  latest(){
@@ -281,14 +305,14 @@ export class SpatialMemoryService{
   const state=this.store.state(version);
   if(!state||!Number.isFinite(knownAtMs)||state.availableAtMs>knownAtMs)throw Error('Uncommitted or not yet available spatial version');
   const history=this.store.history(version,state.atMs,knownAtMs);
-  type Visit={placeId:string;recording:string|undefined;observationIds:string[];lastAtMs:number};
+   type Visit={visitId:string|null;placeId:string;recording:string|undefined;observationIds:string[];provisionalObservationIds:string[];lastAtMs:number};
   let active:Visit|null=null;
   const visits:Visit[]=[];
   for(const r of history){
    const recording=this.store.observation(r.observationId)?.recordingId;
-   if(!r.location.placeId){active=null;continue;}
-   if(!active||active.placeId!==r.location.placeId||active.recording!==recording||r.atMs-active.lastAtMs>60000){
-    active={placeId:r.location.placeId,recording,observationIds:[],lastAtMs:r.atMs};visits.push(active);
+    if(!r.location.placeId){if(active&&r.location.continuityCandidate?.placeId===active.placeId&&r.provisionalVisitId===active.visitId&&active.recording===recording){active.provisionalObservationIds.push(r.observationId);active.lastAtMs=r.atMs;}else active=null;continue;}
+    if(!active||active.placeId!==r.location.placeId||active.recording!==recording||r.atMs-active.lastAtMs>60000||r.visitId&&active.visitId!==r.visitId){
+     active={visitId:r.visitId??null,placeId:r.location.placeId,recording,observationIds:[],provisionalObservationIds:[],lastAtMs:r.atMs};visits.push(active);
    }
    active.observationIds.push(r.observationId);active.lastAtMs=r.atMs;
   }
