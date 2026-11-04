@@ -2,6 +2,12 @@
 
 ## 当前状态与约定（2026-11-02）
 
+- **实时强制、评审放宽、取消unknown（2026-11-04用户批准）**：
+  - 强制实时：新增`--require-realtime`，禁止与`--replay-time-scale=2`、`--busy-policy=queue`同用；投递滞后超过一个节拍即记违规，收据输出`realtime{enforced,maxDeliveryLagMs,deliveryViolations,satisfied}`并令`completed=false`；覆盖义务改为"已判断窗＋跳过窗＝计划窗"，另给`fullWindowCoverage`。已确认忙时策略本就是把被跳过窗的原图/事实作为`skippedBefore`交给下一次判断合并处理，跳过窗不产出位置、不计覆盖；813那次显式用了`queue`，所以是阻塞投递、跳过数为0，这才是实时性没生效的原因。已写入`docs/active/01`（强制实时投递）与`02`（理由）。
+  - 评审放宽：判定只看"占据区域类别与证据是否矛盾 / 是否完全无来源支持"，地点粒度（合并或拆分、一条街分几段）不再算错、不再出finding或扣分；`grounded-memory-review`与`holistic-memory-contract`提示词同步。
+  - 取消unknown：skill与工具schema只暴露known/new，提交层对unknown直接拒绝（历史库仍可读）；`--no-standalone-unknown`参数与`allowStandaloneUnknown`选项已删除，不靠开关控制。代价已在`01`§3与`02`写明：真实跨区窗改为按主要占据一侧归属，放弃boundary中间态，已知会产生单侧归属错误。
+  - 验证：全库**588/588**；新增用例覆盖"schema不含unknown、裸unknown被拒后能改交known/new"。813/100旧库、运行产物、评分均未改动，也没有重跑付费运行。
+
 - **813裁判完成（Flash，2026-11-04）**：用户报告Max额度耗尽（HTTP 403），批准改Flash（约1/10价）。实现：默认`JUDGE_MODEL=qwen3.8-flash`，Flash须`allowFlash`显式开启，policy记录judgeModel/modelPolicy，其他型号拒绝；usage.json按公开列表价估算USD。新增有界校验重试（校准2次、取证3次、对照3次、综合2次），失败原因原样回传，绝不自动修补findings。**813结果：60/100**（location/identity/evidence/uncertainty各2，organization 4），204窗17块、37+请求、约USD0.13（含一次中途失败的24请求USD0.068），确证32条、存疑0。100观察对照：同一grounded流水线 Max=90（v9 major、v24 minor、v8 minor），Flash=60（v9 major、v24 identity+scope major、v1 minor）；两者都命中v9无来源理由与v24整窗越界，差异主要在严重度与个别边缘项，说明Flash可做粗粒度诊断但绝对分更保守、更严，不能当作Max分数或精细准确率。813的32条含v8/v9/v12/v13整窗越界与旧理由、v98–105街角分段身份、v49门口混合窗等，需人工抽查后使用；本轮不逐条认证。全库**586/586**（含新增Flash/收据/重试用例）。生产库hash `8a507707…`、生产工件均未改动。
 
 - **813全量空间记忆生产完成（2026-11-04）**：`run/unioncity-memory-full813-v2`经两次`--resume`续跑后 completed=true：**813/813观察、204/204状态与Context/Pi检查点、813覆盖**，缺失/跳过/pending=0，16地点/23访问/84笔记；inputDrainComplete=true，sourceCoverage=all-original-observations。失败与续跑记录全部保留（首段extraction缺帧、第二段窗口125证据循环），代码修复后才完成，不是一次干净运行。累计费用：perception 240 calls ≈USD0.1547、Pi 317 calls ≈USD1.0873（含失败尝试），未知预留0。耗时865.86秒（含约814秒背压等待），投递滞后p95 190.7秒、max 220.4秒——**不满足2秒实时吞吐，不作为实时性能认证**。库SHA256 `8a5077075600bf3e1ee53025c07826470a75fe52df18fa7e21f1293f2927208e`，只读文本汇总`memory-summary.md/json`。另修复：完成收据读取不再把失败的`complete.json`当成功，优先使用最新completed recovery收据（hash绑定，失败文件保留）。全库**586/586**通过。

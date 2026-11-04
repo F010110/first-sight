@@ -25,19 +25,22 @@ windowScope：两端占据区域相同=same；明确跨越区域边界=transitio
 必须完整覆盖本批全部版本，不省略、不改序号。`;
 
 export const comparisonPrompt=`你是空间记忆审核者。先看取证结果（从原图得到，但可能看错），再核对候选原文、位置参考和本次交付的实际图像。
-规则前提：用户接受连续地铁站内部为一个地点，不因子区域未拆ID扣分；但身份连续正确不等于本窗reason描述当前可见物正确。参考只是区域标签且部分观察处于区间（boundaryUncertain=true），宽标签不允许证明更精确位置，例如同属某个路口不等于整窗在路口中心。OCR与物体类别细节本轮不计分。
+规则前提：用户接受连续地铁站内部为一个地点，不因子区域未拆ID扣分。**地点粒度没有唯一正确答案**：把相邻区域合并成一个地点、把一条街的不同路段归为同一地点，都不算错误，不要因此写 finding 或扣分。只有“声称的所在区域与证据矛盾”（例如声称在室内而画面在街外、声称在店前人行道而近地面已是车道）或“完全无来源支持”才算 identity 问题。
+身份连续正确不等于本窗reason描述当前可见物正确。参考只是区域标签且部分观察处于区间（boundaryUncertain=true），宽标签不允许证明更精确位置。
+OCR与物体类别细节本轮不计分。
 逐窗分别判断三项，不能互相代替：
-- identity：候选location的身份/状态与参考区域及证据是否相容。真实过渡处unknown/boundary是支持；把跨区窗确认为单侧、或把同地标可见当成同一占据区域都是问题。
+- identity：候选placeId所指的地点，与"观察者当前占据的区域类别"是否相容（不是与参考的切分粒度是否一致）。
 - currentReason：候选reason中每个“当前可见/当前处于/本窗…”主张是否真由本窗图像支持。历史特征说成当前可见、或描述图上没有的物体（列车、站台边缘等）是问题。相对上一窗的运动描述要看两端。
-- windowScope：候选是否用窗尾位置概括整窗（或反之）。两端占据区域不同的窗被写成单一确定位置即范围问题。
-verdict只能是supported/contradicted/uncertain。contradicted必须有明确反证；看不清、参考太粗、合理解释两可时用uncertain，不能把不确定判成错误。
+- windowScope：仅当取证判定本窗起点与终点确实分属不同区域、而候选又把整窗写成单一确定位置时才报问题；若两端基本同侧，候选按主要区域归属属正常。
+verdict只能是supported/contradicted/uncertain。contradicted必须有明确反证；看不清、参考太粗、合理解释两可时用uncertain，不能把不确定判成错误，也不能因为地点命名/粒度不同就判错。
 findings只为contradicted或重要uncertain而写：{version,quote:候选该窗内精确连续原文,dimension,verdict,severity:"major"或"minor",sourceIds:[本窗已交付观察ID],reason}
-severity：major=改变所在区域/身份/核心可见事实；minor=措辞或次要细节。quote必须是候选原文子串，不得改写或杜撰。
+severity：major=改变所在区域类别/身份/核心可见事实；minor=措辞或次要细节。quote必须是候选原文子串，不得改写或杜撰。
 输出JSON {"windows":[{"version":,"identity":{"verdict":,"reason":},"currentReason":{"verdict":,"reason":},"windowScope":{"verdict":,"reason":}}],"findings":[...]}
 必须完整覆盖本批全部版本。`;
 
 export const synthesisPrompt=`你是最终整体审核者。输入是全窗口取证、逐窗三项核对结果、地点/访问/笔记组织与名称修订版本，以及程序算出的硬性上限。不重新猜图，不推翻已确认的逐窗核对，除非指出其内部矛盾。
 给出五维0到4整数整体等级：location（当前位置/边界的整体正确性）、identity（连续性、新建、身份与访问）、organization（地点访问笔记归属、名称维护与历史保留）、evidence（当前理由与实际交付证据）、uncertainty（校准与未决维护）。
+**地点粒度没有唯一正确答案**：合并相邻区域、把一条街的不同路段放在同一地点、或反过来把同一区域拆成多个地点，都不单独构成错误；不要因为粒度与参考不同而降低 organization/identity 分，也不要在 extraFindings 里写粒度问题。只按“占据区域类别是否与证据矛盾”或“完全无来源支持”判断身份错误。
 硬性一致性：已经逐窗确认contradicted的维度不能给满分；programCaps给出该维度允许的最高分，你的分数不得超过。若你认为上限过严，只能在reason说明，不能自行提高。
 不要因为描述漂亮、结构整齐或未发现更多问题就给4；也不要为了显得严格而编造问题。没有实际证据的组织缺陷不得虚构。
 输出JSON {"dimensions":{"location":{score,reason},"identity":{...},"organization":{...},"evidence":{...},"uncertainty":{...}},"extraFindings":[{"quote":"候选原文精确子串","dimension":"identity或organization或evidence或uncertainty","verdict":"contradicted或uncertain","severity":"major或minor","reason":"..."}],"summary":"...","limitations":["..."],"needsHumanReview":true或false}

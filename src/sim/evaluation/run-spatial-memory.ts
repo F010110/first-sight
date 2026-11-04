@@ -15,11 +15,16 @@ import {imageMatchPlaceMatcher} from '../../assistant/spatial-memory/visual-revi
 const [inputArg,outArg,confirm,...flags]=process.argv.slice(2);
 if(!inputArg||!outArg||confirm!=='--confirm-paid')throw Error('Usage: run-spatial-memory PUBLIC-INPUT NEW-OUTPUT --confirm-paid [--resume] [--limit=N] [--interval-ms=2000] [--replay-time-scale=2] [--busy-policy=queue|skip-obsolete]');
 const resume=flags.includes('--resume'),accelerated=flags.includes('--replay-time-scale=2');
+// Forced realtime: input is never slowed to wait for the memory agent. A busy agent skips the
+// closed window (sources+facts retained for the successor) instead of delaying the next delivery.
+const requireRealtime=flags.includes('--require-realtime');
+if(requireRealtime&&accelerated)throw Error('--require-realtime cannot be combined with --replay-time-scale=2');
 const busyPolicy=flags.find(f=>f.startsWith('--busy-policy='))?.split('=')[1]??(accelerated?'queue':'skip-obsolete');
 if(busyPolicy!=='queue'&&busyPolicy!=='skip-obsolete')throw Error('Invalid busy policy');
 const limitArg=flags.find(f=>f.startsWith('--limit=')),limit=limitArg?Number(limitArg.split('=')[1]):undefined;
 const intervalArg=flags.find(f=>f.startsWith('--interval-ms=')),intervalMs=intervalArg?Number(intervalArg.split('=')[1]):2000;
-if(flags.some(f=>!['--resume','--replay-time-scale=2'].includes(f)&&!f.startsWith('--limit=')&&!f.startsWith('--interval-ms=')&&!f.startsWith('--busy-policy=')))throw Error('Invalid runner flag');
+if(flags.some(f=>!['--resume','--replay-time-scale=2','--require-realtime'].includes(f)&&!f.startsWith('--limit=')&&!f.startsWith('--interval-ms=')&&!f.startsWith('--busy-policy=')))throw Error('Invalid runner flag');
+if(requireRealtime&&busyPolicy!=='skip-obsolete')throw Error('--require-realtime requires --busy-policy=skip-obsolete: a queue policy would delay input delivery');
 if(limitArg&&(!Number.isInteger(limit)||limit!<1))throw Error('Invalid limit');
 validateRealtimeInterval(intervalMs);
 const raw=await readFile(inputArg),input=JSON.parse(raw.toString()),out=resolve(outArg);
@@ -32,7 +37,7 @@ const sampled=projectReplayClock(all,intervalMs,2);
 const rows=limit?sampled.slice(0,limit):sampled;
 let plannedStates=0,lastBucket:number|undefined,lastRecording:string|undefined;
 for(const row of rows){const bucket=Math.floor(row.atMs/8000);if(lastBucket!==bucket||lastRecording!==row.recordingId)plannedStates++;lastBucket=bucket;lastRecording=row.recordingId;}
-const binding={inputSHA256:createHash('sha256').update(raw).digest('hex'),planned:rows.length,sourcePlanned:all.length,windowMs:8000,samplingMs:2000,plannedStates,mode:accelerated?'accelerated-replay':'realtime',intervalMs,replayTimeScale:2,replayMinimumIntervalMs:2000,sourceCoverage:rows.length===all.length?'all-original-observations':'original-prefix-no-sampling',extractionMode:'single-window-worker',evidencePolicy:'wait-for-independent-facts',contextPolicy:'spatial-session-context-v1',memoryLibraryPolicy:'place-visits-windows-sources-v1',runtimePolicy:'projected-suffix-clock-durable-timing-v1',revisitPolicy:'sift-ransac-required/v1',revisitLimit:2,busyPolicy};
+const binding={inputSHA256:createHash('sha256').update(raw).digest('hex'),planned:rows.length,sourcePlanned:all.length,windowMs:8000,samplingMs:2000,plannedStates,mode:accelerated?'accelerated-replay':'realtime',intervalMs,replayTimeScale:2,replayMinimumIntervalMs:2000,sourceCoverage:rows.length===all.length?'all-original-observations':'original-prefix-no-sampling',realtimeEnforced:requireRealtime,locationStatuses:'known-or-new',extractionMode:'single-window-worker',evidencePolicy:'wait-for-independent-facts',contextPolicy:'spatial-session-context-v1',memoryLibraryPolicy:'place-visits-windows-sources-v1',runtimePolicy:'projected-suffix-clock-durable-timing-v1',revisitPolicy:'sift-ransac-required/v1',revisitLimit:2,busyPolicy};
 if(resume){const manifest=JSON.parse(await readFile(join(out,'manifest.json'),'utf8'));for(const [key,value] of Object.entries(binding))if(manifest[key]!==value)throw Error('Resume manifest mismatch: '+key);}
 if(!resume)await mkdir(out,{recursive:false});
 const start=Date.now(),attemptId=Date.now()+'-'+randomUUID();
@@ -42,7 +47,7 @@ if(!resume)await writeFile(join(out,'manifest.json'),JSON.stringify({schema:'spa
 const timer=setInterval(()=>console.log(JSON.stringify({stage:'spatial-memory',elapsedMs:Date.now()-start,...service.progress()})),10000);timer.unref();
 type Delivery={observationId:string;index:number;attemptId:string;plannedDueMs:number|null;deliveredAtMs:number;deliveredWallMs:number;deliveryLagMs:number|null};
 const delivery=await readRunRecords<Delivery>(out,'delivery.jsonl');
-let backpressureWaits=0,backpressureWaitMs=0,error:string|null=null;
+let backpressureWaits=0,backpressureWaitMs=0,error:string|null=null,deliveryViolations=0,maxDeliveryLagMs=0;
 try{
  if(resume)await service.resumePending();
  const firstPending=rows.findIndex(row=>!service.knows(row.id)),deliveryAnchor=Date.now();
@@ -62,7 +67,10 @@ try{
   }
   const at=Date.now(),record:Delivery={observationId:row.id,index,attemptId,plannedDueMs:due===null?null:due-start,deliveredAtMs:at-start,deliveredWallMs:at,deliveryLagMs:due===null?null:at-due};
   await appendRunRecord(out,'delivery.jsonl',record);delivery.push(record);
- }
+   // Realtime is a property of input delivery, not of agent speed: a late delivery is a violation,
+   // while a slow agent is expected to skip rather than block the next observation.
+   if(requireRealtime&&record.deliveryLagMs!==null){const lag=record.deliveryLagMs;maxDeliveryLagMs=Math.max(maxDeliveryLagMs,lag);if(lag>intervalMs)deliveryViolations++;}
+  }
  await service.finishInput();
 }catch(e){error=String(e);}finally{
  clearInterval(timer);const progress=service.progress();await mkdir(join(out,'contexts'),{recursive:true});
@@ -76,7 +84,11 @@ try{
  let agentCheckpoints=0;try{const checkpoints=(await readFile(join(out,'pi','pi-checkpoints.jsonl'),'utf8')).trim().split('\n').filter(Boolean).map(line=>JSON.parse(line));agentCheckpoints=checkpoints.length;for(const snapshot of snapshots){const matches=checkpoints.filter(c=>c.version===snapshot.state.version);if(matches.length!==1||matches[0].observationId!==snapshot.state.observationId||!matches[0].tipId||!matches[0].session?.id||!matches[0].skillVersions?.['spatial-memory-v2']||JSON.stringify(matches[0].window?.memberIds??[matches[0].observationId])!==JSON.stringify(snapshot.state.window?.observations.map(o=>o.id)??[snapshot.state.observationId]))error??='Pi checkpoint binding mismatch';}}catch{error??='Missing or invalid Pi checkpoints';}
  const tasks=service.taskTimings();
  const latency=latencySummary(tasks,delivery,backpressureWaits,backpressureWaitMs,progress.peakAdmitted);
- const complete={schema:'spatial-memory-complete-v5',inputDrainComplete:!error&&progress.observations===rows.length&&progress.pending===0&&progress.deferredObservations===0&&progress.missingFacts===0&&contexts===progress.stateVersions&&agentCheckpoints===progress.stateVersions,completed:!error&&progress.observations===rows.length&&progress.coveredObservations===rows.length&&progress.spatialStates===plannedStates&&progress.pending===0&&progress.missingFacts===0&&progress.incompleteWindows===0&&contexts===progress.stateVersions&&agentCheckpoints===progress.stateVersions,...binding,...progress,contextsWritten:contexts,agentCheckpoints,elapsedMs:Date.now()-start,latency,usage,error};
+  const realtimeSatisfied=!requireRealtime||deliveryViolations===0;
+  const realtime={enforced:requireRealtime,maxDeliveryLagMs,deliveryViolations,toleranceMs:intervalMs,backpressureWaits,skippedWindows:progress.skippedWindows,satisfied:realtimeSatisfied,note:'Input cadence is never slowed for the memory agent; while it is busy the sealed window is skipped with its sources and facts retained for the successor.'};
+  if(requireRealtime&&!realtimeSatisfied&&!error)error='Spatial realtime delivery violated at '+deliveryViolations+' observation(s); max lag '+maxDeliveryLagMs+'ms exceeds '+intervalMs+'ms';
+  const coverageObligationMet=requireRealtime?progress.spatialStates+progress.skippedWindows===plannedStates:progress.coveredObservations===rows.length&&progress.spatialStates===plannedStates;
+  const complete={schema:'spatial-memory-complete-v6',inputDrainComplete:!error&&progress.observations===rows.length&&progress.pending===0&&progress.deferredObservations===0&&progress.missingFacts===0&&contexts===progress.stateVersions&&agentCheckpoints===progress.stateVersions,completed:!error&&progress.observations===rows.length&&coverageObligationMet&&progress.pending===0&&progress.missingFacts===0&&progress.incompleteWindows===0&&contexts===progress.stateVersions&&agentCheckpoints===progress.stateVersions,...binding,...progress,coverageObligationMet,fullWindowCoverage:progress.skippedWindows===0&&progress.coveredObservations===rows.length,realtime,contextsWritten:contexts,agentCheckpoints,elapsedMs:Date.now()-start,latency,usage,error};
  if(!complete.completed)error??=progress.skippedWindows?'Spatial coverage incomplete: busy windows were explicitly skipped; queue policy is required for full-window coverage':'Incomplete spatial run';
  const attempt={attemptId,resume,startedAtMs:start,elapsedScope:'current-process-attempt',deliveryLoggingGaps:progress.observations-new Set(delivery.map(d=>d.observationId)).size};
  await writeFile(join(out,attemptArtifact('task-timing',attemptId,resume)),JSON.stringify({schema:'spatial-task-timing-v2',...attempt,mode:binding.mode,intervalMs,tasks,delivery,latency},null,2),{flag:'wx'});

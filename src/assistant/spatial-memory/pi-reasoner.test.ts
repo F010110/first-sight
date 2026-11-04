@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {createPiSpatialReasoner} from './pi-reasoner.js';
 import {SpatialMemoryService} from './service.js';
-import type {Observation} from './contracts.js';
+import type {Observation,Assessment} from './contracts.js';
 
 const usage={prompt_tokens:100,completion_tokens:20};
 
@@ -40,7 +40,7 @@ test('Pi session and skill run the spatial tool loop, commit durably and record 
   let timelineChecked=false,profileChecked=false;
  const request=async(input:any)=>{
    const data=input.data as any;assert.ok(Array.isArray(data.tools));assert.ok(data.tools.some((t:any)=>t.name==='memory_add'));
-   if(data.current.id==='b'&&!profileChecked){profileChecked=true;return {output:{tool:'memory_place',arguments:{placeId:data.runtimeContext.workingContext.recent[0].assessment.location.placeId,assessment:{location:{status:'unknown',placeId:null,name:'待确认',reason:'read place profile',sourceIds:['b']},hypotheses:[],unresolved:[],relations:[]}}},usage};}
+   if(data.current.id==='b'&&!profileChecked){profileChecked=true;return {output:{tool:'memory_place',arguments:{placeId:data.runtimeContext.workingContext.recent[0].assessment.location.placeId,assessment:{location:{status:'new',placeId:null,name:'????',reason:'read place profile',sourceIds:['b']},hypotheses:[],unresolved:[],relations:[]}}},usage};}
    if(data.current.id==='b'&&!timelineChecked){assert.equal(data.runtimeContext.lastToolResult.kind,'place-profile');assert.equal(data.runtimeContext.lastToolResult.profile.attributes[0].value,'red awning');assert.equal(data.runtimeContext.lastToolResult.profile.notes[0].text,'red awning');assert.equal(data.runtimeContext.lastToolResult.profile.visits[0].windows[0].observationId,'a');assert.deepEqual(data.runtimeContext.inspectedIds,['b']);assert.ok(data.runtimeContext.deliveredIds.includes('a'));}
    if(data.current.id==='b'&&!timelineChecked){timelineChecked=true;assert.ok(JSON.stringify(data.messages).includes('memory_add'));assert.ok(JSON.stringify(data.messages).includes('事实a'));assert.ok(!JSON.stringify(data.messages).includes('"kind":"timeline"'));return {output:{tool:'memory_timeline',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'未知',reason:'先浏览历史',sourceIds:['b']},hypotheses:[],unresolved:[],relations:[]}}},usage};}
     if(data.current.id==='b')return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:data.runtimeContext.workingContext.recent[0].assessment.location.placeId,name:'区域内部',reason:'当前布局延续，名称扩大',sourceIds:['b'],contextRefs:['a']},hypotheses:[],unresolved:[],relations:[]},rename:{name:'区域内部',reason:'当前图片确认更广内部范围',sourceIds:['b']}}},usage};
@@ -75,7 +75,7 @@ test('Pi receives automatically recalled older-place images and can cite the ins
  const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-revisit-pi-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
  await mkdir(join(dir,'sources'));let service:SpatialMemoryService|undefined,firstPlace:string|null=null,secondPlace:string|null=null,candidateSeen=false,candidateInspected=false;
  const request=async(input:any)=>{
-  const id=input.data.current.id,unknown={location:{status:'unknown',placeId:null,name:'待确认',reason:'窗口判断',sourceIds:[id]},hypotheses:[],unresolved:[],relations:[]};
+  const id=input.data.current.id,unknown={location:{status:'new',placeId:null,name:'待确认',reason:'窗口判断',sourceIds:[id]},hypotheses:[],unresolved:[],relations:[]};
   const prior=input.data.runtimeContext.workingContext.recent.at(-1)?.assessment.location.placeId??null;
   if(!prior)return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{status:'new',placeId:null,name:'旧地点',reason:'首个窗口建立当前区域',sourceIds:[id],regionChangeEvidence:['首次建立']}},notes:[]}},usage};
   firstPlace??=prior;
@@ -107,18 +107,19 @@ test('windowed Pi session keeps memory tools, rejects missing interim assessment
  const request=async(input:any)=>{
   const runtime=input.data.runtimeContext,id=input.data.current.id;
   assert.equal(runtime.window.observations.length,4);
-  const unknown={location:{status:'unknown',placeId:null,name:'待确认',reason:'当前窗口待检查历史',sourceIds:[id]},hypotheses:[],unresolved:['确认历史身份'],relations:[]};
+  const prior=()=>runtime.workingContext.recent[0]?.assessment.location.placeId??null;
+  const interim:()=>Assessment=()=>prior()?{location:{status:'known',placeId:prior(),name:'甲区域',reason:'当前窗口待检查历史',sourceIds:[id],contextRefs:[runtime.workingContext.recent[0].observationId]},hypotheses:[],unresolved:['确认历史身份'],relations:[]}:{location:{status:'new',placeId:null,name:'甲区域',reason:'首个窗口建立',sourceIds:[id],regionChangeEvidence:['首次建立']},hypotheses:[],unresolved:[],relations:[]};
   if(id==='w3'){
    assert.equal(input.images.length,12);
-    return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{...unknown.location,status:'new',name:'甲区域'}}}},usage};
+    return {output:{tool:'memory_add',arguments:{assessment:{...interim(),location:{...interim().location,status:'new',placeId:null,name:'甲区域',regionChangeEvidence:['首次建立']}}}},usage};
   }
   secondCalls++;
   if(secondCalls===1)return {output:{tool:'memory_timeline',arguments:{}} ,usage};
-  if(secondCalls===2){assert.ok(JSON.stringify(input.data.messages).includes('assessment'));return {output:{tool:'memory_timeline',arguments:{assessment:unknown}},usage};}
-  if(secondCalls===3){assert.equal(runtime.lastToolResult.kind,'timeline');assert.equal(runtime.workingContext.location.status,'unknown');return {output:{tool:'memory_read',arguments:{ids:['w0'],assessment:unknown}},usage};}
-  if(secondCalls===4){assert.equal(runtime.lastToolResult.records[0].window.observations.length,4);return {output:{tool:'memory_inspect',arguments:{ids:['w0'],assessment:unknown}},usage};}
+  if(secondCalls===2){assert.ok(JSON.stringify(input.data.messages).includes('assessment'));return {output:{tool:'memory_timeline',arguments:{assessment:interim()}},usage};}
+  if(secondCalls===3){assert.equal(runtime.lastToolResult.kind,'timeline');assert.equal(runtime.workingContext.location.status,'known');return {output:{tool:'memory_read',arguments:{ids:['w0'],assessment:interim()}},usage};}
+  if(secondCalls===4){assert.equal(runtime.lastToolResult.records[0].window.observations.length,4);return {output:{tool:'memory_inspect',arguments:{ids:['w0'],assessment:interim()}},usage};}
   assert.equal(input.images.length,6);assert.deepEqual(runtime.inspectedIds,['w4','w5','w6','w7','w0']);
-   return {output:{tool:'memory_add',arguments:{assessment:{...unknown,unresolved:[],location:{status:'known',placeId:runtime.workingContext.recent[0].assessment.location.placeId,name:'甲区域',reason:'检查过的历史原图支持重访',sourceIds:['w7','w0']}}}},usage};
+   return {output:{tool:'memory_add',arguments:{assessment:{...interim(),unresolved:[],location:{status:'known',placeId:runtime.workingContext.recent[0].assessment.location.placeId,name:'甲区域',reason:'检查过的历史原图支持重访',sourceIds:['w7','w0']}}}},usage};
  };
  try{
   const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request);
@@ -139,14 +140,14 @@ test('known claims that cite read-but-uninspected history receive those original
   const id=input.data.current.id,runtime=input.data.runtimeContext,base={hypotheses:[],unresolved:[],relations:[]};
   if(id==='h3')return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'����',reason:'�״ν���',sourceIds:[id]},...base}}},usage};
   step++;
-  if(step===1)return {output:{tool:'memory_timeline',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'��ȷ��',reason:'����ʷ',sourceIds:[id]},...base}}},usage};
+  if(step===1)return {output:{tool:'memory_timeline',arguments:{assessment:{location:{status:'known',placeId:placeId||runtime.workingContext.recent[0].assessment.location.placeId,name:'??',reason:'????',sourceIds:[id],contextRefs:[runtime.workingContext.recent[0].observationId]},...base}}},usage};
   if(step===2){assert.equal(runtime.lastToolResult.kind,'timeline');
    return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:placeId||runtime.workingContext.recent[0].assessment.location.placeId,name:'����',reason:'��ʷͬ����',sourceIds:[id,'h3'],contextRefs:['h3']},...base}}},usage};}
   if(step===3){assert.equal(runtime.lastToolResult.kind,'historical-evidence-inspection');assert.deepEqual(runtime.lastToolResult.observationIds,['h3']);assert.ok(runtime.inspectedIds.includes('h3'));assert.equal(input.images.length,6);
    return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:runtime.workingContext.recent[0].assessment.location.placeId,name:'����',reason:'�����ʷԭͼ��ȷ��ͬ����',sourceIds:[id,'h3'],contextRefs:['h3']},...base}}},usage};}
   if(step===4){assert.match(String(runtime.feedback?.error),/not an existing place/);assert.match(String(runtime.feedback?.error),/Place IDs that actually appear in this session/);
-   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'��ȷ��',reason:'�����޷�ȷ��',sourceIds:[id]},...base}}},usage};}
-  return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'��ȷ��',reason:'����',sourceIds:[id]},...base}}},usage};
+   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'?????',reason:'????',sourceIds:[id]},...base}}},usage};}
+  return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'?????',reason:'????',sourceIds:[id]},...base}}},usage};
  };
  try{
   const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request);
@@ -180,5 +181,31 @@ test('a known claim with no delivered support receives that place newest stored 
   for(let i=4;i<8;i++)await service.observe(await row('k'+i,i*2000));
   await service.finishInput();
   assert.equal(calls,2);assert.equal(service.progress().spatialStates,2);
+ }finally{await service?.close().catch(()=>{});await new Promise(r=>setTimeout(r,50));if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true,maxRetries:3,retryDelay:100});}
+});
+
+test('the tool schema exposes only known/new and a stray unknown submission is rejected, then corrected',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-no-unknown-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
+ await mkdir(join(dir,'sources'));let service:SpatialMemoryService|undefined,calls=0,sawUnknown=false;
+ const row=async(id:string,atMs:number)=>{const views=[];for(const direction of ['front','left','right']){const bytes=Buffer.from(id+direction),path=join(dir,'sources',id+'-'+direction+'.png');await writeFile(path,bytes);views.push({id,direction,path,sha256:createHash('sha256').update(bytes).digest('hex')});}return {id,atMs,views};};
+ const request=async(input:any)=>{
+  const id=input.data.current.id,runtime=input.data.runtimeContext,base={hypotheses:[],unresolved:[],relations:[]};
+  // The schema must not offer an undetermined status at all.
+  const schema=JSON.stringify(input.data.tools);assert.ok(schema.includes('"known"'));assert.ok(!/"status":\{"anyOf":\[[^\]]*"unknown"/.test(schema),schema.slice(0,400));
+  calls++;
+  if(calls===1){
+   // A bare unknown must be refused, and the refusal must name the replacement statuses.
+   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'����',reason:'��ȷ��',sourceIds:[id]},...base}}},usage};
+  }
+  if(calls===2){const feedback=JSON.stringify(runtime.feedback?.error);assert.match(feedback,/status/);assert.match(feedback,/known|new|anyOf|constant/);sawUnknown=true;
+   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'�����',reason:'�״ν�����ǰ����',sourceIds:[id],regionChangeEvidence:['�׸�����']},...base}}},usage};}
+  return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:runtime.workingContext.recent[0].assessment.location.placeId,name:'�����',reason:'��������',sourceIds:[id],contextRefs:[runtime.workingContext.recent[0].observationId]},...base}}},usage};
+ };
+ try{
+  const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request);
+  service=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(r){return {summary:'�۲�'+r.id,details:['����']};}},{reasoner,windowMs:8000});
+  for(let i=0;i<4;i++)await service.observe(await row('u'+i,i*2000));await service.finishInput();
+  assert.equal(sawUnknown,true);assert.equal(service.progress().spatialStates,1);assert.ok(['new','known'].includes(service.latest()!.state.assessment.location.status));assert.notEqual(service.latest()!.state.assessment.location.status,'unknown');
+  const states=(await readFile(join(dir,'memory','spatial.sqlite')))?.length;assert.ok(states>0);
  }finally{await service?.close().catch(()=>{});await new Promise(r=>setTimeout(r,50));if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true,maxRetries:3,retryDelay:100});}
 });
