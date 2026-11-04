@@ -8,7 +8,7 @@ export function originalAssessment(state:StoredState){const a=structuredClone(st
 function toolAssessment(args:any){
  const a=structuredClone(args.assessment);for(const key of ['contextRefs','boundary','regionChangeEvidence','continuityCandidate'])if(a.location[key]===null)delete a.location[key];
  for(const key of ['placeUpdates','revisions'])if(a[key]===null)delete a[key];
- return {...a,memoryNotes:args.notes??[]};
+ return {...a,memoryNotes:args.notes??[],...args.rename?{placeRename:args.rename}:{}};
 }
 export function commitResult(state:StoredState){return {kind:'committed',observationId:state.observationId,version:state.version,location:state.assessment.location,visitId:state.visitId,memory:state.memoryReceipt,terminate:true};}
 export async function sessionBranch(path:string,tip:string|null){

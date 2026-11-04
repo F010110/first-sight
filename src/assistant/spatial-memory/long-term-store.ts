@@ -64,7 +64,8 @@ export class SpatialLongTermStore{
    const place=this.db.prepare('SELECT p.id,p.name,p.created_version FROM places p JOIN states s ON s.version=p.created_version WHERE p.id=? AND p.created_version<=? AND s.available_ms<=? AND s.at_ms<=?').get(id,version,knownAtMs,cutoffMs);if(!place)return null;
    const revisions=(this.db.prepare('SELECT p.version,p.raw FROM place_profile_revisions p JOIN states s ON s.version=p.version WHERE p.place_id=? AND p.version<=? AND s.available_ms<=? AND s.at_ms<=? ORDER BY p.version').all(id,version,knownAtMs,cutoffMs) as Array<{version:number;raw:string}>).map(r=>({version:r.version,...JSON.parse(r.raw)}));
    const latest=new Map<string,(typeof revisions)[number]>();for(const r of revisions)latest.set(r.key,r);
-   return {place,attributes:[...latest.values()],revisions,note:'Agent assertions with sources, not independent observations. Retracted values remain in history.'};
+    const nameRevision=latest.get('__place_name');
+    return {place:nameRevision?{...(place as object),name:nameRevision.value}:place,attributes:[...latest.values()].filter(u=>u.key!=='__place_name'),revisions:revisions.filter(u=>u.key!=='__place_name'),nameRevisions:revisions.filter(u=>u.key==='__place_name'),note:'Agent assertions with sources, not independent observations. Retracted values and original names remain in history.'};
   }
   /** Fixed organization, not an agent-generated tree. Pages contain full facts;
    * a window is the unit of location judgment, never four invented positions. */
@@ -110,7 +111,13 @@ export class SpatialLongTermStore{
     const facts=window?window.observations.at(-1)!.facts:this.facts(row.id);if(!facts&&!window)throw Error('No independent facts');
     const version=this.version()+1,assessment=structuredClone(a),location=assessment.location,locationDecision=a.location.status;
    if(location.status==='new'){location.placeId=randomUUID();location.status='known';this.db.prepare('INSERT INTO places VALUES(?,?,?)').run(location.placeId,location.name,version);}
-    if(location.status==='known'&&!this.db.prepare('SELECT id FROM places WHERE id=?').get(location.placeId))throw Error('Unknown persistent place');
+     if(location.status==='known'&&!this.db.prepare('SELECT id FROM places WHERE id=?').get(location.placeId))throw Error('Unknown persistent place');
+     let renamePrevious:string|null=null;
+     if(assessment.placeRename){
+      const rename=assessment.placeRename;
+      if(locationDecision!=='known'||!location.placeId||rename.name!==location.name||!rename.name.trim()||!rename.sourceIds.includes(row.id)||rename.sourceIds.some(id=>!this.facts(id)))throw Error('Place rename requires an existing confirmed identity and durable current evidence');
+      renamePrevious=(this.placeProfile(location.placeId,version-1,Number.MAX_SAFE_INTEGER,row.atMs) as any).place.name;
+     }
     if(location.continuityCandidate&&!this.db.prepare('SELECT id FROM places WHERE id=?').get(location.continuityCandidate.placeId))throw Error('Unknown provisional continuity place');
     const previous=revising?base:this.state(version-1),sameRecording=previous?this.observation(previous.observationId)?.recordingId===row.recordingId:false;
     let visitId:string|null=null,createdVisit=false;
@@ -127,16 +134,22 @@ export class SpatialLongTermStore{
       const text=n.text.trim();let plan=plannedNotes.get(text);if(!plan){const existing=this.db.prepare('SELECT id FROM place_notes WHERE place_id=? AND text=?').get(location.placeId,text) as {id:string}|undefined;plan={id:existing?.id??randomUUID(),text,sourceIds:new Set(),isNew:!existing};plannedNotes.set(text,plan);}for(const id of n.sourceIds)plan.sourceIds.add(id);
      }
      const state:StoredState={version,observationId:row.id,atMs:row.atMs,availableAtMs:this.now(),facts,assessment,locationDecision,visitId,provisionalVisitId,...window?{window:structuredClone(window)}:{},memoryReceipt:{operation:'add',version,placeId:location.placeId,visitId,createdPlace:locationDecision==='new',createdVisit,observationIds:members,grouped:location.placeId!==null,noteIds:[...plannedNotes.values()].map(n=>n.id),notesAdded:[...plannedNotes.values()].filter(n=>n.isNew).length,attributeRevisions:assessment.placeUpdates?.length??0}};
-   const context=makeCheckpoint(structuredClone(state));
+    if(assessment.placeRename)state.memoryReceipt!.renamedPlace=renamePrevious!==assessment.placeRename.name;
+    const context=makeCheckpoint(structuredClone(state));
     this.db.prepare('INSERT INTO states VALUES(?,?,?,?,?)').run(version,row.id,row.atMs,state.availableAtMs,JSON.stringify(state));
     if(location.placeId)this.db.prepare('INSERT INTO place_records VALUES(?,?,?,?)').run(version,location.placeId,visitId,row.atMs);
     for(const n of plannedNotes.values()){if(n.isNew)this.db.prepare('INSERT INTO place_notes VALUES(?,?,?,?)').run(n.id,location.placeId,n.text,version);for(const source of n.sourceIds)this.db.prepare('INSERT INTO place_note_sources VALUES(?,?,?)').run(n.id,version,source);}
     if(window&&!revising)this.db.prepare('UPDATE skipped_windows SET consumed_version=? WHERE consumed_version IS NULL AND at_ms<?').run(version,window.startMs);
     for(const update of assessment.placeUpdates??[]){
+     if(update.key==='__place_name')throw Error('Reserved place name revision key');
      if(!location.placeId||!update.sourceIds.length||update.sourceIds.some(id=>!this.facts(id)))throw Error('Place profile requires an existing place and durable facts');
      if(update.status==='retracted'&&!this.db.prepare('SELECT key FROM place_profile_revisions WHERE place_id=? AND key=?').get(location.placeId,update.key))throw Error('Cannot retract an absent place attribute');
-     this.db.prepare('INSERT INTO place_profile_revisions VALUES(?,?,?,?)').run(location.placeId,version,update.key,JSON.stringify(update));
-    }
+      this.db.prepare('INSERT INTO place_profile_revisions VALUES(?,?,?,?)').run(location.placeId,version,update.key,JSON.stringify(update));
+     }
+     if(assessment.placeRename){
+      const rename=assessment.placeRename;
+      if(state.memoryReceipt!.renamedPlace)this.db.prepare('INSERT INTO place_profile_revisions VALUES(?,?,?,?)').run(location.placeId,version,'__place_name',JSON.stringify({key:'__place_name',value:rename.name,status:'asserted',reason:rename.reason,sourceIds:rename.sourceIds,previousName:renamePrevious}));
+     }
     if(window&&!revising)for(const id of members)this.db.prepare('INSERT INTO window_members VALUES(?,?)').run(id,version);
     this.db.prepare('INSERT INTO checkpoints VALUES(?,?)').run(version,JSON.stringify(context));
     this.db.prepare('INSERT INTO checkpoint_bindings VALUES(?,?)').run(version,JSON.stringify({policy:'spatial-checkpoint-v2',inputIds:members,knowledgeCutoffMs:row.atMs,availableAtMs:state.availableAtMs,contextSHA256:createHash('sha256').update(JSON.stringify(context)).digest('hex'),sourceHashes:members.flatMap(id=>this.observation(id)!.views.map(v=>v.sha256)),compaction:context.summary??null}));

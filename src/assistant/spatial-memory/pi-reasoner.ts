@@ -51,13 +51,13 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   const tool=(name:string,description:string,parameters:any,run:(a:any,invocation:Invocation)=>Promise<any>):AgentHarnessTool<undefined>=>({name,label:name,description,replay:name==='memory_add'?'safe':'never',parameters:Type.Object({...parameters.properties,assessment:parameters.properties.assessment??Type.Unknown()}),execute:async(_id,args,_update,_context,invocation)=>{
    if(recovering&&name==='memory_add'){
     const memo=await invocation.getMemo('spatial-commit') as any,state=recoveryStates.get(memo?.version);if(!state)throw Error('No durable state for pending Pi effect');
-    const a=args as any;verifyCommitMemo(memo,state,{...a.assessment,memoryNotes:a.notes??[]},session.metadata.id);
+    const a=args as any;verifyCommitMemo(memo,state,{...a.assessment,memoryNotes:a.notes??[],...a.rename?{placeRename:a.rename}:{}},session.metadata.id);
     return {content:asText(commitResult(state)),details:{recoveredFromSQLite:true},terminate:true};
    }
   const input=requireCurrent(),a=args as any;
    if(name!=='memory_add'){
    const assessment=validateAssessment(a.assessment,input.row.id,inspected);
-     if(assessment.relations.length||assessment.revisions?.length||assessment.placeUpdates?.length||assessment.memoryNotes?.length)throw Error('Interim assessment cannot commit relations/revisions/place updates/notes');
+     if(assessment.relations.length||assessment.revisions?.length||assessment.placeUpdates?.length||assessment.memoryNotes?.length||assessment.placeRename)throw Error('Interim assessment cannot commit relations/revisions/place updates/notes/rename');
    input.evaluate?.(assessment,{inspected,delivered:new Set(delivered.keys())});input.context.location=assessment.location;
   }
    const result=await run(a,invocation);return {content:asText(result),details:{},...(result&&typeof result==='object'&&result.terminate===true?{terminate:true}:{})};}});
@@ -108,8 +108,8 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   relations:Type.Array(Type.Object({kind:Type.Union([Type.Literal('same-facility'),Type.Literal('different-region')]),referenceId:Type.String(),reason:Type.String({minLength:1,maxLength:1200}),sourceIds:Type.Array(Type.String(),{minItems:2,maxItems:8})}),{maxItems:8}),
   revisions:Type.Optional(Type.Array(Type.Object({observationId:Type.String(),location:revisionLocation}),{maxItems:3}))
  });
-  const record=tool('memory_add','Add current observations to spatial memory and end this window. Supply the location assessment and useful notes {text,sourceIds}. The database creates/chooses the place, visit and chronological window links automatically; do not design a tree, table, attribute key or ID. New place: capture distinguishing supported features. Repeated facts: notes may be empty. known requires contextRefs or inspected historical place evidence.',Type.Object({assessment:assessmentSchema,notes:Type.Optional(Type.Array(Type.Object({text:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}),{maxItems:6}))}),async(a,invocation)=>{
-   const input=requireCurrent(),assessment=validateAssessment({...a.assessment,memoryNotes:a.notes??[]} as Assessment,input.row.id,inspected);
+  const record=tool('memory_add','Atomically add a complete-window assessment and sourced notes. The database manages place/visit/IDs. Optional rename:{name,reason,sourceIds} updates the name of a confirmed known place without changing its identity or past records; match location.name and include current source. Do not rename on unknown/boundary/new. A persistent place may cover continuous station interior; use an accurate evolving name. A visible old landmark does not establish current occupancy. Never copy historical features into current reasons.',Type.Object({assessment:assessmentSchema,notes:Type.Optional(Type.Array(Type.Object({text:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}),{maxItems:6})),rename:Type.Optional(Type.Object({name:Type.String({minLength:1,maxLength:240}),reason:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}))}),async(a,invocation)=>{
+   const input=requireCurrent(),assessment=validateAssessment({...a.assessment,memoryNotes:a.notes??[],...a.rename?{placeRename:a.rename}:{}} as Assessment,input.row.id,inspected);
    // A changed scene is not a new place until recalled older places are checked.
    // Perform that check on the agent's first NEW attempt and return the images;
    // this avoids relying on the model to remember a separate inspect call, while

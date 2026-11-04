@@ -8,8 +8,9 @@ export type Relation={kind:'same-facility'|'different-region';referenceId:string
 export type SpatialRevision={observationId:string;location:Location};
 export type PlaceUpdate={key:string;value:string;status:'asserted'|'uncertain'|'retracted';reason:string;sourceIds:string[]};
 export type MemoryNote={text:string;sourceIds:string[]};
-export type MemoryAddReceipt={operation:'add';version:number;placeId:string|null;visitId:string|null;createdPlace:boolean;createdVisit:boolean;observationIds:string[];grouped:boolean;noteIds:string[];notesAdded:number;attributeRevisions:number};
-export type Assessment={location:Location;hypotheses:string[];unresolved:string[];relations:Relation[];revisions?:SpatialRevision[];placeUpdates?:PlaceUpdate[];memoryNotes?:MemoryNote[]};
+export type PlaceRename={name:string;reason:string;sourceIds:string[]};
+export type MemoryAddReceipt={operation:'add';version:number;placeId:string|null;visitId:string|null;createdPlace:boolean;createdVisit:boolean;observationIds:string[];grouped:boolean;noteIds:string[];notesAdded:number;attributeRevisions:number;renamedPlace?:boolean};
+export type Assessment={location:Location;hypotheses:string[];unresolved:string[];relations:Relation[];revisions?:SpatialRevision[];placeUpdates?:PlaceUpdate[];memoryNotes?:MemoryNote[];placeRename?:PlaceRename};
 export type SkippedWindow={startMs:number;endExclusiveMs:number;recordingId?:string;observations:Array<{id:string;atMs:number;facts:Facts}>;reason:'busy-superseded'};
 export type SpatialWindow={startMs:number;endExclusiveMs:number;observations:Array<{id:string;atMs:number;facts:Facts|null}>;missingFactIds?:string[];revisionOfVersion?:number;skippedBefore?:SkippedWindow[]};
 export type StoredState={version:number;observationId:string;atMs:number;availableAtMs:number;facts:Facts|null;assessment:Assessment;locationDecision?:Location['status'];visitId:string|null;provisionalVisitId?:string|null;window?:SpatialWindow;memoryReceipt?:MemoryAddReceipt};
@@ -62,10 +63,17 @@ export function validateAssessment(a:Assessment,current:string,inspected:Readonl
   if(!Array.isArray(a.revisions)||a.revisions.length>3||new Set(a.revisions.map(r=>r.observationId)).size!==a.revisions.length)throw Error('Invalid revision list');
   for(const revision of a.revisions){if(revision.observationId===current||!inspected.has(revision.observationId)||!revision.location.sourceIds.includes(current)||revision.location.status==='new')throw Error('Historical reassignment requires current/target evidence and an existing identity or unknown');validateAssessment({location:revision.location,hypotheses:[],unresolved:[],relations:[]},revision.observationId,inspected);}
   }
-  if(a.placeUpdates!==undefined){
+   if(a.placeUpdates!==undefined){
+    if(Array.isArray(a.placeUpdates)&&a.placeUpdates.some(u=>u?.key==='__place_name'))throw Error('placeUpdates.key: __place_name is reserved; use memory_add.rename');
    if(!Array.isArray(a.placeUpdates)||a.placeUpdates.length>8||new Set(a.placeUpdates.map(u=>u.key)).size!==a.placeUpdates.length||a.placeUpdates.length>0&&l.status==='unknown')throw Error('Place updates require a confirmed current place and unique keys');
    for(const u of a.placeUpdates)if(typeof u.key!=='string'||!u.key.trim()||u.key.length>120||typeof u.value!=='string'||!u.value.trim()||u.value.length>1200||!['asserted','uncertain','retracted'].includes(u.status)||typeof u.reason!=='string'||!u.reason.trim()||u.reason.length>800||!Array.isArray(u.sourceIds)||!u.sourceIds.length||new Set(u.sourceIds).size!==u.sourceIds.length||u.sourceIds.some(id=>!inspected.has(id))||!u.sourceIds.some(id=>l.sourceIds.includes(id)))throw Error('Invalid or undelivered place profile evidence');
-  }
+   }
+   if(a.placeRename!==undefined){
+    const r=a.placeRename;
+    if(l.status!=='known'||typeof r.name!=='string'||!r.name.trim()||r.name.length>240||r.name!==l.name)throw Error('placeRename.name: requires a confirmed existing place and a nonempty name matching location.name (max 240 characters)');
+    if(typeof r.reason!=='string'||!r.reason.trim()||r.reason.length>800)throw Error('placeRename.reason: required evidence-backed explanation, max 800 characters');
+    if(!Array.isArray(r.sourceIds)||!r.sourceIds.length||r.sourceIds.length>12||new Set(r.sourceIds).size!==r.sourceIds.length||r.sourceIds.some(id=>!inspected.has(id))||!r.sourceIds.includes(current))throw Error('placeRename.sourceIds: must include current observation and only actually inspected sources');
+   }
   if(a.memoryNotes!==undefined){
    if(!Array.isArray(a.memoryNotes)||a.memoryNotes.length>6||a.memoryNotes.length>0&&l.status==='unknown')throw Error('Memory notes require a confirmed place');
    for(const n of a.memoryNotes)if(typeof n.text!=='string'||!n.text.trim()||n.text.length>800||!Array.isArray(n.sourceIds)||!n.sourceIds.length||n.sourceIds.length>12||new Set(n.sourceIds).size!==n.sourceIds.length||n.sourceIds.some(id=>!inspected.has(id)))throw Error('Memory note needs delivered original evidence');

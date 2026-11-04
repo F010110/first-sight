@@ -7,6 +7,30 @@ import {DatabaseSync} from 'node:sqlite';
 import {SpatialLongTermStore} from './long-term-store.js';
 import {validateAssessment,type Assessment,type StoredState,type WorkingContext} from './contracts.js';
 
+test('place rename preserves identity and old names, observes cutoffs, deduplicates and rolls back',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'opencode/place-rename-'));let now=100;const store=new SpatialLongTermStore(root,()=>now);
+ const checkpoint=(s:StoredState):WorkingContext=>({current:{id:s.observationId,atMs:s.atMs},location:s.assessment.location,recent:[s],anchors:[],retrieved:[]});
+ const make=(id:string,placeId:string|null,name:string,rename=false):Assessment=>({location:{status:placeId?'known':'new',placeId,name,reason:'visible current region',sourceIds:[id]},hypotheses:[],unresolved:[],relations:[],...rename?{placeRename:{name,reason:'current stairs confirm wider station interior',sourceIds:[id]}}:{}});
+ try{
+  for(const [i,id] of ['a','b','c','d'].entries()){store.archive({id,atMs:i*2000,views:[]});store.saveFacts(id,{summary:'station',details:['current region']});}
+  const a=store.add(store.observation('a')!,make('a',null,'station platform'),checkpoint),id=a.assessment.location.placeId!;
+  now=200;const b=store.add(store.observation('b')!,validateAssessment(make('b',id,'station interior',true),'b',new Set(['b'])),s=>{assert.equal(s.memoryReceipt!.renamedPlace,true);return checkpoint(s);});
+  assert.equal(b.assessment.location.placeId,id);assert.equal(b.visitId,a.visitId);assert.equal(b.memoryReceipt!.createdPlace,false);
+  assert.equal(store.placeProfile(id,1)!.place.name,'station platform');
+  assert.equal(store.placeProfile(id,2,150)!.place.name,'station platform');
+  assert.equal(store.placeProfile(id,2,Number.MAX_SAFE_INTEGER,1000)!.place.name,'station platform');
+  assert.equal(store.placeProfile(id)!.place.name,'station interior');assert.equal(store.placeMemory(id)!.place.name,'station interior');
+  assert.equal(store.placeProfile(id)!.nameRevisions.length,1);assert.equal(store.placeProfile(id)!.attributes.length,0);
+  assert.equal(store.state(1)!.assessment.location.name,'station platform');
+  now=300;const c=store.add(store.observation('c')!,make('c',id,'station interior',true),checkpoint);assert.equal(c.memoryReceipt!.renamedPlace,false);assert.equal(store.placeProfile(id)!.nameRevisions.length,1);
+  assert.throws(()=>store.add(store.observation('d')!,make('d',id,'renamed again',true),()=>{throw Error('rollback rename');}),/rollback rename/);
+  assert.equal(store.version(),3);assert.equal(store.placeProfile(id)!.place.name,'station interior');assert.equal(store.placeProfile(id)!.nameRevisions.length,1);
+  const db=new DatabaseSync(join(root,'spatial.sqlite'),{readOnly:true});try{assert.equal(db.prepare('SELECT name FROM places WHERE id=?').get(id)!.name,'station platform');}finally{db.close();}
+  for(const bad of [make('d',null,'new',true),{...make('d',id,'different',true),placeRename:{name:'mismatch',reason:'source',sourceIds:['d']}},{...make('d',id,'different',true),placeRename:{name:'different',reason:'source',sourceIds:['a']}}])assert.throws(()=>validateAssessment(bad,'d',new Set(['d'])),/placeRename/);
+  const reserved=make('d',id,'station interior');reserved.placeUpdates=[{key:'__place_name',value:'bypass',status:'asserted',reason:'source',sourceIds:['d']}];assert.throws(()=>validateAssessment(reserved,'d',new Set(['d'])),/reserved/);
+ }finally{store.close();await rm(root,{recursive:true,force:true});}
+});
+
 test('agent place attributes append atomically, preserve history and respect version/time cutoffs',async()=>{
  const root=await mkdtemp(join(tmpdir(),'opencode/place-profile-'));let now=100;const store=new SpatialLongTermStore(root,()=>now);
  const checkpoint=(s:StoredState):WorkingContext=>({current:{id:s.observationId,atMs:s.atMs},location:s.assessment.location,recent:[s],anchors:[],retrieved:[]});

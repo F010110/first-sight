@@ -14,7 +14,8 @@ export async function describeSpatialMemory(runArg){
    const visits=db.prepare('SELECT * FROM visits WHERE place_id=? ORDER BY start_version,id').all(place.id).map(visit=>({id:visit.id,startVersion:visit.start_version,
     windows:db.prepare('SELECT s.raw FROM place_records r JOIN states s ON s.version=r.version WHERE r.place_id=? AND r.visit_id=? ORDER BY r.at_ms,r.version').all(place.id,visit.id).map(r=>JSON.parse(r.raw))}));
    const notes=db.prepare('SELECT id,text,created_version FROM place_notes WHERE place_id=? ORDER BY created_version,id').all(place.id).map(note=>({...note,sources:db.prepare('SELECT version,source_id FROM place_note_sources WHERE note_id=? ORDER BY version,source_id').all(note.id)}));
-   return {id:place.id,name:place.name,createdVersion:place.created_version,visits,notes};
+    const nameRevisions=db.prepare("SELECT version,raw FROM place_profile_revisions WHERE place_id=? AND key='__place_name' ORDER BY version").all(place.id).map(r=>({version:r.version,...JSON.parse(r.raw)}));
+    return {id:place.id,name:nameRevisions.at(-1)?.value??place.name,originalName:place.name,nameRevisions,createdVersion:place.created_version,visits,notes};
   });
   skipped=db.prepare('SELECT raw,consumed_version FROM skipped_windows ORDER BY at_ms').all().map(r=>({window:JSON.parse(r.raw),deliveredAtVersion:r.consumed_version}));
   receipts=db.prepare('SELECT raw FROM states ORDER BY version').all().map(r=>JSON.parse(r.raw).memoryReceipt);
