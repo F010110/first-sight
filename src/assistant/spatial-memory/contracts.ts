@@ -37,7 +37,12 @@ export function validateFacts(value:Facts):Facts{
  return structuredClone(value);
 }
 export function validateAssessment(a:Assessment,current:string,inspected:ReadonlySet<string>){
- const l=a?.location;
+  const l=a?.location;
+  if(!l)throw Error('Missing location: assessment.location is a required object');
+  if(!Array.isArray(l.sourceIds))throw Error('assessment.location.sourceIds: required array of inspected observation IDs');
+  const unavailable=l.sourceIds.filter(id=>!inspected.has(id));
+  if(unavailable.length)throw Error(`assessment.location.sourceIds: undelivered observation IDs ${JSON.stringify(unavailable)}; inspected IDs are ${JSON.stringify([...inspected])}. Inspect sources before citing them, or reassess using delivered evidence.`);
+  if(!l.sourceIds.includes(current))throw Error(`assessment.location.sourceIds: must include current observation ID ${JSON.stringify(current)}`);
  if(!l||!['new','known','unknown'].includes(l.status)||typeof l.name!=='string'||l.name.length>240||typeof l.reason!=='string'||!l.reason.trim()||l.reason.length>1600||!Array.isArray(l.sourceIds)||!l.sourceIds.includes(current)||new Set(l.sourceIds).size!==l.sourceIds.length||l.sourceIds.some(id=>!inspected.has(id)))throw Error('Missing location or undelivered spatial evidence');
  if(l.status==='known'?(typeof l.placeId!=='string'||!l.placeId):l.placeId!==null)throw Error('Invalid location identity');
  if(l.status!=='unknown'&&!l.name.trim())throw Error('Known/new location needs a human-readable name');
@@ -47,7 +52,12 @@ export function validateAssessment(a:Assessment,current:string,inspected:Readonl
    if(l.continuityCandidate!==undefined&&(l.status!=='unknown'||l.boundary!==undefined||!l.continuityCandidate.placeId||typeof l.continuityCandidate.placeId!=='string'||typeof l.continuityCandidate.referenceId!=='string'||!l.continuityCandidate.referenceId||typeof l.continuityCandidate.reason!=='string'||!l.continuityCandidate.reason.trim()||l.continuityCandidate.reason.length>400))throw Error('Continuity candidate is an explicitly uncertain association, not a known location or boundary');
  for(const list of [a.hypotheses,a.unresolved])if(!Array.isArray(list)||list.length>8||list.some(v=>typeof v!=='string'||!v.trim()||v.length>800))throw Error('Invalid active spatial state');
  if(!Array.isArray(a.relations)||a.relations.length>8)throw Error('Invalid relations');
- for(const r of a.relations)if(!['same-facility','different-region'].includes(r.kind)||r.referenceId===current||!inspected.has(r.referenceId)||typeof r.reason!=='string'||!r.reason.trim()||!Array.isArray(r.sourceIds)||!r.sourceIds.includes(current)||!r.sourceIds.includes(r.referenceId)||r.sourceIds.some(id=>!inspected.has(id)))throw Error('Uninspected relation evidence');
+  for(const [i,r] of a.relations.entries()){
+   if(!['same-facility','different-region'].includes(r.kind))throw Error(`relations[${i}].kind: expected same-facility or different-region; received ${JSON.stringify(r.kind)}`);
+   if(r.referenceId===current||!inspected.has(r.referenceId))throw Error(`relations[${i}].referenceId: expected an inspected HISTORICAL OBSERVATION ID, not a placeId. Received ${JSON.stringify(r.referenceId)}. Available inspected historical observation IDs: ${JSON.stringify([...inspected].filter(id=>id!==current))}. Reassess the relation and correct this field; do not repeat unchanged arguments.`);
+   if(typeof r.reason!=='string'||!r.reason.trim())throw Error(`relations[${i}].reason: expected nonempty evidence-backed explanation`);
+   if(!Array.isArray(r.sourceIds)||!r.sourceIds.includes(current)||!r.sourceIds.includes(r.referenceId)||r.sourceIds.some(id=>!inspected.has(id)))throw Error(`relations[${i}].sourceIds: must include current observation ${current} and reference observation ${r.referenceId}, using only inspected IDs ${JSON.stringify([...inspected])}; received ${JSON.stringify(r.sourceIds)}`);
+  }
   if(a.revisions!==undefined){
   if(!Array.isArray(a.revisions)||a.revisions.length>3||new Set(a.revisions.map(r=>r.observationId)).size!==a.revisions.length)throw Error('Invalid revision list');
   for(const revision of a.revisions){if(revision.observationId===current||!inspected.has(revision.observationId)||!revision.location.sourceIds.includes(current)||revision.location.status==='new')throw Error('Historical reassignment requires current/target evidence and an existing identity or unknown');validateAssessment({location:revision.location,hypotheses:[],unresolved:[],relations:[]},revision.observationId,inspected);}

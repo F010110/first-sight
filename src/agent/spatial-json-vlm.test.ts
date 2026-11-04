@@ -1,18 +1,17 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';import {resolve,join} from 'node:path';import {createHash} from 'node:crypto';
 import {spatialJsonVlm} from './spatial-json-vlm.js';
-test('extended image coverage is opt-in and isolated to the evaluation identity lane',async()=>{
+test('production image requests are not capped at twelve; evidence isolation still applies',async()=>{
  const root=await mkdtemp(resolve('cam/local/evaluation-images-')),path=join(root,'original.png'),bytes=Buffer.from([137,80,78,71,13,10,26,10,1]);await writeFile(path,bytes);
  const oldFetch=globalThis.fetch,key=process.env.QWEN_API_KEY,base=process.env.QWEN_BASE_URL;let calls=0;
  process.env.QWEN_API_KEY='mock';process.env.QWEN_BASE_URL='https://fixture.invalid';
  globalThis.fetch=async()=>{calls++;return new Response(JSON.stringify({usage:{prompt_tokens:1,completion_tokens:1},choices:[{finish_reason:'stop',message:{content:'{"ok":true}'}}]}));};
  const input={phase:'identity' as const,prompt:'JSON review',data:{role:'spatial-evaluation-review',current:{id:'current',atMs:1}},images:Array.from({length:15},()=>({id:'current',direction:'front',path,sha256:createHash('sha256').update(bytes).digest('hex')}))};
  try{
-  await assert.rejects(spatialJsonVlm(join(root,'default'))(input),/image limit/);
-  await assert.rejects(spatialJsonVlm(join(root,'wrong-role'),2,1,false,1000,{extendedEvaluationImages:true})({...input,data:{...input.data,role:'inference'}}),/image limit/);
-  await assert.rejects(spatialJsonVlm(join(root,'perception'),2,1,false,1000,{extendedEvaluationImages:true})({...input,phase:'perception'}),/image limit/);
-  assert.equal(calls,0);
-  assert.deepEqual(await spatialJsonVlm(join(root,'review'),2,1,false,1000,{extendedEvaluationImages:true})(input),{ok:true});assert.equal(calls,1);
+   assert.deepEqual(await spatialJsonVlm(join(root,'default'))(input),{ok:true});
+   assert.deepEqual(await spatialJsonVlm(join(root,'production'))({...input,data:{...input.data,role:'inference'}}),{ok:true});
+   await assert.rejects(spatialJsonVlm(join(root,'perception'))({...input,phase:'perception'}),/cannot receive history/);
+   assert.equal(calls,2);
  }finally{globalThis.fetch=oldFetch;if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;if(base===undefined)delete process.env.QWEN_BASE_URL;else process.env.QWEN_BASE_URL=base;await rm(root,{recursive:true,force:true});}
 });
 test('separated provider sends no chat history, verifies original hashes and accounts capped requests',async()=>{

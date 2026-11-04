@@ -74,7 +74,7 @@ test('text-only investigation is explicit and cannot silently remove perception 
  const root=await mkdtemp(join(tmpdir(),'text-only-investigation-'));
  try{
   const input={prompt:'Return JSON',data:{current:{id:'a'}},images:[]};
-  await assert.rejects(spatialJsonVlm(join(root,'identity'),1,.03)({...input,phase:'identity'}),/needs 1–12 images/);
+  await assert.rejects(spatialJsonVlm(join(root,'identity'),1,.03)({...input,phase:'identity'}),/needs images/);
   await assert.rejects(spatialJsonVlm(join(root,'perception'),1,.03)({...input,phase:'perception',textOnlyIdentity:true}),/cannot disable perception images/);
  }finally{await rm(root,{recursive:true,force:true});}
 });

@@ -7,6 +7,7 @@ import {accountedPiProvider} from '../harness/provider-boundary.js';
 import type {SpatialJsonImage,SpatialJsonRequest} from '../../agent/spatial-json-vlm.js';
 import {validateAssessment,type Assessment,type JudgeInput,type SpatialReasoner,type HistoryRecord,type StoredState} from './contracts.js';
 import {spatialStateHead} from './context-projection.js';
+import {requireDeliveredIds} from './source-access.js';
 import {digest,commitResult,sessionBranch,verifiedCommitEntry,verifyCommitMemo} from './pi-checkpoint.js';
 
 const skillName='spatial-memory-v2';
@@ -46,7 +47,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   },onRequest:()=>{if(recovering)throw Error('Checkpoint recovery is forbidden from invoking a model');if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);if(++turnRequests>8||++requests>(options.maxRequests??8000))throw Error('Spatial Pi request guard exhausted');}});
  const requireCurrent=()=>{if(!current)throw Error('No active spatial judgment');return current;};
  const deliver=(record:HistoryRecord)=>{delivered.set(record.observationId,record);for(const member of record.window?.observations??[])delivered.set(member.id,record);};
- const checkDelivered=(ids:unknown,max:number)=>{if(!Array.isArray(ids)||!ids.length||ids.length>max||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=='string'||!delivered.has(id)))throw Error('Use 1-'+max+' distinct previously delivered observation IDs');return ids as string[];};
+  const checkDelivered=(ids:unknown,max:number,tool:string)=>requireDeliveredIds(ids,max,new Set(delivered.keys()),tool);
   const tool=(name:string,description:string,parameters:any,run:(a:any,invocation:Invocation)=>Promise<any>):AgentHarnessTool<undefined>=>({name,label:name,description,replay:name==='memory_add'?'safe':'never',parameters:Type.Object({...parameters.properties,assessment:parameters.properties.assessment??Type.Unknown()}),execute:async(_id,args,_update,_context,invocation)=>{
    if(recovering&&name==='memory_add'){
     const memo=await invocation.getMemo('spatial-commit') as any,state=recoveryStates.get(memo?.version);if(!state)throw Error('No durable state for pending Pi effect');
@@ -75,13 +76,12 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   return lastToolResult;
  });
  const read=tool('memory_read','Read full facts for previously delivered records.',Type.Object({ids:Type.Array(Type.String(),{minItems:1,maxItems:12})}),async a=>{
-  const ids=checkDelivered(a.ids,12),records=ids.map(id=>delivered.get(id)!);
+   const ids=checkDelivered(a.ids,12,'memory_read'),records=ids.map(id=>delivered.get(id)!);
   lastToolResult={kind:'read',requestedSourceIds:ids,records,note:'Member source IDs return their containing window record, not a per-frame position'};return lastToolResult;
  });
  const inspect=tool('memory_inspect','Inspect original historical images for previously delivered records; max three.',Type.Object({ids:Type.Array(Type.String(),{minItems:1,maxItems:3})}),async a=>{
-  const input=requireCurrent(),ids=checkDelivered(a.ids,3),originals=await input.inspect(ids);
+   const input=requireCurrent(),ids=checkDelivered(a.ids,3,'memory_inspect'),originals=await input.inspect(ids);
   images=[...input.row.views,...originals];
-  if(images.length>12)throw Error('Inspection would exceed 12 images');
   const currentWindowIds=input.window?.observations.map(o=>o.id)??[input.row.id];
    inspected=new Set([...currentWindowIds,...ids]);
   lastToolResult={kind:'inspect',requestedSourceIds:ids,records:ids.map(id=>delivered.get(id)!),imageCount:originals.length,note:'Current-window member IDs remain valid evidence for this window; earlier historical images not inspected now are no longer citable. Not a new spatial judgment'};
@@ -118,7 +118,6 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    if(unchecked.length){
     const ids=unchecked.map(c=>c.matchedObservationId),originals=await input.inspect(ids);
     images=[...input.row.views,...originals];
-    if(images.length>12)throw Error('Revisit inspection would exceed 12 images');
     const currentWindowIds=input.window?.observations.map(o=>o.id)??[input.row.id];
     inspected=new Set([...currentWindowIds,...ids]);
     lastToolResult={kind:'revisit-inspection',candidates:unchecked.map(c=>({placeId:c.placeId,name:c.name,observationId:c.matchedObservationId,bestInliers:c.bestInliers})),imageCount:originals.length,note:'Recalled older-place images are now supplied. Re-evaluate whether this is a continuation/revisit or a genuinely new place; no identity was accepted automatically.'};

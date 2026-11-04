@@ -36,9 +36,7 @@ export function spatialJsonVlm(root:string,maxCalls=96,maxEstimatedUSD=.4,resume
   try{
    const textOnly=input.textOnlyIdentity===true&&input.phase==='identity';
    if(input.textOnlyIdentity===true&&input.phase!=='identity')throw Error('Text-only identity opt-in cannot disable perception images');
-    const evaluationImages=options.extendedEvaluationImages===true&&input.phase==='identity'&&(input.data as any)?.role==='spatial-evaluation-review';
-    if(!input.images.length&&!textOnly)throw Error('Separated request needs 1–12 images or explicit text-only identity opt-in');
-    if(input.images.length>(evaluationImages?24:12))throw Error('Separated request image limit exceeded (12 normally; 24 only for explicit isolated evaluation)');
+     if(!input.images.length&&!textOnly)throw Error('Separated request needs images or explicit text-only identity opt-in');
    const data=input.data as any;
    if(!data?.current||typeof data.current.id!=='string')throw Error('Separated request needs exact current ID');
     if(input.phase==='perception'&&(Object.keys(data).some(key=>!['current','feedback',...(input.windowSources?['observations']:[])].includes(key))||input.images.some(image=>input.windowSources?!input.windowSources.some(s=>s.id===image.id):image.id!==data.current.id)))throw Error('Independent perception cannot receive history, identities or reference images');

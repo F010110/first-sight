@@ -15,8 +15,10 @@ export function accountedPiProvider(options:{request:(r:SpatialJsonRequest)=>Pro
     streamOptions?.signal?.throwIfAborted();
     if(!context.tools?.length)throw Error('Unrouted summary request: use the application compaction skill boundary; no fallback provider call was sent');
     options.onRequest?.();const view=options.view();
-    const messages=context.messages.map(m=>({role:m.role,...m.role==='toolResult'?{toolName:m.toolName,isError:m.isError}:{},content:typeof m.content==='string'?m.content:m.content.filter(b=>b.type!=='thinking'&&b.type!=='image')}));
-    const response=await options.request({phase:'identity',prompt:context.systemPrompt??'',data:{current:view.current,role:'pi-harness',runtimeContext:view.runtimeContext,messages,tools:context.tools,transport:{singleToolArgumentsAllowed:options.singleToolArguments===true}},images:view.images,...view.windowSources?{windowSources:view.windowSources}:{},textOnlyIdentity:view.images.length===0,includeUsage:true}) as any;
+     const messages=context.messages.map(m=>({role:m.role,...m.role==='toolResult'?{toolName:m.toolName,isError:m.isError}:{},content:typeof m.content==='string'?m.content:m.content.filter(b=>b.type!=='thinking'&&b.type!=='image')}));
+     const latest=messages.at(-1),feedback=latest?.role==='toolResult'&&'isError' in latest&&latest.isError?{toolName:'toolName' in latest?latest.toolName:null,error:latest.content,instruction:'The previous tool call failed and did not commit. Read the exact field error, reassess, and submit corrected arguments. Do not repeat the same invalid call.'}:null;
+     const runtimeContext={...(view.runtimeContext as object),...(feedback?{feedback}:{})};
+     const response=await options.request({phase:'identity',prompt:(context.systemPrompt??'')+(feedback?'\nLATEST TOOL ERROR — correct before continuing:\n'+JSON.stringify(feedback):''),data:{current:view.current,role:'pi-harness',runtimeContext,messages,tools:context.tools,transport:{singleToolArgumentsAllowed:options.singleToolArguments===true}},images:view.images,...view.windowSources?{windowSources:view.windowSources}:{},textOnlyIdentity:view.images.length===0,includeUsage:true}) as any;
     streamOptions?.signal?.throwIfAborted();
     const wire=response.output??response,usage=response.usage;
     // Explicit single-tool wire format: wrapping arguments adds no semantic fields,

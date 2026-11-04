@@ -240,7 +240,7 @@ export class SpatialMemoryService{
         readPlace:(id,cursor,noteCursor)=>this.store.placeMemory(id,this.store.version(),this.options.now(),cursor,noteCursor,(window?.startMs??row.atMs)-0.000001),
         inspect:async ids=>{
         const originals=ids.map(id=>{if(!byId.has(id)&&!skippedSourceIds.has(id))throw Error('Inspection source outside committed history or explicitly skipped inputs');return this.store.observation(id)!;});
-       const images=originals.flatMap(o=>o.views);if(images.length>9)throw Error('Inspection image limit');
+       const images=originals.flatMap(o=>o.views);
        for(const image of images)if(createHash('sha256').update(await readFile(image.path)).digest('hex')!==image.sha256)throw Error('Inspection source changed');
         this.working.deliver(ids.flatMap(id=>byId.has(id)?[byId.get(id)!]:[]));return structuredClone(images);
       },
@@ -311,8 +311,8 @@ export class SpatialMemoryService{
  }
   private validateIdentity(assessment:Assessment,byId:Map<string,HistoryRecord>,contextSources:Array<{observationId:string;assessment:{location:{placeId:string|null}}}>){
   const contextSupport=assessment.location.contextRefs?.some(id=>contextSources.some(s=>s.observationId===id&&s.assessment.location.placeId===assessment.location.placeId));
-  if(assessment.location.contextRefs?.some(id=>!contextSources.some(s=>s.observationId===id)))throw Error('Undelivered working context reference');
-   if(assessment.location.status==='known'&&!contextSupport&&!assessment.location.sourceIds.some(id=>byId.get(id)?.location.placeId===assessment.location.placeId))throw Error('Known identity requires delivered working context or inspected historical evidence of that place');
+   if(assessment.location.contextRefs?.some(id=>!contextSources.some(s=>s.observationId===id)))throw Error(`Undelivered working context reference: location.contextRefs contains IDs outside current workingContext. Allowed contextRefs: ${JSON.stringify(contextSources.map(s=>s.observationId))}. Historical images read with memory_inspect belong in location.sourceIds, NOT contextRefs. Received contextRefs=${JSON.stringify(assessment.location.contextRefs)}. Reassess using inspected historical evidence or valid context references.`);
+    if(assessment.location.status==='known'&&!contextSupport&&!assessment.location.sourceIds.some(id=>byId.get(id)?.location.placeId===assessment.location.placeId))throw Error(`Known identity requires delivered working context or inspected historical evidence of that place: location.sourceIds must cite a historical OBSERVATION ID supporting location.placeId=${JSON.stringify(assessment.location.placeId)}, as well as the current observation. Historical source candidates for this place: ${JSON.stringify([...byId.entries()].filter(([,r])=>r.location.placeId===assessment.location.placeId).map(([id])=>id))}. Inspect a supporting historical observation first, then include its ID in location.sourceIds; merely inspecting without citing it is insufficient. Do not put an expired historical reference into contextRefs.`);
    for(const revision of assessment.revisions??[])if(revision.location.status==='known'&&!revision.location.sourceIds.some(id=>byId.get(id)?.location.placeId===revision.location.placeId))throw Error('Revised identity requires inspected evidence of the destination place');
   }
   private commitValidated(row:Observation,assessment:Assessment,inspected:ReadonlySet<string>,byId:Map<string,HistoryRecord>,contextSources:Array<{observationId:string;assessment:{location:{placeId:string|null}}}>,window?:SpatialWindow){
