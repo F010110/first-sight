@@ -39,12 +39,12 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   session=await repo.open(metadata,BACKGROUND_CONTEXT);
  }else session=await repo.create({cwd:process.cwd()},BACKGROUND_CONTEXT);
-  let current:JudgeInput|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null,contextChars=recoveredContextChars;
+  let current:JudgeInput|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null,contextChars=recoveredContextChars,historicalInspectionUsed=false;
   let recovering=false;const recoveryStates=new Map<number,StoredState>();
  const provider=accountedPiProvider({request,singleToolArguments:false,view:()=>{
   if(!current)throw Error('No active spatial judgment');
    return {current:{id:current.row.id,atMs:current.row.atMs},runtimeContext:{mode:'spatial-memory-v2',currentObservation:{id:current.row.id,atMs:current.row.atMs},...current.window?{window:current.window}:{facts:current.facts},previousRegion:current.previousRegion,revisit:current.revisit??null,workingContext:spatialStateHead(current.context),deliveredIds:[...delivered.keys()],inspectedIds:[...inspected],lastToolResult,feedback:current.feedback??null},images,...current.window?{windowSources:current.window.observations.filter(o=>images.some(v=>v.id===o.id)).map(o=>({id:o.id,atMs:o.atMs}))}:{}};
-  },onRequest:()=>{if(recovering)throw Error('Checkpoint recovery is forbidden from invoking a model');if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);if(++turnRequests>8||++requests>(options.maxRequests??8000))throw Error('Spatial Pi request guard exhausted');}});
+  },onRequest:()=>{if(recovering)throw Error('Checkpoint recovery is forbidden from invoking a model');if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);if(++turnRequests>10||++requests>(options.maxRequests??8000))throw Error('Spatial Pi request guard exhausted');}});
  const requireCurrent=()=>{if(!current)throw Error('No active spatial judgment');return current;};
  const deliver=(record:HistoryRecord)=>{delivered.set(record.observationId,record);for(const member of record.window?.observations??[])delivered.set(member.id,record);};
   const checkDelivered=(ids:unknown,max:number,tool:string)=>requireDeliveredIds(ids,max,new Set(delivered.keys()),tool);
@@ -109,7 +109,40 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   revisions:Type.Optional(Type.Array(Type.Object({observationId:Type.String(),location:revisionLocation}),{maxItems:3}))
  });
   const record=tool('memory_add','Atomically add a complete-window assessment and sourced notes. The database manages place/visit/IDs. Optional rename:{name,reason,sourceIds} updates the name of a confirmed known place without changing its identity or past records; match location.name and include current source. Do not rename on unknown/boundary/new. A persistent place may cover continuous station interior; use an accurate evolving name. A visible old landmark does not establish current occupancy. Never copy historical features into current reasons.',Type.Object({assessment:assessmentSchema,notes:Type.Optional(Type.Array(Type.Object({text:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}),{maxItems:6})),rename:Type.Optional(Type.Object({name:Type.String({minLength:1,maxLength:240}),reason:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}))}),async(a,invocation)=>{
-   const input=requireCurrent(),assessment=validateAssessment({...a.assessment,memoryNotes:a.notes??[],...a.rename?{placeRename:a.rename}:{}} as Assessment,input.row.id,inspected);
+   const input=requireCurrent();
+   // A KNOWN claim may cite historical sources it has already read but not yet looked at.
+   // Deliver those originals once per judgment instead of only rejecting the call;
+   // identity is still not accepted and the next turn must re-assess with the pixels.
+   if(!historicalInspectionUsed&&a.assessment?.location?.status==='known'&&Array.isArray(a.assessment.location.sourceIds)){
+    const cited=a.assessment.location.sourceIds as string[];
+    // Only when there is no already-inspected historical support for this claim.
+    if(!cited.some(id=>id!==input.row.id&&inspected.has(id))){
+     const pending=cited.filter(id=>id!==input.row.id&&delivered.has(id)&&!inspected.has(id)).slice(0,3);
+     if(pending.length){
+      historicalInspectionUsed=true;
+      const originals=await input.inspect(pending);for(const id of pending)inspected.add(id);
+      images=[...input.row.views,...originals];
+      lastToolResult={kind:'historical-evidence-inspection',observationIds:pending,imageCount:originals.length,note:'The historical sources cited for this known place are now supplied as images. Re-assess whether they actually support this identity; no identity was accepted automatically.'};
+      return lastToolResult;
+     }
+     // The agent claims a known place but has no delivered/inspected support at all.
+     // Supply the newest stored window of THAT place once, then require a real re-judgment.
+     const claimed=a.assessment.location.placeId as string|null;
+     const profile=claimed?input.readPlace?.(claimed,0,0) as {visits?:Array<{windows:HistoryRecord[]}>}|null|undefined:undefined;
+     if(claimed&&!profile)throw Error('assessment.location.placeId: '+JSON.stringify(claimed)+' is not an existing place. Use memory_place/memory_timeline with a real ID, or submit unknown/boundary; do not invent or splice UUIDs.');
+     const window=profile?.visits?.flatMap(v=>v.windows).filter(w=>w.observationId!==input.row.id).at(-1);
+     if(window){
+      historicalInspectionUsed=true;
+      for(const member of window.window?.observations??[])delivered.set(member.id,window);
+      const target=window.observationId;
+      const originals=await input.inspect([target]);delivered.set(target,window);inspected.add(target);
+      images=[...input.row.views,...originals];
+      lastToolResult={kind:'historical-evidence-inspection',observationIds:[target],placeId:claimed,imageCount:originals.length,note:'No delivered support existed for this known place, so its newest stored window was supplied once as images. Re-assess the identity from these pixels; nothing was accepted automatically.'};
+      return lastToolResult;
+     }
+    }
+   }
+   const assessment=validateAssessment({...a.assessment,memoryNotes:a.notes??[],...a.rename?{placeRename:a.rename}:{}} as Assessment,input.row.id,inspected);
    // A changed scene is not a new place until recalled older places are checked.
    // Perform that check on the agent's first NEW attempt and return the images;
    // this avoids relying on the model to remember a separate inspect call, while
@@ -125,7 +158,17 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    }
    if(!input.expectedVersion)throw Error('Missing durable spatial commit version');
    await invocation.setMemo('spatial-commit',{sessionId:session.metadata.id,version:input.expectedVersion,observationId:input.row.id,memberIds:input.window?.observations.map(o=>o.id)??[input.row.id],assessmentHash:digest(assessment),contextChars});
-  committed=await input.commit(assessment,{inspected,delivered:new Set(delivered.keys())});
+  try{
+   committed=await input.commit(assessment,{inspected,delivered:new Set(delivered.keys())});
+  }catch(error){
+   if(!/Unknown persistent place/.test(String(error)))throw error;
+   // A spliced or obsolete UUID must be replaced from real IDs, never auto-corrected.
+   const known=new Set<string>();
+   for(const r of [...input.context.recent,...input.context.anchors]){const id=(r as any).location?.placeId??(r as any).assessment?.location?.placeId;if(id)known.add(id);}
+   for(const c of input.revisit?.candidates??[])known.add(c.placeId);
+   for(const r of delivered.values())if(r.location?.placeId)known.add(r.location.placeId);
+   throw Error('assessment.location.placeId: '+JSON.stringify(assessment.location.placeId)+' is not an existing place. Place IDs that actually appear in this session: '+JSON.stringify([...known])+'. Read a real place with memory_place/memory_timeline or submit unknown/boundary; do not invent or splice UUIDs.');
+  }
   if(!committed)throw Error('Spatial commit returned no state');
   lastToolResult={kind:'committed',observationId:input.row.id,version:committed.version};
     return commitResult(committed);
@@ -177,7 +220,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
     }finally{recovering=false;recoveryStates.clear();}
    },
   async judge(input:JudgeInput){
-   current=input;delivered=new Map();images=[];inspected=new Set();lastToolResult=null;committed=null;turnRequests=0;
+   current=input;delivered=new Map();images=[];inspected=new Set();lastToolResult=null;committed=null;turnRequests=0;historicalInspectionUsed=false;
    const windowImages=input.windowViews??input.row.views;
    images=[...windowImages];inspected=new Set(windowImages.map(v=>v.id));
    // Automatic recall is delivered as text/source identifiers. Candidate images

@@ -4,14 +4,21 @@ import {createHash} from 'node:crypto';
 import type {SpatialJsonImage} from '../../agent/spatial-json-vlm.js';
 
 /** Evaluation only: separate credentials, model choice and ledger. Never used by spatial inference. */
-export function evaluationJsonVlm(root:string,maxCalls=300,options:{transport?:'openrouter'|'configured'|'qwen'}={}){
- let calls=0,issued=0,unknown=0,ledgerWrite=Promise.resolve();
- const ledger=()=>{const text=JSON.stringify({calls,unknownCallsReserved:unknown,authority:'Provider-reported usage retained per request; not a verified invoice'});ledgerWrite=ledgerWrite.then(()=>writeFile(join(root,'usage.json'),text));return ledgerWrite;};
+export function evaluationJsonVlm(root:string,maxCalls=300,options:{transport?:'openrouter'|'configured'|'qwen';allowTextOnly?:boolean;maxInputChars?:number;maxTotalTokens?:number;allowFlash?:boolean}={}){
+ let calls=0,issued=0,unknown=0,inputTokens=0,outputTokens=0,estimatedUSD=0,ledgerWrite=Promise.resolve();
+ // Published Flash list price; Max price is not verified, so Max runs record tokens only.
+ const flashPrice={input:.1356,output:.4584};
+ const reservationTokens=136000;
+ const ledger=()=>{const text=JSON.stringify({calls,inputTokens,outputTokens,unknownCallsReserved:unknown,estimatedUSD:Number(estimatedUSD.toFixed(8)),...options.maxTotalTokens?{maxTotalTokens:options.maxTotalTokens,reservedTokens:unknown*reservationTokens}:{},authority:'Provider-reported usage retained per request; not a verified invoice. USD is a public-list-price estimate, and only when the price basis is known.'});ledgerWrite=ledgerWrite.then(()=>writeFile(join(root,'usage.json'),text));return ledgerWrite;};
  return async(model:string,prompt:string,data:unknown,images:SpatialJsonImage[])=>{
   if(issued>=maxCalls)throw Error('Evaluation runaway guard');
-  if(!images.length||images.length>24)throw Error('Evaluation requires 1-24 bound originals');
+  if((!images.length&&!options.allowTextOnly)||images.length>24)throw Error('Evaluation requires 1-24 bound originals or explicit text-only opt-in');
+  if(options.maxInputChars&&prompt.length+JSON.stringify(data).length>options.maxInputChars)throw Error('Evaluation input character budget exhausted');
+  if(options.maxTotalTokens&&inputTokens+outputTokens+(unknown+1)*reservationTokens>options.maxTotalTokens)throw Error('Evaluation token reservation budget exhausted');
   const qwen=options.transport==='qwen',configured=options.transport==='configured',gemini=model.startsWith('google/');
-  if(qwen&&!/^qwen3\.8-max(?:-\d+)?$/.test(model))throw Error('Qwen evaluation requires same-version Max, not Flash or another model family');
+  const flash=model==='qwen3.8-flash',max=/^qwen3\.8-max(?:-\d+)?$/.test(model);
+  // A cheaper judge is allowed only with an explicit opt-in that the caller records in its policy.
+  if(qwen&&!max&&!(flash&&options.allowFlash===true))throw Error('Qwen evaluation requires same-version Max; Flash requires explicit allowFlash opt-in (a recorded, user-approved downgrade)');
   const key=qwen?process.env.QWEN_API_KEY:configured?(gemini?process.env.GEMINI_API_KEY:process.env.OPENAI_API_KEY):process.env.OPENROUTER_API_KEY;
   const base=qwen?process.env.QWEN_BASE_URL:configured?(gemini?process.env.GEMINI_BASE_URL:'https://api.openai.com/v1'):'https://openrouter.ai/api/v1';
   if(!key||!base)throw Error('Missing credentials/base for configured independent review provider');
@@ -28,8 +35,12 @@ export function evaluationJsonVlm(root:string,maxCalls=300,options:{transport?:'
    const text=await response.text();await writeFile(join(dir,'response.json'),text);
    if(!response.ok)throw Error('Evaluation provider HTTP '+response.status);
    const body=JSON.parse(text);if(!body.usage||!Number.isFinite(body.usage.prompt_tokens)||!Number.isFinite(body.usage.completion_tokens))throw Error('Missing evaluation usage');
-   unknown--;await ledger();
-   await writeFile(join(dir,'usage.json'),JSON.stringify({requestedModel:model,returnedModel:body.model,provider:body.provider,usage:body.usage,elapsedMs:Date.now()-start}));
+   if(body.usage.prompt_tokens<0||body.usage.completion_tokens<0)throw Error('Invalid evaluation usage');
+   inputTokens+=body.usage.prompt_tokens;outputTokens+=body.usage.completion_tokens;unknown--;
+    if(flash)estimatedUSD+=(body.usage.prompt_tokens*flashPrice.input+body.usage.completion_tokens*flashPrice.output)/1e6;
+    await ledger();
+    await writeFile(join(dir,'usage.json'),JSON.stringify({requestedModel:model,returnedModel:body.model,provider:body.provider,usage:body.usage,priceBasis:flash?'qwen3.8-flash public list price':'unknown for this model; tokens only',elapsedMs:Date.now()-start}));
+    if(qwen&&body.model&&body.model!==model)throw Error('Evaluation returned a different model: '+body.model);
    if(body.choices?.[0]?.finish_reason!=='stop')throw Error('Incomplete evaluation response');
    return JSON.parse(body.choices[0].message.content);
   }catch(error){await writeFile(join(dir,'failure.json'),JSON.stringify({error:String(error),elapsedMs:Date.now()-start}));throw error;}

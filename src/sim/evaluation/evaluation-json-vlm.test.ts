@@ -23,3 +23,17 @@ test('parallel evaluation requests preserve separate provenance and usage withou
   const usage=JSON.parse(await readFile(join(root,'requests/usage.json'),'utf8'));assert.equal(usage.calls,2);assert.equal(usage.unknownCallsReserved,0);
  }finally{globalThis.fetch=fetchBefore;if(key===undefined)delete process.env.OPENROUTER_API_KEY;else process.env.OPENROUTER_API_KEY=key;await rm(root,{recursive:true,force:true});}
 });
+
+test('Flash judge is refused unless explicitly opted in, and then records a list-price estimate',async()=>{
+ const {mkdtemp,rm,writeFile}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const {join}=await import('node:path');
+ const root=await mkdtemp(join(tmpdir(),'opencode/flash-judge-')),originalFetch=globalThis.fetch,key=process.env.QWEN_API_KEY,base=process.env.QWEN_BASE_URL;
+ process.env.QWEN_API_KEY='fixture';process.env.QWEN_BASE_URL='https://fixture.invalid/v1';let body:any=null;
+ try{
+  globalThis.fetch=async(_url,input)=>{body=JSON.parse(String(input!.body));return new Response(JSON.stringify({model:body.model,usage:{prompt_tokens:1000000,completion_tokens:1000000},choices:[{finish_reason:'stop',message:{content:'{"ok":true}'}}]}));};
+  await assert.rejects(evaluationJsonVlm(join(root,'strict'),2,{transport:'qwen',allowTextOnly:true})('qwen3.8-flash','JSON',{},[]),/allowFlash/);
+  const request=evaluationJsonVlm(join(root,'allowed'),2,{transport:'qwen',allowTextOnly:true,allowFlash:true});
+  assert.deepEqual(await request('qwen3.8-flash','JSON',{},[]),{ok:true});assert.equal(body.model,'qwen3.8-flash');
+  const usage=JSON.parse(await readFile(join(root,'allowed','usage.json'),'utf8'));assert.equal(usage.estimatedUSD,Number((.1356+.4584).toFixed(8)));assert.match(usage.authority,/list-price estimate/);
+  await assert.rejects(request('qwen3.8-turbo','JSON',{},[]),/allowFlash/);
+ }finally{globalThis.fetch=originalFetch;if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;if(base===undefined)delete process.env.QWEN_BASE_URL;else process.env.QWEN_BASE_URL=base;await rm(root,{recursive:true,force:true});}
+});

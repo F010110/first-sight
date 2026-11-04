@@ -17,6 +17,11 @@ export function accountedPiProvider(options:{request:(r:SpatialJsonRequest)=>Pro
     options.onRequest?.();const view=options.view();
      const messages=context.messages.map(m=>({role:m.role,...m.role==='toolResult'?{toolName:m.toolName,isError:m.isError}:{},content:typeof m.content==='string'?m.content:m.content.filter(b=>b.type!=='thinking'&&b.type!=='image')}));
      const latest=messages.at(-1),feedback=latest?.role==='toolResult'&&'isError' in latest&&latest.isError?{toolName:'toolName' in latest?latest.toolName:null,error:latest.content,instruction:'The previous tool call failed and did not commit. Read the exact field error, reassess, and submit corrected arguments. Do not repeat the same invalid call.'}:null;
+     // Repeating the identical error means the strategy itself must change, not just the wording.
+     if(feedback){
+      const repeats=messages.filter(m=>m.role==='toolResult'&&(m as any).isError&&JSON.stringify(m.content)===JSON.stringify(feedback.error)).length-1;
+      if(repeats>0)feedback.instruction+=' This exact error has already occurred '+repeats+' time(s) this window. Do not resubmit the same identity or sources: inspect a delivered historical source that you actually cite, choose the real place ID listed in the error, or submit unknown/boundary with current-window evidence.';
+     }
      const runtimeContext={...(view.runtimeContext as object),...(feedback?{feedback}:{})};
      const response=await options.request({phase:'identity',prompt:(context.systemPrompt??'')+(feedback?'\nLATEST TOOL ERROR — correct before continuing:\n'+JSON.stringify(feedback):''),data:{current:view.current,role:'pi-harness',runtimeContext,messages,tools:context.tools,transport:{singleToolArgumentsAllowed:options.singleToolArguments===true}},images:view.images,...view.windowSources?{windowSources:view.windowSources}:{},textOnlyIdentity:view.images.length===0,includeUsage:true}) as any;
     streamOptions?.signal?.throwIfAborted();

@@ -153,11 +153,22 @@ test('recovery retains skipped facts and capacity until the successor commits wi
  }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });
 
-test('persistent one-at-a-time extraction keeps valid facts and stops after the third bounded feedback',async()=>{
+test('persistent one-at-a-time extraction recovers an omitted frame with one bounded single-source fallback',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
  try{
   service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('No per-observation lane');},async perceiveWindow(rows){calls++;return [{id:rows[0]!.id,facts:facts(rows[0]!)}];}},{windowMs:8000,reasoner:{async judge(input){const a=assessment(input.row.id,'unknown');await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}}});
-   for(let i=0;i<4;i++)await service.observe(await f.row('z'+i,i*2000));await assert.rejects(service.finishInput(),/Independent window facts unavailable/);assert.equal(calls,3);assert.equal(service.progress().missingFacts,1);assert.equal(service.progress().spatialStates,0);assert.equal(service.progress().coveredObservations,0);assert.equal(service.progress().observations,4);
+   for(let i=0;i<4;i++)await service.observe(await f.row('z'+i,i*2000));await service.finishInput();
+   // 3 batch rounds returning only the first source, then one single-source request for the tail.
+   assert.equal(calls,4);assert.equal(service.progress().missingFacts,0);assert.equal(service.progress().spatialStates,1);assert.equal(service.progress().coveredObservations,4);assert.equal(service.progress().observations,4);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
+
+test('a single-source fallback that also fails keeps explicit missing facts and stops',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined;
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('No per-observation lane');},async perceiveWindow(rows){if(rows.length===1)throw new SpatialOutputProtocolError('still omitted');return [{id:rows[0]!.id,facts:facts(rows[0]!)}];}},{windowMs:8000,reasoner:{async judge(input){const a=assessment(input.row.id,'unknown');await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}}});
+   for(let i=0;i<4;i++)await service.observe(await f.row('y'+i,i*2000));await assert.rejects(service.finishInput(),/Independent window facts unavailable/);
+   assert.equal(service.progress().missingFacts,1);assert.equal(service.progress().spatialStates,0);
  }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });
 

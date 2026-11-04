@@ -130,3 +130,55 @@ test('windowed Pi session keeps memory tools, rejects missing interim assessment
   await service.finishInput();assert.equal(service.progress().spatialStates,2);assert.equal(service.progress().coveredObservations,8);assert.equal(service.progress().places,1);assert.equal(secondCalls,5);
  }finally{await service?.close().catch(()=>{});if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true});}
 });
+
+test('known claims that cite read-but-uninspected history receive those originals; unknown place IDs list real ones',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-known-history-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
+ await mkdir(join(dir,'sources'));let service:SpatialMemoryService|undefined,step=0,placeId='';
+ const row=async(id:string,atMs:number)=>{const views=[];for(const direction of ['front','left','right']){const bytes=Buffer.from(id+direction),path=join(dir,'sources',id+'-'+direction+'.png');await writeFile(path,bytes);views.push({id,direction,path,sha256:createHash('sha256').update(bytes).digest('hex')});}return {id,atMs,views};};
+ const request=async(input:any)=>{
+  const id=input.data.current.id,runtime=input.data.runtimeContext,base={hypotheses:[],unresolved:[],relations:[]};
+  if(id==='h3')return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'����',reason:'�״ν���',sourceIds:[id]},...base}}},usage};
+  step++;
+  if(step===1)return {output:{tool:'memory_timeline',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'��ȷ��',reason:'����ʷ',sourceIds:[id]},...base}}},usage};
+  if(step===2){assert.equal(runtime.lastToolResult.kind,'timeline');
+   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:placeId||runtime.workingContext.recent[0].assessment.location.placeId,name:'����',reason:'��ʷͬ����',sourceIds:[id,'h3'],contextRefs:['h3']},...base}}},usage};}
+  if(step===3){assert.equal(runtime.lastToolResult.kind,'historical-evidence-inspection');assert.deepEqual(runtime.lastToolResult.observationIds,['h3']);assert.ok(runtime.inspectedIds.includes('h3'));assert.equal(input.images.length,6);
+   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:runtime.workingContext.recent[0].assessment.location.placeId,name:'����',reason:'�����ʷԭͼ��ȷ��ͬ����',sourceIds:[id,'h3'],contextRefs:['h3']},...base}}},usage};}
+  if(step===4){assert.match(String(runtime.feedback?.error),/not an existing place/);assert.match(String(runtime.feedback?.error),/Place IDs that actually appear in this session/);
+   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'��ȷ��',reason:'�����޷�ȷ��',sourceIds:[id]},...base}}},usage};}
+  return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'��ȷ��',reason:'����',sourceIds:[id]},...base}}},usage};
+ };
+ try{
+  const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request);
+  service=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(r){return {summary:'�۲�'+r.id,details:['����']};}},{reasoner,windowMs:8000});
+  for(let i=0;i<4;i++)await service.observe(await row('h'+i,i*2000));
+  await service.finishInput();
+  placeId=service.latest()!.state.assessment.location.placeId!;
+  for(let i=4;i<8;i++)await service.observe(await row('h'+i,i*2000));
+  await service.finishInput();
+  assert.equal(service.progress().spatialStates,2);
+ }finally{await service?.close().catch(()=>{});await new Promise(r=>setTimeout(r,50));if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true,maxRetries:3,retryDelay:100});}
+});
+
+test('a known claim with no delivered support receives that place newest stored window once',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-known-nosupport-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
+ await mkdir(join(dir,'sources'));let service:SpatialMemoryService|undefined,calls=0;
+ const row=async(id:string,atMs:number)=>{const views=[];for(const direction of ['front','left','right']){const bytes=Buffer.from(id+direction),path=join(dir,'sources',id+'-'+direction+'.png');await writeFile(path,bytes);views.push({id,direction,path,sha256:createHash('sha256').update(bytes).digest('hex')});}return {id,atMs,views};};
+ const request=async(input:any)=>{
+  const id=input.data.current.id,rt=input.data.runtimeContext,base={hypotheses:[],unresolved:[],relations:[]};
+  if(id==='k3')return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'??',reason:'??',sourceIds:[id]},...base}}},usage};
+  calls++;
+  if(calls===1)return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:rt.workingContext.recent[0].assessment.location.placeId,name:'??',reason:'????????????',sourceIds:[id]},...base}}},usage};
+  assert.equal(rt.lastToolResult.kind,'historical-evidence-inspection');assert.equal(rt.lastToolResult.placeId,rt.workingContext.recent[0].assessment.location.placeId);assert.ok(rt.inspectedIds.includes(rt.lastToolResult.observationIds[0]));
+  return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:rt.lastToolResult.placeId,name:'??',reason:'??????????',sourceIds:[id,rt.lastToolResult.observationIds[0]]},...base}}},usage};
+ };
+ try{
+  const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request);
+  service=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(r){return {summary:'??'+r.id,details:['??']};}},{reasoner,windowMs:8000});
+  for(let i=0;i<4;i++)await service.observe(await row('k'+i,i*2000));
+  await service.finishInput();
+  for(let i=4;i<8;i++)await service.observe(await row('k'+i,i*2000));
+  await service.finishInput();
+  assert.equal(calls,2);assert.equal(service.progress().spatialStates,2);
+ }finally{await service?.close().catch(()=>{});await new Promise(r=>setTimeout(r,50));if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true,maxRetries:3,retryDelay:100});}
+});

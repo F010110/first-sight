@@ -122,6 +122,22 @@ export class SpatialMemoryService{
       if(missing.length>=before)break;
      }catch(error){if(!(error instanceof SpatialOutputProtocolError)||protocolAttempt===2)throw error;feedback=String(error);}
     }
+    // A model can repeatedly omit one frame from a multi-frame batch. Falling back to
+    // one frame per request keeps identical no-history semantics and stays bounded.
+    for(const row of [...missing]){
+     if(this.store.facts(row.id))continue;
+     for(let attempt=0;attempt<2;attempt++){
+      try{
+       const result=await this.models.perceiveWindow!([structuredClone(row)]);
+       if(!Array.isArray(result)||result.length!==1||result[0]?.id!==row.id)throw new SpatialOutputProtocolError('Single-source fallback returned a different source');
+       this.store.saveFacts(row.id,validateFacts(result[0]!.facts));this.store.event('single-source-perception-fallback',{id:row.id,attempt});break;
+      }catch(error){
+       if(attempt===1)break;
+       if(!(error instanceof SpatialOutputProtocolError)&&!await this.congest(error))break;
+      }
+     }
+    }
+    missing=missing.filter(r=>!this.store.facts(r.id));if(!missing.length)return;
     throw new SpatialOutputProtocolError('Batch perception incomplete after bounded feedback: '+missing.map(r=>r.id).join(','));
    }catch(error){for(const row of missing.filter(r=>!this.store.facts(r.id)))this.store.fail(row.id,error);throw error;}
    finally{timing.end=this.options.now();this.extractionActive--;}
