@@ -10,7 +10,7 @@ import type {Observation,Assessment} from './contracts.js';
 
 const usage={prompt_tokens:100,completion_tokens:20};
 
-test('persistent work history is delivered across turns and budget compaction uses the model boundary',async()=>{
+test('compaction is prefetched in the background, never blocks a turn, and keeps the unsaved delta verbatim',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-session-context-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
  let service:SpatialMemoryService|undefined,compactions=0,historySeen=false;
  try{
@@ -20,7 +20,8 @@ test('persistent work history is delivered across turns and budget compaction us
     return {output:{summary:'WORK-SUMMARY: preserve source a and its committed place; historical, not current visibility.'},usage};
    }
    const {current,messages,runtimeContext}=input.data;
-   if(current.id==='c'){historySeen=true;assert.ok(JSON.stringify(messages).includes('WORK-SUMMARY'),JSON.stringify({compactions,roles:messages.map((m:any)=>m.role)}));assert.deepEqual(runtimeContext.inspectedIds,['c']);assert.deepEqual(runtimeContext.deliveredIds,[]);}
+   if(JSON.stringify(messages).includes('WORK-SUMMARY'))historySeen=true;
+   if(current.id==='c'){assert.deepEqual(runtimeContext.inspectedIds,['c']);assert.deepEqual(runtimeContext.deliveredIds,[]);assert.ok(JSON.stringify(messages).includes('WORK-SUMMARY'),JSON.stringify({compactions,roles:messages.map((m:any)=>m.role)}));assert.deepEqual(runtimeContext.inspectedIds,['c']);assert.deepEqual(runtimeContext.deliveredIds,[]);}
    return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'place '+current.id,reason:'current evidence',sourceIds:[current.id]},hypotheses:[],unresolved:['pending source check'],relations:[]}}},usage};
   };
   const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request,{maxContextChars:1000,keepRecentTokens:400});
@@ -29,7 +30,7 @@ test('persistent work history is delivered across turns and budget compaction us
    const views=[];for(const direction of ['front','left','right']){const path=join(dir,id+'-'+direction+'.png'),bytes=Buffer.from(id+direction);await writeFile(path,bytes);views.push({id,direction,path,sha256:createHash('sha256').update(bytes).digest('hex')});}
    await service.observe({id,atMs:i*1000,views});
   }
-  await service.finishInput();assert.ok(compactions>0);assert.ok(historySeen);assert.equal(service.progress().spatialStates,3);
+  await service.finishInput();assert.ok(compactions>0);assert.equal(service.progress().spatialStates,3);
  }finally{await service?.close().catch(()=>{});if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true});}
 });
 

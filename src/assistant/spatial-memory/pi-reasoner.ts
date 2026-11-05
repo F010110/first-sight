@@ -39,7 +39,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   session=await repo.open(metadata,BACKGROUND_CONTEXT);
  }else session=await repo.create({cwd:process.cwd()},BACKGROUND_CONTEXT);
-  let current:JudgeInput|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],baseImageIds=new Set<string>(),viewCalls=0,lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null,contextChars=recoveredContextChars,historicalSupplies=0;
+  let current:JudgeInput|null=null,lastMessages:any[]=[],preparedSummary:{summary:string;covered:number;atMs:number}|null=null,prefetching:Promise<void>|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],baseImageIds=new Set<string>(),viewCalls=0,lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null,contextChars=recoveredContextChars,historicalSupplies=0;
   let recovering=false;const recoveryStates=new Map<number,StoredState>();
  const provider=accountedPiProvider({request,singleToolArguments:false,view:()=>{
   if(!current)throw Error('No active spatial judgment');
@@ -177,6 +177,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   }
   if(!committed)throw Error('Spatial commit returned no state');
   lastToolResult={kind:'committed',observationId:input.row.id,version:committed.version};
+  startPrefetch();
     return commitResult(committed);
  });
   const tools=[timeline,find,read,inspect,place,skippedSources,record];
@@ -190,29 +191,59 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    contextChars=JSON.stringify(event.messages).length;
    return {messages:event.messages};
  });
- harness.hooks.on('before_compaction',async event=>{
-  try{
-    const input=requireCurrent(),compaction=skills.find(s=>s.name==='context-compaction');if(!compaction)throw Error('Missing compaction skill');
-    // A cut may split a turn: its prefix must also be summarized, otherwise
-    // observations/tool actions before the retained tail silently disappear.
-    const messagesToSummarize=[...event.preparation.messagesToSummarize,...event.preparation.turnPrefixMessages];
-    if(!messagesToSummarize.length)return {decline:true}; // Entire tail retained; nothing may be discarded or invented.
-    if(++requests>(options.maxRequests??8000))throw Error('Spatial Pi compaction request guard exhausted');
-    const basePrompt=compaction.content+'\nPreserve the spatial task, observation cutoff, location uncertainty, source/place/visit IDs, failed investigations, pending observations and unresolved conflicts. Historical visibility is not current evidence. This is working memory, not a database assertion.';
-    const payload={current:{id:input.row.id,atMs:input.row.atMs},role:'spatial-compaction',originalQuestion:null,task:'spatial-memory-v2',previousSummary:event.preparation.previousSummary,messages:messagesToSummarize,retainedMessageCount:event.preparation.retainedTail.length,knownMemoryRefs:input.context.recent.map(r=>r.observationId)};
-    // A weaker model can answer with prose or an over-long block. Retry once with the exact schema
-    // error instead of failing the whole run on the first malformed summary.
+  // Between windows the session keeps growing; summarise its prefix in the background so the
+  // next compaction can be applied instantly with the un-summarised delta kept verbatim.
+  const startPrefetch=()=>{
+   if(prefetching||preparedSummary||lastMessages.length<6||!current)return;
+   const compaction=skills.find(s=>s.name==='context-compaction');if(!compaction)return;
+   const covered=lastMessages.length-4,messages=lastMessages.slice(0,covered),input=current;
+   if(covered<2)return;
+   const basePrompt=compaction.content+'\nPreserve the spatial task, observation cutoff, location uncertainty, source/place/visit IDs, failed investigations, pending observations and unresolved conflicts. Historical visibility is not current evidence. This is working memory, not a database assertion.';
+   prefetching=(async()=>{
     let result:any=null,summaryError='';
     for(let attempt=0;attempt<2&&!result;attempt++){
-     const response=await request({phase:'identity',prompt:basePrompt+(summaryError?'\nPrevious summary was rejected: '+summaryError+'\nReturn JSON {"summary":"..."} with a non-empty string of at most 4000 characters.':''),data:payload,images:[],textOnlyIdentity:true,includeUsage:true}) as any;
+     if(++requests>(options.maxRequests??8000))throw Error('Spatial Pi compaction request guard exhausted');
+     const response=await request({phase:'identity',prompt:basePrompt+(summaryError?'\nPrevious summary was rejected: '+summaryError+'\nReturn JSON {"summary":"..."} with a non-empty string of at most 4000 characters.':''),data:{current:{id:input.row.id,atMs:input.row.atMs},role:'spatial-compaction',originalQuestion:null,task:'spatial-memory-v2',previousSummary:null,messages,retainedMessageCount:lastMessages.length-covered,knownMemoryRefs:input.context.recent.map(r=>r.observationId)},images:[],textOnlyIdentity:true,includeUsage:true}) as any;
      const candidate=response.output??response;
      if(typeof candidate?.summary==='string'&&candidate.summary.trim()&&candidate.summary.length<=4000)result=candidate;
-     else{summaryError='expected {summary: non-empty string <=4000 chars}';await appendFile(join(root,'compaction-failures.jsonl'),JSON.stringify({atMs:input.row.atMs,attempt,reason:summaryError,receivedType:typeof candidate?.summary})+ '\n');}
+     else{summaryError='expected {summary: non-empty string <=4000 chars}';await appendFile(join(root,'compaction-failures.jsonl'),JSON.stringify({atMs:input.row.atMs,attempt,reason:summaryError})+ '\n');}
     }
     if(!result)throw Error('Invalid spatial compaction summary');
-    contextChars=result.summary.length+JSON.stringify(event.preparation.retainedTail).length;
-    return {compaction:{summary:result.summary,retainedTail:event.preparation.retainedTail,tokensBefore:event.preparation.tokensBefore,details:{semanticCoverageCertified:false,contextPolicy}}};
-  }catch(error){compactionFailure=String(error);await appendFile(join(root,'compaction-failures.jsonl'),JSON.stringify({atMs:current?.row.atMs,error:compactionFailure,fallbackSent:false})+'\n');return {decline:true};}
+    preparedSummary={summary:result.summary,covered,atMs:input.row.atMs};
+    await appendFile(join(root,'compaction-prefetch.jsonl'),JSON.stringify({atMs:input.row.atMs,covered,length:result.summary.length})+ '\n');
+   })().catch(async e=>{await appendFile(join(root,'compaction-failures.jsonl'),JSON.stringify({atMs:current?.row.atMs,error:String(e),fallbackSent:false})+ '\n');}).finally(()=>{prefetching=null;});
+  };
+ harness.hooks.on('before_compaction',async event=>{
+  // Prefer a summary prepared in the background: apply it instantly and keep every message added
+  // after the summarised prefix verbatim. Only when nothing is ready do we fall back to a
+  // synchronous summary, so correctness never depends on prefetch timing.
+  try{
+   const compaction=skills.find(s=>s.name==='context-compaction');if(!compaction)throw Error('Missing compaction skill');
+   const toSummarize=[...event.preparation.messagesToSummarize,...event.preparation.turnPrefixMessages];
+   if(!toSummarize.length)return {decline:true};
+   if(preparedSummary&&preparedSummary.covered<=toSummarize.length){
+    const applied=preparedSummary;preparedSummary=null;
+    const delta=toSummarize.slice(applied.covered),retained=[...delta,...event.preparation.retainedTail];
+    contextChars=applied.summary.length+JSON.stringify(retained).length;
+    await appendFile(join(root,'compaction-applied.jsonl'),JSON.stringify({atMs:current?.row.atMs,coveredMessages:applied.covered,deltaMessages:delta.length,waited:false})+ '\n');
+    return {compaction:{summary:applied.summary,retainedTail:retained,tokensBefore:event.preparation.tokensBefore,details:{semanticCoverageCertified:false,contextPolicy,parallel:true}}};
+   }
+   startPrefetch();
+   const input=requireCurrent(),basePrompt=compaction.content+'\nPreserve the spatial task, observation cutoff, location uncertainty, source/place/visit IDs, failed investigations, pending observations and unresolved conflicts. Historical visibility is not current evidence. This is working memory, not a database assertion.';
+   const payload={current:{id:input.row.id,atMs:input.row.atMs},role:'spatial-compaction',originalQuestion:null,task:'spatial-memory-v2',previousSummary:event.preparation.previousSummary,messages:toSummarize,retainedMessageCount:event.preparation.retainedTail.length,knownMemoryRefs:input.context.recent.map(r=>r.observationId)};
+   let result:any=null,summaryError='';
+   for(let attempt=0;attempt<2&&!result;attempt++){
+    if(++requests>(options.maxRequests??8000))throw Error('Spatial Pi compaction request guard exhausted');
+    const response=await request({phase:'identity',prompt:basePrompt+(summaryError?'\nPrevious summary was rejected: '+summaryError+'\nReturn JSON {"summary":"..."} with a non-empty string of at most 4000 characters.':''),data:payload,images:[],textOnlyIdentity:true,includeUsage:true}) as any;
+    const candidate=response.output??response;
+    if(typeof candidate?.summary==='string'&&candidate.summary.trim()&&candidate.summary.length<=4000)result=candidate;
+    else{summaryError='expected {summary: non-empty string <=4000 chars}';await appendFile(join(root,'compaction-failures.jsonl'),JSON.stringify({atMs:input.row.atMs,attempt,reason:summaryError})+ '\n');}
+   }
+   if(!result)throw Error('Invalid spatial compaction summary');
+   contextChars=result.summary.length+JSON.stringify(event.preparation.retainedTail).length;
+   await appendFile(join(root,'compaction-applied.jsonl'),JSON.stringify({atMs:input.row.atMs,waited:true})+ '\n');
+   return {compaction:{summary:result.summary,retainedTail:event.preparation.retainedTail,tokensBefore:event.preparation.tokensBefore,details:{semanticCoverageCertified:false,contextPolicy,parallel:false}}};
+  }catch(error){await appendFile(join(root,'compaction-failures.jsonl'),JSON.stringify({atMs:current?.row.atMs,error:String(error),fallbackSent:false})+ '\n');return {decline:true};}
  });
  await writeFile(join(root,'session.json'),JSON.stringify(session.metadata,null,2),{flag:'wx'}).catch(e=>{if((e as NodeJS.ErrnoException).code!=='EEXIST')throw e;});
   return {
