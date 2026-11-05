@@ -32,6 +32,7 @@ export class SpatialMemoryService{
  private perceptionTiming=new Map<string,{start:number;end?:number;calls:number}>();
  private judgmentStartedAt=new Map<string,number>();
  private peakAdmitted=0;
+ private judgmentFailureSkips=0;
  private backpressureRejections=0;
  private published:StoredState|null=null;
  private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number;windowMs:number;revisitMatcher:PlaceMatcher|undefined;revisitPolicy:'off'|'required';revisitLimit:number}){}
@@ -172,7 +173,15 @@ export class SpatialMemoryService{
     }
     await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);initialVersion=this.store.version();finish();
    }
-   catch(e){this.failure=String(e);this.store.fail(batch[0]!.row.id,e);}
+   catch(e){
+    // A window whose bounded judgment budget is exhausted becomes an explicit gap and the stream
+    // continues; it is never presented as a judged window. Repeated failures still stop the run.
+    if(this.busyPolicy==='skip-obsolete'&&this.judgmentFailureSkips<5){
+     this.judgmentFailureSkips++;this.store.skipWindow(batch.map(b=>b.row));
+     this.store.event('spatial-call-skipped',{tailId,reason:'judgment-budget-exhausted',error:String(e),observationIds:batch.map(b=>b.row.id)});
+     release();for(const b of batch)this.deliveredAt.delete(b.row.id);return;
+    }
+    this.failure=String(e);this.store.fail(batch[0]!.row.id,e);}
   });
  }
  private enqueueRepair(rows:Observation[],version:number,release:()=>void){
@@ -450,6 +459,6 @@ export class SpatialMemoryService{
   if(!Array.isArray(ids)||!ids.length||ids.length>3||new Set(ids).size!==ids.length||ids.some(id=>!allowed.has(id)))throw Error('Read-only image access outside committed snapshot');
   const images=ids.flatMap(id=>this.store.observation(id)!.views);for(const image of images)if(createHash('sha256').update(await readFile(image.path)).digest('hex')!==image.sha256)throw Error('Read-only source changed');return structuredClone(images);
  }});}
-  progress(){return {...this.store.counts(),admitted:this.admitted,capacity:this.options.maxPending,peakAdmitted:this.peakAdmitted,backpressureRejections:this.backpressureRejections,activeExtractions:this.extractionActive,bufferedObservations:this.bucket.length,failure:this.failure};}
+  progress(){return {...this.store.counts(),judgmentFailureSkips:this.judgmentFailureSkips,admitted:this.admitted,capacity:this.options.maxPending,peakAdmitted:this.peakAdmitted,backpressureRejections:this.backpressureRejections,activeExtractions:this.extractionActive,bufferedObservations:this.bucket.length,failure:this.failure};}
  async close(){if(this.closed)return;try{await this.finishInput();}finally{this.closed=true;await this.reasoner?.close().catch(()=>{});this.store.close();}}
 }

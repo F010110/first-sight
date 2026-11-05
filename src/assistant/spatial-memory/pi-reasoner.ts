@@ -144,7 +144,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
      }
     }
    }
-   if(a.assessment?.location?.status==='known'&&historicalSupplies>=2&&!a.assessment.location.sourceIds?.some((id:string)=>id!==input.row.id&&inspected.has(id))&&!(a.assessment.location.contextRefs??[]).length)throw Error('Do not submit known for this window again: no inspected historical source or working-context reference supports that place. Choose new (with region-change evidence) or, if the window truly spans two regions, unknown with boundary.regions.');
+   if(a.assessment?.location?.status==='known'&&historicalSupplies>=2&&!a.assessment.location.sourceIds?.some((id:string)=>id!==input.row.id&&inspected.has(id)))throw Error('Do not submit known for this window again: no inspected historical source supports that place. Choose new (with region-change evidence) or, if the window truly spans two regions, unknown with boundary.regions.');
    // A transition (unknown + boundary) stays legal; a bare unknown is not an answer.
    if((a.assessment?.location?.status as string)==='unknown'&&!a.assessment?.location?.boundary)throw Error('location.status: a bare unknown is not available. Assign this window to a place with known/new, or, when the window genuinely spans two regions, submit status unknown together with boundary.regions (two names) and placeId null. Put any other doubt in reason/unresolved.');
    const assessment=validateAssessment({...a.assessment,memoryNotes:a.notes??[],...a.rename?{placeRename:a.rename}:{}} as Assessment,input.row.id,inspected);
@@ -197,9 +197,18 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
     const messagesToSummarize=[...event.preparation.messagesToSummarize,...event.preparation.turnPrefixMessages];
     if(!messagesToSummarize.length)return {decline:true}; // Entire tail retained; nothing may be discarded or invented.
     if(++requests>(options.maxRequests??8000))throw Error('Spatial Pi compaction request guard exhausted');
-    const response=await request({phase:'identity',prompt:compaction.content+'\nPreserve the spatial task, observation cutoff, location uncertainty, source/place/visit IDs, failed investigations, pending observations and unresolved conflicts. Historical visibility is not current evidence. This is working memory, not a database assertion.',data:{current:{id:input.row.id,atMs:input.row.atMs},role:'spatial-compaction',originalQuestion:null,task:'spatial-memory-v2',previousSummary:event.preparation.previousSummary,messages:messagesToSummarize,retainedMessageCount:event.preparation.retainedTail.length,knownMemoryRefs:input.context.recent.map(r=>r.observationId)},images:[],textOnlyIdentity:true,includeUsage:true}) as any;
-   const result=response.output??response;
-   if(typeof result.summary!=='string'||!result.summary.trim()||result.summary.length>4000)throw Error('Invalid spatial compaction summary');
+    const basePrompt=compaction.content+'\nPreserve the spatial task, observation cutoff, location uncertainty, source/place/visit IDs, failed investigations, pending observations and unresolved conflicts. Historical visibility is not current evidence. This is working memory, not a database assertion.';
+    const payload={current:{id:input.row.id,atMs:input.row.atMs},role:'spatial-compaction',originalQuestion:null,task:'spatial-memory-v2',previousSummary:event.preparation.previousSummary,messages:messagesToSummarize,retainedMessageCount:event.preparation.retainedTail.length,knownMemoryRefs:input.context.recent.map(r=>r.observationId)};
+    // A weaker model can answer with prose or an over-long block. Retry once with the exact schema
+    // error instead of failing the whole run on the first malformed summary.
+    let result:any=null,summaryError='';
+    for(let attempt=0;attempt<2&&!result;attempt++){
+     const response=await request({phase:'identity',prompt:basePrompt+(summaryError?'\nPrevious summary was rejected: '+summaryError+'\nReturn JSON {"summary":"..."} with a non-empty string of at most 4000 characters.':''),data:payload,images:[],textOnlyIdentity:true,includeUsage:true}) as any;
+     const candidate=response.output??response;
+     if(typeof candidate?.summary==='string'&&candidate.summary.trim()&&candidate.summary.length<=4000)result=candidate;
+     else{summaryError='expected {summary: non-empty string <=4000 chars}';await appendFile(join(root,'compaction-failures.jsonl'),JSON.stringify({atMs:input.row.atMs,attempt,reason:summaryError,receivedType:typeof candidate?.summary})+ '\n');}
+    }
+    if(!result)throw Error('Invalid spatial compaction summary');
     contextChars=result.summary.length+JSON.stringify(event.preparation.retainedTail).length;
     return {compaction:{summary:result.summary,retainedTail:event.preparation.retainedTail,tokensBefore:event.preparation.tokensBefore,details:{semanticCoverageCertified:false,contextPolicy}}};
   }catch(error){compactionFailure=String(error);await appendFile(join(root,'compaction-failures.jsonl'),JSON.stringify({atMs:current?.row.atMs,error:compactionFailure,fallbackSent:false})+'\n');return {decline:true};}
