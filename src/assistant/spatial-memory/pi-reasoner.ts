@@ -39,12 +39,12 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   session=await repo.open(metadata,BACKGROUND_CONTEXT);
  }else session=await repo.create({cwd:process.cwd()},BACKGROUND_CONTEXT);
-  let current:JudgeInput|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null,contextChars=recoveredContextChars,historicalInspectionUsed=false;
+  let current:JudgeInput|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null,contextChars=recoveredContextChars,historicalSupplies=0;
   let recovering=false;const recoveryStates=new Map<number,StoredState>();
  const provider=accountedPiProvider({request,singleToolArguments:false,view:()=>{
   if(!current)throw Error('No active spatial judgment');
-   return {current:{id:current.row.id,atMs:current.row.atMs},runtimeContext:{mode:'spatial-memory-v2',locationPolicy:{statuses:['known','new'],rule:'Every window must be committed to a place: reuse an existing place (known) or create one (new). No undetermined option exists; state evidence limits in reason/unresolved instead.'},currentObservation:{id:current.row.id,atMs:current.row.atMs},...current.window?{window:current.window}:{facts:current.facts},previousRegion:current.previousRegion,revisit:current.revisit??null,workingContext:spatialStateHead(current.context),deliveredIds:[...delivered.keys()],inspectedIds:[...inspected],lastToolResult,feedback:current.feedback??null},images,...current.window?{windowSources:current.window.observations.filter(o=>images.some(v=>v.id===o.id)).map(o=>({id:o.id,atMs:o.atMs}))}:{}};
-  },onRequest:()=>{if(recovering)throw Error('Checkpoint recovery is forbidden from invoking a model');if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);if(++turnRequests>10||++requests>(options.maxRequests??8000))throw Error('Spatial Pi request guard exhausted');}});
+   return {current:{id:current.row.id,atMs:current.row.atMs},runtimeContext:{mode:'spatial-memory-v2',locationPolicy:{statuses:['known','new','unknown+boundary'],rule:'Every window is either committed to a place (known/new) or explicitly a transition between two regions (status unknown plus boundary.regions). A bare unknown is not a valid answer.'},currentObservation:{id:current.row.id,atMs:current.row.atMs},...current.window?{window:current.window}:{facts:current.facts},previousRegion:current.previousRegion,revisit:current.revisit??null,workingContext:spatialStateHead(current.context),deliveredIds:[...delivered.keys()],inspectedIds:[...inspected],lastToolResult,feedback:current.feedback??null},images,...current.window?{windowSources:current.window.observations.filter(o=>images.some(v=>v.id===o.id)).map(o=>({id:o.id,atMs:o.atMs}))}:{}};
+  },onRequest:()=>{if(recovering)throw Error('Checkpoint recovery is forbidden from invoking a model');if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);if(++turnRequests>12||++requests>(options.maxRequests??8000))throw Error('Spatial Pi request guard exhausted');}});
  const requireCurrent=()=>{if(!current)throw Error('No active spatial judgment');return current;};
  const deliver=(record:HistoryRecord)=>{delivered.set(record.observationId,record);for(const member of record.window?.observations??[])delivered.set(member.id,record);};
   const checkDelivered=(ids:unknown,max:number,tool:string)=>requireDeliveredIds(ids,max,new Set(delivered.keys()),tool);
@@ -57,7 +57,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   const input=requireCurrent(),a=args as any;
    if(name!=='memory_add'){
    // The tool schema exposes only known/new; reject a stray unknown before it can be committed.
-   if((a.assessment?.location?.status as string)==='unknown')throw Error('location.status: "unknown" is not available. Assign this window to a place: known with a real existing placeId plus inspected evidence, or new with region-change evidence. Put any residual doubt in reason/unresolved.');
+   if((a.assessment?.location?.status as string)==='unknown'&&!a.assessment?.location?.boundary)throw Error('location.status: a bare unknown is not available. Assign this window to a place with known/new, or, when the window genuinely spans two regions, submit status unknown together with boundary.regions (two names) and placeId null. Put any other doubt in reason/unresolved.');
    const assessment=validateAssessment(a.assessment,input.row.id,inspected);
      if(assessment.relations.length||assessment.revisions?.length||assessment.placeUpdates?.length||assessment.memoryNotes?.length||assessment.placeRename)throw Error('Interim assessment cannot commit relations/revisions/place updates/notes/rename');
    input.evaluate?.(assessment,{inspected,delivered:new Set(delivered.keys())});input.context.location=assessment.location;
@@ -85,7 +85,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    const input=requireCurrent(),ids=checkDelivered(a.ids,3,'memory_inspect'),originals=await input.inspect(ids);
   images=[...input.row.views,...originals];
   const currentWindowIds=input.window?.observations.map(o=>o.id)??[input.row.id];
-   inspected=new Set([...currentWindowIds,...ids]);
+   inspected=new Set([...inspected,...currentWindowIds,...ids]);
   lastToolResult={kind:'inspect',requestedSourceIds:ids,records:ids.map(id=>delivered.get(id)!),imageCount:originals.length,note:'Current-window member IDs remain valid evidence for this window; earlier historical images not inspected now are no longer citable. Not a new spatial judgment'};
   return lastToolResult;
  });
@@ -99,12 +99,12 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    const input=requireCurrent(),sources=[...(input.window?.skippedBefore??[]),...input.history.flatMap(r=>r.window?.skippedBefore??[])].flatMap(w=>w.observations);
    if(new Set(a.ids).size!==a.ids.length)throw Error('Duplicate skipped source IDs');
    const records=(a.ids as string[]).map(id=>{const source=sources.find(s=>s.id===id);if(!source)throw Error('Skipped source not delivered by causal windows');return source;});
-   if(a.inspect){const originals=await input.inspect(a.ids);images=[...input.row.views,...originals];if(images.length>12)throw Error('Inspection image limit');const currentWindowIds=input.window?.observations.map(o=>o.id)??[input.row.id];inspected=new Set([...currentWindowIds,...a.ids]);}
+   if(a.inspect){const originals=await input.inspect(a.ids);images=[...input.row.views,...originals];if(images.length>12)throw Error('Inspection image limit');const currentWindowIds=input.window?.observations.map(o=>o.id)??[input.row.id];inspected=new Set([...inspected,...currentWindowIds,...a.ids]);}
    lastToolResult={kind:'skipped-sources',records,spatialJudgmentAvailable:false,originalsInspected:a.inspect===true};return lastToolResult;
   });
   const revisionLocation=Type.Object({status:Type.Literal('known'),placeId:Type.Union([Type.String(),Type.Null()]),name:Type.String({maxLength:240}),reason:Type.String({minLength:1,maxLength:1600}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12}),contextRefs:Type.Optional(Type.Array(Type.String(),{maxItems:10}))});
  const assessmentSchema=Type.Object({
-  location:Type.Object({status:Type.Union([Type.Literal('new'),Type.Literal('known')]),placeId:Type.Union([Type.String(),Type.Null()]),name:Type.String({maxLength:240}),reason:Type.String({minLength:1,maxLength:1600}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12}),contextRefs:Type.Optional(Type.Array(Type.String(),{maxItems:10})),regionChangeEvidence:Type.Optional(Type.Array(Type.String({minLength:1,maxLength:400}),{maxItems:4}))}),
+  location:Type.Object({status:Type.Union([Type.Literal('new'),Type.Literal('known'),Type.Literal('unknown')]),placeId:Type.Union([Type.String(),Type.Null()]),name:Type.String({maxLength:240}),reason:Type.String({minLength:1,maxLength:1600}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12}),contextRefs:Type.Optional(Type.Array(Type.String(),{maxItems:10})),boundary:Type.Optional(Type.Object({regions:Type.Array(Type.String({maxLength:240}),{minItems:2,maxItems:2})})),regionChangeEvidence:Type.Optional(Type.Array(Type.String({minLength:1,maxLength:400}),{maxItems:4}))}),
    hypotheses:strings(8),unresolved:strings(8),
    placeUpdates:Type.Optional(Type.Array(Type.Object({key:Type.String({minLength:1,maxLength:120}),value:Type.String({minLength:1,maxLength:1200}),status:Type.Union([Type.Literal('asserted'),Type.Literal('uncertain'),Type.Literal('retracted')]),reason:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}),{maxItems:8})),
   relations:Type.Array(Type.Object({kind:Type.Union([Type.Literal('same-facility'),Type.Literal('different-region')]),referenceId:Type.String(),reason:Type.String({minLength:1,maxLength:1200}),sourceIds:Type.Array(Type.String(),{minItems:2,maxItems:8})}),{maxItems:8}),
@@ -115,16 +115,16 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    // A KNOWN claim may cite historical sources it has already read but not yet looked at.
    // Deliver those originals once per judgment instead of only rejecting the call;
    // identity is still not accepted and the next turn must re-assess with the pixels.
-   if(!historicalInspectionUsed&&a.assessment?.location?.status==='known'&&Array.isArray(a.assessment.location.sourceIds)){
+   if(historicalSupplies<3&&a.assessment?.location?.status==='known'&&Array.isArray(a.assessment.location.sourceIds)){
     const cited=a.assessment.location.sourceIds as string[];
     // Only when there is no already-inspected historical support for this claim.
     if(!cited.some(id=>id!==input.row.id&&inspected.has(id))){
      const pending=cited.filter(id=>id!==input.row.id&&delivered.has(id)&&!inspected.has(id)).slice(0,3);
      if(pending.length){
-      historicalInspectionUsed=true;
+      historicalSupplies++;
       const originals=await input.inspect(pending);for(const id of pending)inspected.add(id);
       images=[...input.row.views,...originals];
-      lastToolResult={kind:'historical-evidence-inspection',observationIds:pending,imageCount:originals.length,note:'The historical sources cited for this known place are now supplied as images. Re-assess whether they actually support this identity; no identity was accepted automatically.'};
+      lastToolResult={kind:'historical-evidence-inspection',observationIds:pending,imageCount:originals.length,note:'The historical sources cited for this known place are now supplied as images. Cite one of these exact observation IDs in location.sourceIds if they support the claim: '+JSON.stringify(pending)+'. No identity was accepted automatically.'};
       return lastToolResult;
      }
      // The agent claims a known place but has no delivered/inspected support at all.
@@ -134,16 +134,19 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
      if(claimed&&!profile)throw Error('assessment.location.placeId: '+JSON.stringify(claimed)+' is not an existing place. Use memory_place/memory_timeline with a real ID, or submit unknown/boundary; do not invent or splice UUIDs.');
      const window=profile?.visits?.flatMap(v=>v.windows).filter(w=>w.observationId!==input.row.id).at(-1);
      if(window){
-      historicalInspectionUsed=true;
+      historicalSupplies++;
       for(const member of window.window?.observations??[])delivered.set(member.id,window);
       const target=window.observationId;
       const originals=await input.inspect([target]);delivered.set(target,window);inspected.add(target);
       images=[...input.row.views,...originals];
-      lastToolResult={kind:'historical-evidence-inspection',observationIds:[target],placeId:claimed,imageCount:originals.length,note:'No delivered support existed for this known place, so its newest stored window was supplied once as images. Re-assess the identity from these pixels; nothing was accepted automatically.'};
+      lastToolResult={kind:'historical-evidence-inspection',observationIds:[target],placeId:claimed,imageCount:originals.length,note:'No delivered support existed for this known place, so its newest stored window was supplied as images. Cite '+JSON.stringify([target])+' in location.sourceIds if it supports the claim; nothing was accepted automatically.'};
       return lastToolResult;
      }
     }
    }
+   if(a.assessment?.location?.status==='known'&&historicalSupplies>=2&&!a.assessment.location.sourceIds?.some((id:string)=>id!==input.row.id&&inspected.has(id))&&!(a.assessment.location.contextRefs??[]).length)throw Error('Do not submit known for this window again: no inspected historical source or working-context reference supports that place. Choose new (with region-change evidence) or, if the window truly spans two regions, unknown with boundary.regions.');
+   // A transition (unknown + boundary) stays legal; a bare unknown is not an answer.
+   if((a.assessment?.location?.status as string)==='unknown'&&!a.assessment?.location?.boundary)throw Error('location.status: a bare unknown is not available. Assign this window to a place with known/new, or, when the window genuinely spans two regions, submit status unknown together with boundary.regions (two names) and placeId null. Put any other doubt in reason/unresolved.');
    const assessment=validateAssessment({...a.assessment,memoryNotes:a.notes??[],...a.rename?{placeRename:a.rename}:{}} as Assessment,input.row.id,inspected);
    // A changed scene is not a new place until recalled older places are checked.
    // Perform that check on the agent's first NEW attempt and return the images;
@@ -222,7 +225,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
     }finally{recovering=false;recoveryStates.clear();}
    },
   async judge(input:JudgeInput){
-   current=input;delivered=new Map();images=[];inspected=new Set();lastToolResult=null;committed=null;turnRequests=0;historicalInspectionUsed=false;
+   current=input;delivered=new Map();images=[];inspected=new Set();lastToolResult=null;committed=null;turnRequests=0;historicalSupplies=0;
    const windowImages=input.windowViews??input.row.views;
    images=[...windowImages];inspected=new Set(windowImages.map(v=>v.id));
    // Automatic recall is delivered as text/source identifiers. Candidate images

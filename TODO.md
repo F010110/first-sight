@@ -2,6 +2,17 @@
 
 ## 当前状态与约定（2026-11-02）
 
+- **本轮代码状态（2026-11-05，已提交）+ 运行中**：`unknown`只禁止裸弃权，`unknown+boundary.regions` 恢复为合法过渡；强制实时已实测通过（100帧：滞后p95 38ms、0背压、satisfied=true）；跳过窗改为**立即释放容量**，实时模式容量32；`memory_inspect` 在本判断内累积已看来源，`known` 缺证据时最多补给3次并给出可引用ID，连续失败后禁止再用known、逼其改交new/boundary。全库588/588。813 rt-v1 因机器休眠12小时失败、rt-v2 因v37证据循环失败（均已定位并修复），rt-v3 正在跑。
+
+- **unknown/boundary 澄清与强制实时修复（2026-11-05）**：
+  - 用户澄清：只禁止“无判断”，边界必须正常处理。已恢复 `unknown + boundary.regions` 过渡判断（含工具schema与skill）；**裸 unknown 仍一律拒绝**，且不需要开关。`01`§3 与 `02` 已改为“归属一个地点 或 明确过渡”，并保留 boundary 的理由。
+  - 813 旧库 73 个 unknown 的构成已核清：42 个是裸 unknown（34 个参考为清晰区域、8 个参考为过渡却弃权），21 个是正确过渡，10 个是把清晰区域误判为边界。所以“无判断”和“误判边界”是两类问题，本轮只消除前者。
+  - 强制实时积压根因：跳过窗原本要占着容量直到后继提交，`maxPending=12` 必然占满 → `observe` 抛背压 → 运行器只能等待。已改为**跳过即释放容量**（证据已耐久，后继从 skippedBefore 重读），恢复时也不再把跳过窗计入容量；实时模式 `maxPending` 提到 32 作为有界缓冲。
+  - 证据循环修复：`memory_inspect` 现在**在本判断内累积**已看过的来源（原先会重置，把先前补给/看过的历史ID清掉）；`known` 缺证据时的自动补给从“一次性”改为**每判断最多3次**，并在提示里直接给出可引用的观察ID。
+  - 100帧强制实时已通过：100/100投递、21状态、跳过4窗、`deliveryLagMs` p50 28ms/p95 38ms/max 54ms、0背压、`realtime.satisfied=true`、`completed=true`（`run/unioncity-rt100-v3`）。
+  - 813 `run/unioncity-memory-full813-rt-v1` 失败，原因是机器**休眠约12小时**（单次请求耗时43447秒、墙钟从11-04跨到11-05），并非管线缺陷；同一窗v37还有证据循环，已由上面的累积/多次补给修复。失败目录与全部请求保留，未删除。
+  - 全库**588/588**通过。当前正在跑 `run/unioncity-memory-full813-rt-v2`（同参数、新目录）。
+
 - **实时强制、评审放宽、取消unknown（2026-11-04用户批准）**：
   - 强制实时：新增`--require-realtime`，禁止与`--replay-time-scale=2`、`--busy-policy=queue`同用；投递滞后超过一个节拍即记违规，收据输出`realtime{enforced,maxDeliveryLagMs,deliveryViolations,satisfied}`并令`completed=false`；覆盖义务改为"已判断窗＋跳过窗＝计划窗"，另给`fullWindowCoverage`。已确认忙时策略本就是把被跳过窗的原图/事实作为`skippedBefore`交给下一次判断合并处理，跳过窗不产出位置、不计覆盖；813那次显式用了`queue`，所以是阻塞投递、跳过数为0，这才是实时性没生效的原因。已写入`docs/active/01`（强制实时投递）与`02`（理由）。
   - 评审放宽：判定只看"占据区域类别与证据是否矛盾 / 是否完全无来源支持"，地点粒度（合并或拆分、一条街分几段）不再算错、不再出finding或扣分；`grounded-memory-review`与`holistic-memory-contract`提示词同步。

@@ -142,13 +142,13 @@ test('progressive partial extraction gets one additional bounded feedback round 
  }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });
 
-test('recovery retains skipped facts and capacity until the successor commits without inventing old locations',async()=>{
+test('recovery re-reads skipped facts into the successor, invents no old locations and holds no capacity slot',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
  const store=new SpatialLongTermStore(f.root),rows=await Promise.all(Array.from({length:8},(_,i)=>f.row('r'+i,i*2000)));
  for(const row of rows){store.archive(row);store.saveFacts(row.id,facts(row));}store.skipWindow(rows.slice(0,4));store.close();
  try{
   service=await SpatialMemoryService.create(f.root,{async perceive(){throw Error('Durable facts must be reused');}},{resume:true,windowMs:8000,maxPending:12,busyPolicy:'skip-obsolete',reasoner:{async judge(input){calls++;assert.equal(input.window!.skippedBefore![0]!.observations[0]!.id,'r0');const a=assessment(input.row.id);await input.commit(a,{inspected:new Set(input.window!.observations.map(o=>o.id)),delivered:new Set()});return a;},async close(){}}});
-  assert.equal(service.progress().admitted,8);assert.equal(service.progress().deferredObservations,4);
+  assert.equal(service.progress().admitted,4);assert.equal(service.progress().deferredObservations,4);
   await service.resumePending();await service.finishInput();assert.equal(calls,1);assert.equal(service.progress().admitted,0);assert.equal(service.progress().spatialStates,1);assert.equal(service.progress().coveredObservations,4);assert.equal(service.progress().skippedObservations,4);assert.equal(service.progress().deferredObservations,0);
  }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });

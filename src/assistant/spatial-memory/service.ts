@@ -26,7 +26,6 @@ export class SpatialMemoryService{
  private evidencePolicy:'wait'|'deadline'='wait';
  private busyPolicy:'queue'|'skip-obsolete'='queue';
  private queuedWindows=new Set<string>();
- private deferredReleases:Array<()=>void>=[];
  private bucketTimer:ReturnType<typeof setTimeout>|null=null;
  private deliveredAt=new Map<string,number>();
  private sealedAt=new Map<string,number>();
@@ -58,8 +57,7 @@ export class SpatialMemoryService{
   if(!['wait','deadline'].includes(service.evidencePolicy)||!['queue','skip-obsolete'].includes(service.busyPolicy)||service.busyPolicy==='skip-obsolete'&&(!windowMs||service.evidencePolicy!=='wait')){store.close();throw Error('Busy skip requires complete-fact window mode');}
   if(!Number.isFinite(service.evidenceWaitMs)||service.evidenceWaitMs<0||service.evidenceWaitMs>120000){store.close();throw Error('Invalid evidence deadline');}
   const incomplete=store.history(store.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).filter(r=>r.window?.missingFactIds?.length);
-  service.admitted=store.pending().length+store.counts().deferredObservations+incomplete.reduce((n,r)=>n+r.window!.observations.length,0);
-  const recoveredDeferred=store.counts().deferredObservations;if(recoveredDeferred)service.deferredReleases.push(()=>{service.admitted-=recoveredDeferred;});
+  service.admitted=store.pending().length+incomplete.reduce((n,r)=>n+r.window!.observations.length,0);
   if(service.admitted>maxPending){store.close();throw Error('Recovered pending exceeds configured capacity');}
    try{if(options.resume){await service.reasoner?.recover?.(Array.from({length:store.version()},(_,i)=>store.state(i+1)!));}if(options.resume&&store.version()){
    const latest=store.history(store.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).at(-1)!;
@@ -166,13 +164,13 @@ export class SpatialMemoryService{
     else await Promise.all(batch.map(b=>b.extract));
     if(this.busyPolicy==='skip-obsolete'&&this.queuedWindows.size){
      this.store.skipWindow(batch.map(b=>b.row));this.store.event('spatial-call-skipped',{tailId,reason:'busy-superseded',observationIds:batch.map(b=>b.row.id)});
-     // Skipped evidence still occupies capacity until the successor receives it.
-     this.deferredReleases.push(release);
+     // Release capacity immediately: the skipped window is already durable (originals + facts) and the
+     // successor re-reads it from skippedBefore, so holding a slot only starves input delivery.
+     release();
      for(const b of batch)this.deliveredAt.delete(b.row.id);
      this.sealedAt.delete(tailId);this.perceptionTiming.delete(tailId);return;
     }
     await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);initialVersion=this.store.version();finish();
-    for(const free of this.deferredReleases.splice(0))free();
    }
    catch(e){this.failure=String(e);this.store.fail(batch[0]!.row.id,e);}
   });

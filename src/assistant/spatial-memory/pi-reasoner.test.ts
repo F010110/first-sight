@@ -42,7 +42,7 @@ test('Pi session and skill run the spatial tool loop, commit durably and record 
    const data=input.data as any;assert.ok(Array.isArray(data.tools));assert.ok(data.tools.some((t:any)=>t.name==='memory_add'));
    if(data.current.id==='b'&&!profileChecked){profileChecked=true;return {output:{tool:'memory_place',arguments:{placeId:data.runtimeContext.workingContext.recent[0].assessment.location.placeId,assessment:{location:{status:'new',placeId:null,name:'????',reason:'read place profile',sourceIds:['b']},hypotheses:[],unresolved:[],relations:[]}}},usage};}
    if(data.current.id==='b'&&!timelineChecked){assert.equal(data.runtimeContext.lastToolResult.kind,'place-profile');assert.equal(data.runtimeContext.lastToolResult.profile.attributes[0].value,'red awning');assert.equal(data.runtimeContext.lastToolResult.profile.notes[0].text,'red awning');assert.equal(data.runtimeContext.lastToolResult.profile.visits[0].windows[0].observationId,'a');assert.deepEqual(data.runtimeContext.inspectedIds,['b']);assert.ok(data.runtimeContext.deliveredIds.includes('a'));}
-   if(data.current.id==='b'&&!timelineChecked){timelineChecked=true;assert.ok(JSON.stringify(data.messages).includes('memory_add'));assert.ok(JSON.stringify(data.messages).includes('事实a'));assert.ok(!JSON.stringify(data.messages).includes('"kind":"timeline"'));return {output:{tool:'memory_timeline',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'未知',reason:'先浏览历史',sourceIds:['b']},hypotheses:[],unresolved:[],relations:[]}}},usage};}
+   if(data.current.id==='b'&&!timelineChecked){timelineChecked=true;assert.ok(JSON.stringify(data.messages).includes('memory_add'));assert.ok(JSON.stringify(data.messages).includes('事实a'));assert.ok(!JSON.stringify(data.messages).includes('"kind":"timeline"'));return {output:{tool:'memory_timeline',arguments:{assessment:{location:{status:'known',placeId:data.runtimeContext.workingContext.recent[0].assessment.location.placeId,name:'区域内部',reason:'先浏览历史',sourceIds:['b'],contextRefs:['a']},hypotheses:[],unresolved:[],relations:[]}}},usage};}
     if(data.current.id==='b')return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:data.runtimeContext.workingContext.recent[0].assessment.location.placeId,name:'区域内部',reason:'当前布局延续，名称扩大',sourceIds:['b'],contextRefs:['a']},hypotheses:[],unresolved:[],relations:[]},rename:{name:'区域内部',reason:'当前图片确认更广内部范围',sourceIds:['b']}}},usage};
     return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'区域'+data.current.id,reason:'当前三摄布局',sourceIds:[data.current.id]},hypotheses:[],unresolved:[],relations:[],...data.current.id==='a'?{placeUpdates:[{key:'landmark',value:'red awning',status:'asserted',reason:'current image',sourceIds:['a']}]}:{}},notes:data.current.id==='a'?[{text:'red awning',sourceIds:['a']}]:[]}},usage};
  };
@@ -184,20 +184,20 @@ test('a known claim with no delivered support receives that place newest stored 
  }finally{await service?.close().catch(()=>{});await new Promise(r=>setTimeout(r,50));if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true,maxRetries:3,retryDelay:100});}
 });
 
-test('the tool schema exposes only known/new and a stray unknown submission is rejected, then corrected',async()=>{
+test('a bare unknown is rejected while a boundary transition stays available',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-no-unknown-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
  await mkdir(join(dir,'sources'));let service:SpatialMemoryService|undefined,calls=0,sawUnknown=false;
  const row=async(id:string,atMs:number)=>{const views=[];for(const direction of ['front','left','right']){const bytes=Buffer.from(id+direction),path=join(dir,'sources',id+'-'+direction+'.png');await writeFile(path,bytes);views.push({id,direction,path,sha256:createHash('sha256').update(bytes).digest('hex')});}return {id,atMs,views};};
  const request=async(input:any)=>{
   const id=input.data.current.id,runtime=input.data.runtimeContext,base={hypotheses:[],unresolved:[],relations:[]};
   // The schema must not offer an undetermined status at all.
-  const schema=JSON.stringify(input.data.tools);assert.ok(schema.includes('"known"'));assert.ok(!/"status":\{"anyOf":\[[^\]]*"unknown"/.test(schema),schema.slice(0,400));
+  const schema=JSON.stringify(input.data.tools);assert.ok(schema.includes('known')&&schema.includes('unknown')&&schema.includes('boundary'),'schema must expose the boundary transition');
   calls++;
   if(calls===1){
    // A bare unknown must be refused, and the refusal must name the replacement statuses.
    return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'unknown',placeId:null,name:'����',reason:'��ȷ��',sourceIds:[id]},...base}}},usage};
   }
-  if(calls===2){const feedback=JSON.stringify(runtime.feedback?.error);assert.match(feedback,/status/);assert.match(feedback,/known|new|anyOf|constant/);sawUnknown=true;
+  if(calls===2){const feedback=JSON.stringify(runtime.feedback?.error);assert.match(feedback,/boundary/);sawUnknown=true;
    return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'�����',reason:'�״ν�����ǰ����',sourceIds:[id],regionChangeEvidence:['�׸�����']},...base}}},usage};}
   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:runtime.workingContext.recent[0].assessment.location.placeId,name:'�����',reason:'��������',sourceIds:[id],contextRefs:[runtime.workingContext.recent[0].observationId]},...base}}},usage};
  };
