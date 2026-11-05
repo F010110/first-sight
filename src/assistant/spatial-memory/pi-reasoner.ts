@@ -39,11 +39,12 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   session=await repo.open(metadata,BACKGROUND_CONTEXT);
  }else session=await repo.create({cwd:process.cwd()},BACKGROUND_CONTEXT);
-  let current:JudgeInput|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null,contextChars=recoveredContextChars,historicalSupplies=0;
+  let current:JudgeInput|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],baseImageIds=new Set<string>(),viewCalls=0,lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null,contextChars=recoveredContextChars,historicalSupplies=0;
   let recovering=false;const recoveryStates=new Map<number,StoredState>();
  const provider=accountedPiProvider({request,singleToolArguments:false,view:()=>{
   if(!current)throw Error('No active spatial judgment');
-   return {current:{id:current.row.id,atMs:current.row.atMs},runtimeContext:{mode:'spatial-memory-v2',locationPolicy:{statuses:['known','new','unknown+boundary'],rule:'Every window is either committed to a place (known/new) or explicitly a transition between two regions (status unknown plus boundary.regions). A bare unknown is not a valid answer.'},currentObservation:{id:current.row.id,atMs:current.row.atMs},...current.window?{window:current.window}:{facts:current.facts},previousRegion:current.previousRegion,revisit:current.revisit??null,workingContext:spatialStateHead(current.context),deliveredIds:[...delivered.keys()],inspectedIds:[...inspected],lastToolResult,feedback:current.feedback??null},images,...current.window?{windowSources:current.window.observations.filter(o=>images.some(v=>v.id===o.id)).map(o=>({id:o.id,atMs:o.atMs}))}:{}};
+   const shown=viewCalls++===0?images:images.filter(v=>!baseImageIds.has(v.id));
+   return {current:{id:current.row.id,atMs:current.row.atMs},runtimeContext:{mode:'spatial-memory-v2',locationPolicy:{statuses:['known','new','unknown+boundary'],rule:'Every window is either committed to a place (known/new) or explicitly a transition between two regions (status unknown plus boundary.regions). A bare unknown is not a valid answer.'},currentObservation:{id:current.row.id,atMs:current.row.atMs},...current.window?{window:current.window}:{facts:current.facts},previousRegion:current.previousRegion,revisit:current.revisit??null,workingContext:spatialStateHead(current.context),deliveredIds:[...delivered.keys()],inspectedIds:[...inspected],lastToolResult,feedback:current.feedback??null},images:shown,...(()=>{const ws=current.window?current.window.observations.filter(o=>shown.some(v=>v.id===o.id)).map(o=>({id:o.id,atMs:o.atMs})):[];return ws.length?{windowSources:ws}:{};})()};
   },onRequest:()=>{if(recovering)throw Error('Checkpoint recovery is forbidden from invoking a model');if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);if(++turnRequests>12||++requests>(options.maxRequests??8000))throw Error('Spatial Pi request guard exhausted');}});
  const requireCurrent=()=>{if(!current)throw Error('No active spatial judgment');return current;};
  const deliver=(record:HistoryRecord)=>{delivered.set(record.observationId,record);for(const member of record.window?.observations??[])delivered.set(member.id,record);};
@@ -179,7 +180,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
     return commitResult(committed);
  });
   const tools=[timeline,find,read,inspect,place,skippedSources,record];
-  const {harness,open}=await AgentHarness.create({session,...provider,tools,resources:{skills:skills.filter(s=>s.name===skillName)},systemPrompt:()=>skill.content,compaction:{enabled:true,reserveTokens:32000,keepRecentTokens:contextPolicy.keepRecentTokens},retry:{enabled:false,maxRetries:0,baseDelayMs:0}},BACKGROUND_CONTEXT);
+  const {harness,open}=await AgentHarness.create({session,...provider,tools,resources:{skills:skills.filter(s=>s.name===skillName)},systemPrompt:()=>skill.content,compaction:{enabled:true,reserveTokens:64000,keepRecentTokens:contextPolicy.keepRecentTokens},retry:{enabled:false,maxRetries:0,baseDelayMs:0}},BACKGROUND_CONTEXT);
   if(open.length&&!options.resume)throw Error('Unexpected open spatial operation');
   const lane=await harness.lane('space',BACKGROUND_CONTEXT);
   const checkpointRecord=(state:StoredState,tipId:string,extra:Record<string,unknown>={})=>({version:state.version,observationId:state.observationId,atMs:state.atMs,window:state.window?{startMs:state.window.startMs,endExclusiveMs:state.window.endExclusiveMs,memberIds:state.window.observations.map(o=>o.id),missingFactIds:state.window.missingFactIds??[],revisionOfVersion:state.window.revisionOfVersion,skippedBefore:state.window.skippedBefore?.map(w=>w.observations.map(o=>o.id))}:undefined,session:session.metadata,tipId,skillVersions:versions,contextPolicy,contextChars,...extra});
@@ -236,7 +237,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   async judge(input:JudgeInput){
    current=input;delivered=new Map();images=[];inspected=new Set();lastToolResult=null;committed=null;turnRequests=0;historicalSupplies=0;
    const windowImages=input.windowViews??input.row.views;
-   images=[...windowImages];inspected=new Set(windowImages.map(v=>v.id));
+   images=[...windowImages];inspected=new Set(windowImages.map(v=>v.id));baseImageIds=new Set(windowImages.map(v=>v.id));viewCalls=0;
    // Skipped windows must not disappear from the reasoning. Deliver the newest skipped
    // window's originals so this judgment can also assign it (via revisions) instead of
    // leaving those images permanently unjudged. Bounded to one window per turn.

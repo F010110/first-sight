@@ -83,10 +83,10 @@ export class SpatialLongTermStore{
     note:'Visits/windows use the requested revision projection. Original membership is separate. Window members are original facts, not per-frame locations. Skipped sources have no assigned place. Notes are agent assertions, not independent observations.'};
   }
    pending():Observation[]{return (this.db.prepare('SELECT o.raw FROM observations o LEFT JOIN states s ON s.observation_id=o.id LEFT JOIN window_members w ON w.observation_id=o.id LEFT JOIN skipped_members k ON k.observation_id=o.id WHERE s.version IS NULL AND w.version IS NULL AND k.observation_id IS NULL ORDER BY o.seq').all() as any[]).map(r=>JSON.parse(r.raw));}
-   skippedBefore(atMs:number):SkippedWindow[]{return (this.db.prepare('SELECT raw FROM skipped_windows WHERE consumed_version IS NULL AND at_ms<? ORDER BY at_ms').all(atMs) as Array<{raw:string}>).map(r=>JSON.parse(r.raw));}
+   skippedBefore(atMs:number):SkippedWindow[]{return (this.db.prepare('SELECT raw FROM skipped_windows WHERE consumed_version IS NULL AND at_ms<? ORDER BY at_ms').all(atMs) as Array<{raw:string}>).map(r=>{const w=JSON.parse(r.raw) as SkippedWindow;return {...w,observations:w.observations.map(o=>({...o,facts:this.facts(o.id)??o.facts}))};});}
    skipWindow(rows:Observation[]){
-    const pending=this.pending();if(!rows.length||rows.some((r,i)=>pending[i]?.id!==r.id||!this.facts(r.id)))throw Error('Only a complete pending source prefix may skip spatial inference');
-    const window:SkippedWindow={startMs:rows[0]!.atMs,endExclusiveMs:(Math.floor(rows.at(-1)!.atMs/8000)+1)*8000,...rows[0]!.recordingId?{recordingId:rows[0]!.recordingId}:{},observations:rows.map(r=>({id:r.id,atMs:r.atMs,facts:this.facts(r.id)!})),reason:'busy-superseded'};
+    const pending=this.pending();if(!rows.length||rows.some((r,i)=>pending[i]?.id!==r.id))throw Error('Only a complete pending source prefix may skip spatial inference');
+    const window:SkippedWindow={startMs:rows[0]!.atMs,endExclusiveMs:(Math.floor(rows.at(-1)!.atMs/8000)+1)*8000,...rows[0]!.recordingId?{recordingId:rows[0]!.recordingId}:{},observations:rows.map(r=>({id:r.id,atMs:r.atMs,facts:this.facts(r.id)})),reason:'busy-superseded'};
     this.db.exec('BEGIN IMMEDIATE');try{this.db.prepare('INSERT INTO skipped_windows VALUES(?,?,?,NULL)').run(rows.at(-1)!.id,rows.at(-1)!.atMs,JSON.stringify(window));for(const row of rows)this.db.prepare('INSERT INTO skipped_members VALUES(?,?)').run(row.id,rows.at(-1)!.id);this.db.exec('COMMIT');}catch(e){this.db.exec('ROLLBACK');throw e;}
    }
  history(version:number,cutoffMs:number,knownAtMs:number):HistoryRecord[]{

@@ -88,7 +88,7 @@ test('Pi receives automatically recalled older-place images and can cite the ins
   }
   assert.equal(input.data.runtimeContext.lastToolResult.kind,'revisit-inspection');
   assert.ok(input.data.runtimeContext.inspectedIds.includes(candidate.matchedObservationId),'candidate evidence not inspected');
-  assert.equal(input.images.length,6);
+  assert.equal(input.images.length,3,'later turns resend only the newly inspected originals');
   const currentWindow=input.data.runtimeContext.window.observations.map((o:any)=>o.id);
   return {output:{tool:'memory_add',arguments:{assessment:{...unknown,location:{status:'known',placeId:firstPlace,name:'旧地点',reason:'召回候选原图支持重访',sourceIds:[...currentWindow,candidate.matchedObservationId],contextRefs:[candidate.matchedObservationId]}},notes:[]}},usage};
  };
@@ -118,7 +118,7 @@ test('windowed Pi session keeps memory tools, rejects missing interim assessment
   if(secondCalls===2){assert.ok(JSON.stringify(input.data.messages).includes('assessment'));return {output:{tool:'memory_timeline',arguments:{assessment:interim()}},usage};}
   if(secondCalls===3){assert.equal(runtime.lastToolResult.kind,'timeline');assert.equal(runtime.workingContext.location.status,'known');return {output:{tool:'memory_read',arguments:{ids:['w0'],assessment:interim()}},usage};}
   if(secondCalls===4){assert.equal(runtime.lastToolResult.records[0].window.observations.length,4);return {output:{tool:'memory_inspect',arguments:{ids:['w0'],assessment:interim()}},usage};}
-  assert.equal(input.images.length,6);assert.deepEqual(runtime.inspectedIds,['w4','w5','w6','w7','w0']);
+  assert.equal(input.images.length,3,'final turn carries only the inspected original, not the window frames again');assert.deepEqual(runtime.inspectedIds,['w4','w5','w6','w7','w0']);
    return {output:{tool:'memory_add',arguments:{assessment:{...interim(),unresolved:[],location:{status:'known',placeId:runtime.workingContext.recent[0].assessment.location.placeId,name:'甲区域',reason:'检查过的历史原图支持重访',sourceIds:['w7','w0']}}}},usage};
  };
  try{
@@ -143,7 +143,7 @@ test('known claims that cite read-but-uninspected history receive those original
   if(step===1)return {output:{tool:'memory_timeline',arguments:{assessment:{location:{status:'known',placeId:placeId||runtime.workingContext.recent[0].assessment.location.placeId,name:'??',reason:'????',sourceIds:[id],contextRefs:[runtime.workingContext.recent[0].observationId]},...base}}},usage};
   if(step===2){assert.equal(runtime.lastToolResult.kind,'timeline');
    return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:placeId||runtime.workingContext.recent[0].assessment.location.placeId,name:'����',reason:'��ʷͬ����',sourceIds:[id,'h3'],contextRefs:['h3']},...base}}},usage};}
-  if(step===3){assert.equal(runtime.lastToolResult.kind,'historical-evidence-inspection');assert.deepEqual(runtime.lastToolResult.observationIds,['h3']);assert.ok(runtime.inspectedIds.includes('h3'));assert.equal(input.images.length,6);
+  if(step===3){assert.equal(runtime.lastToolResult.kind,'historical-evidence-inspection');assert.deepEqual(runtime.lastToolResult.observationIds,['h3']);assert.ok(runtime.inspectedIds.includes('h3'));assert.equal(input.images.length,3,'later turn resends only the inspected original');
    return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId:runtime.workingContext.recent[0].assessment.location.placeId,name:'����',reason:'�����ʷԭͼ��ȷ��ͬ����',sourceIds:[id,'h3'],contextRefs:['h3']},...base}}},usage};}
   if(step===4){assert.match(String(runtime.feedback?.error),/not an existing place/);assert.match(String(runtime.feedback?.error),/Place IDs that actually appear in this session/);
    return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'?????',reason:'????',sourceIds:[id]},...base}}},usage};}

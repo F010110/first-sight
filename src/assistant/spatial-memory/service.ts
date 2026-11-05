@@ -159,18 +159,20 @@ export class SpatialMemoryService{
    this.commitTail=this.commitTail.then(async()=>{
     this.queuedWindows.delete(tailId);
    if(this.failure)return;
+   // Decide the skip BEFORE waiting for extraction. A window that will be skipped must not
+   // occupy the serial commit lane waiting on facts; that wait is what turns a slow window
+   // into a growing backlog. `queuedWindows.size>0` means a later window is already waiting,
+   // so this one is the superseded one and the later window will become the successor.
+   if(this.busyPolicy==='skip-obsolete'&&this.queuedWindows.size){
+    this.store.skipWindow(batch.map(b=>b.row));this.store.event('spatial-call-skipped',{tailId,reason:'busy-superseded',observationIds:batch.map(b=>b.row.id)});
+    release();
+    for(const b of batch)this.deliveredAt.delete(b.row.id);
+    this.sealedAt.delete(tailId);this.perceptionTiming.delete(tailId);return;
+   }
    try{
     if(this.options.windowMs&&this.evidencePolicy==='deadline'){let timer:ReturnType<typeof setTimeout>|undefined;try{await Promise.race([settled,new Promise<void>(resolve=>{timer=setTimeout(resolve,this.evidenceWaitMs);})]);}finally{if(timer)clearTimeout(timer);}}
     else if(this.options.windowMs){await settled;if(batch.some(b=>!this.store.facts(b.row.id)))throw Error('Independent window facts unavailable; no spatial judgment was run');}
     else await Promise.all(batch.map(b=>b.extract));
-    if(this.busyPolicy==='skip-obsolete'&&this.queuedWindows.size){
-     this.store.skipWindow(batch.map(b=>b.row));this.store.event('spatial-call-skipped',{tailId,reason:'busy-superseded',observationIds:batch.map(b=>b.row.id)});
-     // Release capacity immediately: the skipped window is already durable (originals + facts) and the
-     // successor re-reads it from skippedBefore, so holding a slot only starves input delivery.
-     release();
-     for(const b of batch)this.deliveredAt.delete(b.row.id);
-     this.sealedAt.delete(tailId);this.perceptionTiming.delete(tailId);return;
-    }
     await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);initialVersion=this.store.version();finish();
    }
    catch(e){
