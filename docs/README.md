@@ -2,9 +2,13 @@
 
 > **本页下方为历史导航。架构及设计理由：[active/README.md](active/README.md)；当前状态、待办和维护：[TODO.md](../TODO.md)。旧同步区的“当前”不代表现在，原始证据与代码仍保留。**
 
+信息同步总入口：**[项目信息同步区](project-sync/README.md)**（最新决策、实现、数据、成绩、未知项及交接规则；用于区分下面的历史版本信息）。
+
 当前版本：**[V2 / v2.0.0](./releases/v2.0.0.md)**，单摄校园网实时原型，接受已知断联限制。历史[v1.2.0](./releases/v1.2.0.md)、v1.0.0手机基线及v1.1测试记录保留，不覆盖。
 
 ## 当前入口
+
+- [更真实样本：建议11官方来源核查、已收集资产与接入边界](research/realistic-sample-source-survey-2026-10-24.md)
 
 - [V2目录整理与验证](maintenance/v2-layout-validation.md) · [脚本导航](../scripts/README.md)
 
@@ -28,6 +32,11 @@
 
 - [当前主体＋单图标注冻结协议](./research/group-identity-annotations-v3-1.json)
 - [空间记忆版本历史与旧方案归档](./archive/spatial-memory-version-history.md)
+
+## 笔记与建议
+
+- [笔记索引](./notes/README.md)：建议、讨论、草稿、审阅笔记的入口
+- [当前空间记忆设计与三个参考实现的对照](./notes/spatial-memory-design-and-references.md)
 
 ## 研究资料（非V2实时启动步骤）
 
