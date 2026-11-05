@@ -37,7 +37,7 @@ workingContext按来源去重，anchorRefs引用recent/anchors；historicalReaso
 
 短期已交付来源可用contextRefs结合当前证据延续，不冒充读过原图；短期外身份须自主检索并inspect。memory_timeline分页导航，memory_find只给字面候选；memory_read读完整事实，memory_inspect看已交付历史原图（最多3份）。预览不是取证，零命中不证明不存在，不按题号/答案路由。
 
-memory_skipped_sources可读取当前或已提交window.skippedBefore明确引用的早窗事实，inspect=true时实际看原图（最多3份），不赋予这些来源任何已确认位置。看图后图像窗口替换为当前尾观察与此次历史图；当前窗口成员在本窗已看过，仍可作为本窗来源引用；先前已移出的历史图不再可引用。
+memory_skipped_sources可读取当前或已提交window.skippedBefore明确引用的早窗事实，inspect=true时实际看原图（最多3份）。**跳过窗的图像不能被丢掉**：本轮已把最近一个跳过窗的多组三摄一并交付，你要像对待本窗一样判断它属于哪个地点；证据支持与当前窗同地时用assessment.revisions把那些观察归入该地点，证据不同则各自归入对应地点，确实无法判断才写进unresolved并说明缺什么。不得为了清账把它们硬塞进当前地点。看图后图像窗口替换为当前尾观察与此次历史图；当前窗口成员在本窗已看过，仍可作为本窗来源引用；先前已移出的历史图不再可引用。
 
 revisionOfVersion是迟到证据重评，追加而不改旧快照，不是新到访或当前回到旧处；优先检查本窗原判断，无反证不重复新建。只保留当前适用假设、未决及有来源关系，不凭时序推断连通、安全或坐标。
 

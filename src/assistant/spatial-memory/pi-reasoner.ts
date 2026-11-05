@@ -237,6 +237,15 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    current=input;delivered=new Map();images=[];inspected=new Set();lastToolResult=null;committed=null;turnRequests=0;historicalSupplies=0;
    const windowImages=input.windowViews??input.row.views;
    images=[...windowImages];inspected=new Set(windowImages.map(v=>v.id));
+   // Skipped windows must not disappear from the reasoning. Deliver the newest skipped
+   // window's originals so this judgment can also assign it (via revisions) instead of
+   // leaving those images permanently unjudged. Bounded to one window per turn.
+   const skipped=input.window?.skippedBefore?.at(-1);
+   if(skipped){
+    const skipIds=skipped.observations.map(o=>o.id);
+    try{images.push(...await input.inspect(skipIds));for(const id of skipIds)inspected.add(id);}
+    catch(error){lastToolResult={kind:'skipped-window-inspect-failed',observationIds:skipIds,error:String(error)};}
+   }
    // Automatic recall is delivered as text/source identifiers. Candidate images
    // stay lazy so they cannot displace the twelve current-window images; the
    // agent must memory_inspect them before treating a change as a new place.
