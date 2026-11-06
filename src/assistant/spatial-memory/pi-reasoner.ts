@@ -20,7 +20,7 @@ type Invocation=Parameters<AgentHarnessTool<undefined>['execute']>[4];
  * explicit working context, tool authorization, durable SQLite commit and
  * skill versioning; Pi supplies the session, tool loop and compaction.
  */
-export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJsonRequest)=>Promise<unknown>,options:{maxRequests?:number;resume?:boolean;maxContextChars?:number;keepRecentTokens?:number;spatialImages?:'window'|'ends'|'none'}={}):Promise<SpatialReasoner>{
+export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJsonRequest)=>Promise<unknown>,options:{maxRequests?:number;resume?:boolean;maxContextChars?:number;keepRecentTokens?:number}={}):Promise<SpatialReasoner>{
   const root=resolve(rootArg);await mkdir(root,{recursive:true});
   const contextPolicy={version:'spatial-session-context-v1',maxChars:options.maxContextChars??48000,keepRecentTokens:options.keepRecentTokens??2000};
   if(!Number.isInteger(contextPolicy.maxChars)||contextPolicy.maxChars<1000||!Number.isInteger(contextPolicy.keepRecentTokens)||contextPolicy.keepRecentTokens<1)throw Error('Invalid spatial session context budget');
@@ -268,14 +268,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   async judge(input:JudgeInput){
    current=input;delivered=new Map();images=[];inspected=new Set();lastToolResult=null;committed=null;turnRequests=0;historicalSupplies=0;
    const windowImages=input.windowViews??input.row.views;
-   const imageMode=options.spatialImages??'window';
-   // Reduced-image experiment: 'ends' keeps the window head and tail (three views
-   // each) so occupancy and transition checks still see both edges; 'none' relies on
-   // the independently extracted facts only. Source citations stay bound to the whole
-   // window because its facts were delivered even when fewer images were shown.
-   const windowIds=[...new Set(windowImages.map(v=>v.id))];
-   const shownWindowImages=imageMode==='none'?[]:imageMode==='ends'&&windowIds.length>1?windowImages.filter(v=>v.id===windowIds[0]||v.id===windowIds.at(-1)):[...windowImages];
-   images=[...shownWindowImages];inspected=new Set(windowImages.map(v=>v.id));baseImageIds=new Set(shownWindowImages.map(v=>v.id));viewCalls=0;
+   images=[...windowImages];inspected=new Set(windowImages.map(v=>v.id));baseImageIds=new Set(windowImages.map(v=>v.id));viewCalls=0;
    // Skipped windows must not disappear from the reasoning. Deliver the newest skipped
    // window's originals so this judgment can also assign it (via revisions) instead of
    // leaving those images permanently unjudged. Bounded to one window per turn.

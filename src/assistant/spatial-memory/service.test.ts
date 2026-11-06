@@ -197,6 +197,17 @@ test('8-second windows commit one durable judgment with four immutable members, 
  }finally{await service?.close();await f.cleanup();}
 });
 
+test('12-second windows seal six observations each and keep the same durable transaction',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;const sizes:number[]=[];
+ const reasoner:SpatialReasoner={async judge(input){calls++;sizes.push(input.window!.observations.length);assert.equal(input.windowViews!.length,18);const a=assessment(input.row.id);await input.commit(a,{inspected:new Set(input.window!.observations.map(o=>o.id)),delivered:new Set()});return a;},async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(r){return facts(r);}},{reasoner,windowMs:12000,maxPending:12});
+  for(let i=0;i<12;i++)await service.observe(await f.row('z'+i,i*2000));
+  const p=await service.finishInput();assert.equal(calls,2);assert.deepEqual(sizes,[6,6]);assert.equal(p.spatialStates,2);assert.equal(p.coveredObservations,12);
+  const first=service.snapshotAt(1,Number.MAX_SAFE_INTEGER).state;assert.deepEqual(first.window!.observations.map(o=>o.id),['z0','z1','z2','z3','z4','z5']);assert.equal(first.window!.endExclusiveMs,12000);
+ }finally{await service?.close();await f.cleanup();}
+});
+
 test('admission capacity rejects excess callers before archiving and is released after bounded batch completion',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,release!:()=>void;const blocked=new Promise<void>(r=>release=r);
  const reasoner:SpatialReasoner={async judge(input){await blocked;const a=assessment(input.row.id);await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}};
@@ -364,7 +375,7 @@ test('failed spatial prefix preserves later extracted observations and resumes f
 });
 
 test('long-term transaction failure cannot create place/state/checkpoint or publish short-term changes',async()=>{
-  const f=await fixture();const store=new SpatialLongTermStore(f.root);try{const row=await f.row('a',0);store.archive(row);store.saveFacts('a',facts(row));assert.throws(()=>store.commit(row,assessment('a'),()=>{throw Error('checkpoint failure');}),/checkpoint failure/);assert.deepEqual(store.counts(),{observations:1,spatialStates:0,stateVersions:0,incompleteWindows:0,missingFacts:0,coveredObservations:0,places:0,visits:0,pending:1,skippedWindows:0,skippedObservations:0,skippedByReason:{},deferredObservations:0});assert.equal(store.checkpoint(1),null);}finally{store.close();await f.cleanup();}
+  const f=await fixture();const store=new SpatialLongTermStore(f.root);try{const row=await f.row('a',0);store.archive(row);store.saveFacts('a',facts(row));assert.throws(()=>store.commit(row,assessment('a'),()=>{throw Error('checkpoint failure');}),/checkpoint failure/);assert.deepEqual(store.counts(),{observations:1,spatialStates:0,stateVersions:0,incompleteWindows:0,missingFacts:0,coveredObservations:0,places:0,visits:0,pending:1,skippedWindows:0,skippedObservations:0,deferredObservations:0});assert.equal(store.checkpoint(1),null);}finally{store.close();await f.cleanup();}
 });
 
 test('new observation does not inherit location; cold start never rebuilds context from archive',async()=>{

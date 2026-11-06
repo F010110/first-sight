@@ -133,28 +133,6 @@ test('windowed Pi session keeps memory tools, rejects missing interim assessment
  }finally{await service?.close().catch(()=>{});if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true});}
 });
 
-test('reduced window images keep the head and tail observations while the whole window stays citable',async()=>{
- const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-images-ends-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
- await mkdir(join(dir,'sources'));let service:SpatialMemoryService|undefined;const seen:string[][]=[];
- const request=async(input:any)=>{
-  const id=input.data.current.id;
-  seen.push(input.images.map((v:any)=>`${v.id}:${v.direction}`));
-  // Only the delivered head/tail images are bound as window sources; the untouched
-  // middle observations stay citable because their facts were delivered.
-  assert.deepEqual(input.windowSources.map((s:any)=>s.id),['e0','e3']);
-  return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'甲区域',reason:'窗头窗尾布局一致，中断观察的事实同属该区域',sourceIds:[id,'e1'],regionChangeEvidence:['首次建立']},hypotheses:[],unresolved:[],relations:[]}}},usage};
- };
- try{
-  const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request,{spatialImages:'ends'});
-  service=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(row){return {summary:'观察'+row.id,details:['布局']};}},{reasoner,windowMs:8000});
-  for(let i=0;i<4;i++){const id='e'+i,views=[];for(const direction of ['front','left','right']){const bytes=Buffer.from(id+direction),path=join(dir,'sources',id+'-'+direction+'.png');await writeFile(path,bytes);views.push({id,direction,path,sha256:createHash('sha256').update(bytes).digest('hex')});}await service.observe({id,atMs:i*2000,views});}
-  await service.finishInput();
-  assert.equal(seen.length,1,'a single-turn judgment sends the reduced window image set once');
-  assert.deepEqual(seen[0],[...['front','left','right'].map(d=>'e0:'+d),...['front','left','right'].map(d=>'e3:'+d)]);
-  assert.equal(service.latest()!.state.locationDecision,'new');
- }finally{await service?.close().catch(()=>{});if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true});}
-});
-
 test('known claims that cite read-but-uninspected history receive those originals; unknown place IDs list real ones',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-known-history-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
  await mkdir(join(dir,'sources'));let service:SpatialMemoryService|undefined,step=0,placeId='';

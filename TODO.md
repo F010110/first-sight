@@ -2,22 +2,16 @@
 
 ## 当前状态与约定（2026-11-02）
 
-- **事件驱动/抽稀调度实验（2026-11-06，按建议15执行，仅实验开关）**：建议15提出"不再要求每个8秒窗都跑一次完整判断"。本轮先做它要求的离线因果反事实，再实现最小在线调度并实测；**默认行为未变**（`--judgment-stride=1`），未改`docs/active`的"每窗必须有判断（判断窗内不得裸unknown）"契约，也未把抽稀设为默认。
-  - **第1步 离线反事实（已完成，无模型调用）**：`scripts/analysis/event-trigger-counterfactual.py`在`run/unioncity-memory-full813-v2`的813观察/204窗上，只用窗口事实、当前与上一次判断窗的尾部图像、距上次判断的窗数等**因果信号**；参考标注只用于评分。结果（`run/event-trigger-813/report.json`）：204窗中有**41个参考地点变化、3次重访**；单信号区分"真换地点"与"同地点新视角"的能力很弱，AUC：直方图0.696、布局L1 0.643、SIFT内点0.631、文本相似0.613、过渡词0.591。扩大参数网格后，检测型策略在整条轨迹上可减**43%**（116次、0漏判），但按时间对半留出验证只有**42–45%**，并漏掉**1–4/20~21**个参考地点变化；固定抽稀按构造不漏：stride 2=102次（-50%，陈旧≤1窗）、stride 3=68次（-67%，≤2窗）、stride 4=51次（-75%，≤3窗）。结论：**检测器能达到与抽稀接近的减量，但需按场景调阈值且仍有实际漏检；固定抽稀更简单、有界、无需调参，故先实现它**。
-  - **第2步 调度模块＋测试（已完成）**：新增`src/assistant/spatial-memory/judgment-schedule.ts`（纯函数，stride 1..8，null=首窗必判），以及`judgment-schedule.test.ts`（默认逐窗、stride规则、非法参数、stride>1必须window+skip-obsolete）。
-  - **第3步 在线可选模式（已完成）**：`--judgment-stride=N`（仅`--require-realtime`+skip-obsolete），被抽稀的窗走既有跳过路径，reason记为`scheduled-decimation`（不占容量、原图/事实保留、交给后继作为skippedBefore）；`skipped_windows.reason`扩展为三值，`counts()`新增`skippedByReason`，manifest绑定`judgmentStride`；skill补充"三种skip原因都只是证据，都不等于该窗已有位置判断"。
-  - **第4步 100帧实测（已完成，`run/unioncity-rt100-stride2-v3`）**：25窗中判12、跳过13（12 scheduled + 1 busy），投递p95 29ms、0违规、realtime satisfied；判断p50 6.82s/p95 28.9s，seal→commit p50 12.2s；覆盖观察48/100。对比基线`run/unioncity-rt100-v8`（22状态+3跳过、判断p50 5.45s、覆盖88/100、投递p95 33ms）：**判断次数减半，但每个判断变重（因为它要把被抽稀窗的12张原图一起看），覆盖也减半，实时性没有实际收益**；server端`revisions`仍为0，说明后继只"看到"被抽稀窗却不会把它归入地点。该运行的尾部还有1个被抽稀窗未被后继消费（`deferredObservations=4`、`inputDrainComplete=false`），说明抽稀模式需要一个收尾补判，否则最后一段证据无人归入；另一次`run/unioncity-rt100-stride2-v2`因单个perception响应体传输卡住**126秒**（请求耗时126s、body 120s，恰在120s超时内）导致投递滞后74s、20次违规——这是传输尾部风险，不是调度本身。
-  - **仍未做（需批准或不属本轮）**：①被抽稀窗的**延迟补判**（把未判断窗变成有优先级的待办，在空闲/尾部批量补判以恢复覆盖）需要改提交语义（当前`commit`只接受连续pending前缀，`revisions`单次最多3条，无法整窗补判）；②有界并发+有序提交（改架构）；③让裁判接受"显式声明缺口"的运行（当前`prepareHolisticBundle`要求`skipped_windows=0`与全覆盖，故本轮抽稀运行无法用LLM裁判评质量）；④把空间lane的120s传输超时收紧并限制重试（本轮观测到单请求126s，建议30–45s+有界重试）。
-  - 代码与测试：`judgment-schedule.ts`、`service.ts`、`long-term-store.ts`、`contracts.ts`、`run-spatial-memory.ts`、skill；全库 **592/592** 通过。所有基线/失败运行目录保留，未删除、未推送tag。
-
-
-- **图像预算与"拆分 vs 合并"实验（2026-11-06，100帧实测）**：用户要求验证两件事：不拆图片理解与空间推断是否会让总时长显著超过8秒；空间推断少传或不传图片能否在不掉质量的前提下降时。新增两个**仅用于实验**的开关并写入manifest（默认不变）：`--spatial-images=window|ends|none`（ends=本窗窗头与窗尾各三摄，共6图；none=只给独立事实）与`--perception-images=all|front`（front=每时刻仅前摄，共4图）。`ends/none` 只减少当前窗交付给空间Agent的图片，窗内所有观察的独立事实仍交付、仍可作为来源引用；新增回归测试验证"只发窗头窗尾6图且中间观察仍可引用"。
-  - **单请求延迟基准**（`run/_image-budget-bench`，重放真实捕获请求，3窗×9变体，n=3）：perception 12图 p50 3.96s → 4图 2.98s → 3图 1.56s；judgment 12图 4.63s → 6图 4.41s → 3图 4.21s → **0图 5.36s（反而更慢：输出token 230→351）**；"事实+判断"合并成一次调用 7.15s。即拆分比合并多付一次图片prefill（≈1.4s/窗），但合并仍要约7.1s（且未含工具续轮），还会失去独立事实、来源隔离和迟到修订。
-  - **100帧强制实时**（2s输入、8s窗、skip-obsolete；`run/unioncity-rt100-imgB-percfront-v1`/`-imgC-judgeends-v1`/`-imgD-both-v1`，基线 `run/unioncity-rt100-v8`）：A基线 perception p50 4.53s、judgment p50 5.45s、seal→commit p50 10.40s、3跳过；B（前端单摄）10.16s但jut p90 28.7s、5跳过；C（判断只给窗头窗尾）9.85s、judgment p90 9.33s、2跳过，是唯一同时改善p50/p90与跳过数的配置；D（两者都减）8.75s但7跳过、1次判断预算耗尽、最大149s。**结论：只减判断侧图片略快且更稳；减前端图片会让独立事实变弱、Agent多轮重试，反而更差，不采用。**
-  - **满覆盖质量对照**（队列模式，Flash整体裁判，25窗/100观察）：A（12图）两次 `run/unioncity-q100-imgA-window-v1(-judge)`=60/100、8条确认矛盾，`run/unioncity-q100-imgA2-window-v1(-judge)`=95/100、1条；C（6图）`run/unioncity-q100-imgC-ends-v1(-judge)`=100/100、0条，`run/unioncity-q100-imgC2-ends-v1(-judge2)`=95/100、0条（第一次裁判因Flash输出未绑定version 24而fail-closed，换目录重跑成功）。A的低分来自它把窗头的站台细节写进理由、且到v12才把"站台"改名"内部"，被裁判在currentReason/identity/windowScope判矛盾；**同配置跨运行波动（60↔95）大于图片预算差异，因此只能说"6图没有观测到质量下滑"，不能说6图更好**。裁判本身也有一次输出未绑定而失败，属Flash稳定性问题。
-  - **对8秒目标的含义**：总时长的主因不是图片体积，而是每窗至少两次4–5秒调用（实际seal→commit p50≈10s）外加Agent多轮/重试；把图片从12降到6只省约0.5s，合并成一次调用只省约1.4s，都不足以稳定进入8秒。真正可选的是拉长窗口周期（10–12s）或允许有界并发、有序提交（均需用户批准），本轮不擅自改窗口定义或并发语义。
-  - **另发现的尾部缺陷（未修，待批准）**：B/D 出现同一 `Known identity requires delivered working context or inspected historical evidence` 连续被拒6次、单窗烧掉9轮（45–149s），属重试预算放大而非图片问题；是否把"同一拒绝重复N次即记为judgment-budget-exhausted并释放"列入下一项，等用户决定。
-  - 本轮改动（两个实验开关＋1项回归测试）后全库 **589/589** 通过；默认行为未变（`window`/`all`），失败与基线运行目录全部保留，未删除、未移动tag。
+- **窗口间隔实验与回退（2026-11-06）**：按要求把"根据研究做的改动"（图像预算开关、`--judgment-stride` 调度、相关测试/skill 说明、离线反事实脚本）全部回退到 `70c5423`（昨天的版本）；实验记录与运行目录保留，未删除。只保留文档链接修复。
+  - 新增可配置窗口 `--window-ms`（默认 8000，4000–20000、必须是采样间隔的整数倍）；窗口观察数 = `windowMs/2000`；bucket 边界、`associate`/`skipWindow` 的 `endExclusiveMs`、runner `plannedStates` 都随窗口计算；perception prompt 与 skill 去掉"最多4次/8秒"硬编码；transport 的 `windowSources` 上限 4→6；新增 12 秒窗口测试（6 观察/窗、18 图、endExclusive=12000）。全库 **589/589** 通过。
+  - 100 帧强制实时对比（2s 输入、skip-obsolete、只改窗口）：
+    | 窗口 | 计划/已判/跳过 | perception p50 | judgment p50/p90 | seal→commit p50/p90 |
+    | 8s（`run/unioncity-rt100-v8`） | 25/22/3 | 4.53s | 5.45/10.21s | 10.40/15.94s |
+    | 10s（`run/unioncity-rt100-w10-v1`） | 20/17/3 | 6.03s | 6.33/16.50s | 13.16/23.65s |
+    | 12s（`run/unioncity-rt100-w12-v1`） | 17/16/1* | 7.15s | 8.04/14.00s | 17.38/23.12s |
+    *12s 唯一的长尾（48s）落在最后一个窗，没有后继窗可跳过，所以"1 次跳过"是短跑 + 位置巧合，不代表长期。
+  - **结论：单纯加大窗口不改变"每窗工作量 / 到达节拍"的比值**——三者 p50 的 seal→commit/窗口 都约 **1.30**；因为观察数、图片数、perception 和 judgment 都随窗口线性增长。813 长跑仍会积压。按现有分布，12s 只覆盖 4 观察 judgment 的 p90（10.2s），覆盖不了 6 观察的 seal→commit p90（23s）；不处理多轮长尾或重叠提取，10–12s 单独不是解。
+  - `--window-ms` 能力保留但**默认仍是 8000**，未把 10/12s 设为默认。下一步候选：①12s 窗口 + 观察到达即提取（perception 移出关键路径，seal→commit ≈ judgment 8s < 12s）；②12s 窗口但判断只取 4 个代表观察（12 图，judgment ≈ 5.5s）；③先修双回合/重试长尾。研究类改动（writer/verifier、VLM 审计、多样性选图、迁移记录）暂缓。
 
 
 - **813强制实时：仍未跑通（2026-11-05，暂停付费迭代）**。六次尝试均保留了目录与请求：v1机器休眠12小时；v2/v3/v4窗口证据循环耗尽轮次；v5在380观察时压缩摘要非法导致fail-closed（已加一次带错误回传的重试）；v6在412观察时`skipWindow`报“Only a complete pending source prefix may skip spatial inference”——容量压力下窗口乱序完成，跳过会破坏前缀，属真实顺序缺陷，尚未修。**已确认有效的部分**：强制实时本身工作（多次运行`deliveryLagMs` p50≈24ms、p95≈39ms、`realtime.satisfied=true`、背压≈0）；跳过策略确实在跑（每轮数十窗被跳过）；裸unknown被拒、boundary可用；压缩重试、判断预算耗尽按跳过分账（`judgmentFailureSkips`，上限5）均已实现。**暴露出的核心事实**：空间Agent单窗p50≈19秒，而输入每8秒一窗，强制实时下必然跳过约一半以上窗口——这不是bug，是吞吐与实时约束的直接冲突；要么接受大量跳过，要么放宽实时或提高代理吞吐。下一步应先修skipWindow的前缀约束（乱序时不得直接跳过），再决定是否继续用实时模式跑813。
