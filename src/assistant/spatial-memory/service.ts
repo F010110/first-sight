@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {SpatialLongTermStore} from './long-term-store.js';
 import {SpatialWorkingMemory} from './working-context.js';
+import {judgmentSchedule} from './judgment-schedule.js';
 import {validateFacts,validateAssessment,type Observation,type SpatialModels,type SpatialReasoner,type Assessment,type StoredState,type WorkingContext,type HistoryRecord,type SpatialWindow} from './contracts.js';
 import {SpatialOutputProtocolError} from '../../agent/spatial-protocol-retry.js';
 import {summarizeRevisitRecall,revisitRecallUnavailable,type PlaceMatcher,type RevisitPlace,type RevisitRecall} from './revisit-candidates.js';
@@ -33,10 +34,13 @@ export class SpatialMemoryService{
  private judgmentStartedAt=new Map<string,number>();
  private peakAdmitted=0;
  private judgmentFailureSkips=0;
+ private judgmentStride=1;
+ private sealedOrdinal=0;
+ private lastJudgedOrdinal:number|null=null;
  private backpressureRejections=0;
  private published:StoredState|null=null;
- private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number;windowMs:number;revisitMatcher:PlaceMatcher|undefined;revisitPolicy:'off'|'required';revisitLimit:number}){}
-  static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number;windowMs?:number;evidenceWaitMs?:number;evidencePolicy?:'wait'|'deadline';busyPolicy?:'queue'|'skip-obsolete';revisitMatcher?:PlaceMatcher;revisitPolicy?:'off'|'required';revisitLimit?:number}={}){
+ private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number;windowMs:number;revisitMatcher:PlaceMatcher|undefined;revisitPolicy:'off'|'required';revisitLimit:number;judgmentStride:number}){}
+  static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number;windowMs?:number;evidenceWaitMs?:number;evidencePolicy?:'wait'|'deadline';busyPolicy?:'queue'|'skip-obsolete';revisitMatcher?:PlaceMatcher;revisitPolicy?:'off'|'required';revisitLimit?:number;judgmentStride?:number}={}){
   const root=resolve(rootArg),concurrency=options.extractionConcurrency??2,max=options.maxReasonCalls??8,maxPending=options.maxPending??64,cool=options.cooldownMs??30000;
   if(!Number.isInteger(concurrency)||concurrency<1||concurrency>8||!Number.isInteger(max)||max<1||max>32||!Number.isInteger(maxPending)||maxPending<1||maxPending>1024||!Number.isFinite(cool)||cool<0||cool>300000)throw Error('Invalid spatial execution budget');
   const windowMs=options.windowMs??0;
@@ -50,13 +54,16 @@ export class SpatialMemoryService{
   } else await readFile(join(root,'spatial.sqlite')); // Explicit same-session recovery only.
   const revisitPolicy=options.revisitPolicy??'off',revisitLimit=options.revisitLimit??2;
   if(!['off','required'].includes(revisitPolicy)||!Number.isInteger(revisitLimit)||revisitLimit<1||revisitLimit>4||revisitPolicy==='required'&&!options.revisitMatcher)throw Error('Invalid revisit recall policy');
-  const store=new SpatialLongTermStore(root,options.now??Date.now),service=new SpatialMemoryService(root,models,options.reasoner??null,store,{extractionConcurrency:concurrency,maxReasonCalls:max,now:options.now??Date.now,maxPending,cooldownMs:cool,activeLimit:concurrency,coolUntil:0,windowMs,revisitMatcher:options.revisitMatcher,revisitPolicy,revisitLimit});
+  const store=new SpatialLongTermStore(root,options.now??Date.now),service=new SpatialMemoryService(root,models,options.reasoner??null,store,{extractionConcurrency:concurrency,maxReasonCalls:max,now:options.now??Date.now,maxPending,cooldownMs:cool,activeLimit:concurrency,coolUntil:0,windowMs,revisitMatcher:options.revisitMatcher,revisitPolicy,revisitLimit,judgmentStride:options.judgmentStride??1});
   if(windowMs&&!store.supportsWindowRevisions()){store.close();throw Error('Window memory requires a new schema-v4 database; legacy runs are preserved');}
   service.evidenceWaitMs=options.evidenceWaitMs??8000;
   service.evidencePolicy=options.evidencePolicy??'wait';
   service.busyPolicy=options.busyPolicy??'queue';
   if(!['wait','deadline'].includes(service.evidencePolicy)||!['queue','skip-obsolete'].includes(service.busyPolicy)||service.busyPolicy==='skip-obsolete'&&(!windowMs||service.evidencePolicy!=='wait')){store.close();throw Error('Busy skip requires complete-fact window mode');}
   if(!Number.isFinite(service.evidenceWaitMs)||service.evidenceWaitMs<0||service.evidenceWaitMs>120000){store.close();throw Error('Invalid evidence deadline');}
+  service.judgmentStride=options.judgmentStride??1;
+  if(!Number.isInteger(service.judgmentStride)||service.judgmentStride<1||service.judgmentStride>8){store.close();throw Error('Judgment stride must be an integer in 1..8');}
+  if(service.judgmentStride>1&&(!windowMs||service.busyPolicy!=='skip-obsolete')){store.close();throw Error('Judgment stride >1 requires window mode with skip-obsolete');}
   const incomplete=store.history(store.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).filter(r=>r.window?.missingFactIds?.length);
   service.admitted=store.pending().length+incomplete.reduce((n,r)=>n+r.window!.observations.length,0);
   if(service.admitted>maxPending){store.close();throw Error('Recovered pending exceeds configured capacity');}
@@ -93,10 +100,10 @@ export class SpatialMemoryService{
     this.bucket.push({row,extract});
     if(this.bucket.length===1){this.bucketTimer=setTimeout(()=>this.flushWindow(),this.options.windowMs);this.bucketTimer.unref();}
     if(this.bucket.length===4)this.flushWindow();
-   }else this.enqueue([{row,extract}]);
+   }else this.enqueue([{row,extract}],this.sealedOrdinal++);
   }
  private trackExtraction(task:Promise<void>){this.extractionTasks.add(task);void task.finally(()=>this.extractionTasks.delete(task)).catch(()=>{});return task;}
- private flushWindow(){if(this.bucketTimer){clearTimeout(this.bucketTimer);this.bucketTimer=null;}if(this.bucket.length){const batch=this.bucket;this.bucket=[];this.sealedAt.set(batch.at(-1)!.row.id,this.options.now());if(this.models.perceiveWindow){const task=this.trackExtraction(this.extractWindow(batch.map(b=>b.row)));for(const item of batch)item.extract=task;}this.enqueue(batch);}}
+ private flushWindow(){if(this.bucketTimer){clearTimeout(this.bucketTimer);this.bucketTimer=null;}if(this.bucket.length){const batch=this.bucket;this.bucket=[];this.sealedAt.set(batch.at(-1)!.row.id,this.options.now());if(this.models.perceiveWindow){const task=this.trackExtraction(this.extractWindow(batch.map(b=>b.row)));for(const item of batch)item.extract=task;}this.enqueue(batch,this.sealedOrdinal++);}}
  private extractWindow(rows:Observation[]){
   const task=this.windowExtractionTail.then(async()=>{
    let missing=rows.filter(r=>!this.store.facts(r.id));if(!missing.length)return;
@@ -143,7 +150,7 @@ export class SpatialMemoryService{
   });
   this.windowExtractionTail=task.catch(()=>{});return task;
  }
- private enqueue(batch:Array<{row:Observation;extract:Promise<void>}>){
+ private enqueue(batch:Array<{row:Observation;extract:Promise<void>}>,ordinal:number){
   const settled=Promise.allSettled(batch.map(b=>b.extract));let done=false,initialVersion:number|null=null,released=false,repairQueued=false;
   const tailId=batch.at(-1)!.row.id;
   this.queuedWindows.add(tailId);
@@ -159,6 +166,18 @@ export class SpatialMemoryService{
    this.commitTail=this.commitTail.then(async()=>{
     this.queuedWindows.delete(tailId);
    if(this.failure)return;
+   // Experimental decimation: a sealed window that is not due for a full judgment is
+   // carried as evidence for the next one. No detector is consulted, so staleness is
+   // bounded by the stride instead of by trigger accuracy. The carried window keeps its
+   // originals and facts and is delivered to the successor as skippedBefore; it never
+   // receives a location judgment of its own.
+   const schedule=judgmentSchedule({sinceJudged:this.lastJudgedOrdinal===null?null:ordinal-this.lastJudgedOrdinal,stride:this.judgmentStride});
+   if(!schedule.judge){
+    this.store.skipWindow(batch.map(b=>b.row),'scheduled-decimation');
+    this.store.event('spatial-call-skipped',{tailId,reason:'scheduled-decimation',ordinal,observationIds:batch.map(b=>b.row.id)});
+    release();for(const b of batch)this.deliveredAt.delete(b.row.id);
+    this.sealedAt.delete(tailId);this.perceptionTiming.delete(tailId);return;
+   }
    // Decide the skip BEFORE waiting for extraction. A window that will be skipped must not
    // occupy the serial commit lane waiting on facts; that wait is what turns a slow window
    // into a growing backlog. `queuedWindows.size>0` means a later window is already waiting,
@@ -173,7 +192,7 @@ export class SpatialMemoryService{
     if(this.options.windowMs&&this.evidencePolicy==='deadline'){let timer:ReturnType<typeof setTimeout>|undefined;try{await Promise.race([settled,new Promise<void>(resolve=>{timer=setTimeout(resolve,this.evidenceWaitMs);})]);}finally{if(timer)clearTimeout(timer);}}
     else if(this.options.windowMs){await settled;if(batch.some(b=>!this.store.facts(b.row.id)))throw Error('Independent window facts unavailable; no spatial judgment was run');}
     else await Promise.all(batch.map(b=>b.extract));
-    await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);initialVersion=this.store.version();finish();
+    await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);initialVersion=this.store.version();this.lastJudgedOrdinal=ordinal;finish();
    }
    catch(e){
     // A window whose bounded judgment budget is exhausted becomes an explicit gap and the stream

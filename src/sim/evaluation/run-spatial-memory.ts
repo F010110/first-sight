@@ -30,8 +30,14 @@ const perceptionImagesArg=flags.find(f=>f.startsWith('--perception-images='))?.s
 if(!['window','ends','none'].includes(spatialImagesArg))throw Error('Invalid --spatial-images (window|ends|none)');
 if(!['all','front'].includes(perceptionImagesArg))throw Error('Invalid --perception-images (all|front)');
 const spatialImages=spatialImagesArg as 'window'|'ends'|'none',perceptionImages=perceptionImagesArg as 'all'|'front';
-if(flags.some(f=>!['--resume','--replay-time-scale=2','--require-realtime'].includes(f)&&!f.startsWith('--limit=')&&!f.startsWith('--interval-ms=')&&!f.startsWith('--busy-policy=')&&!f.startsWith('--spatial-images=')&&!f.startsWith('--perception-images=')))throw Error('Invalid runner flag');
+// Experimental decimation: judge one window every N sealed windows, carrying the rest
+// as evidence for the successor. Requires the skip path, so it is realtime-only.
+const strideArg=flags.find(f=>f.startsWith('--judgment-stride='))?.split('=')[1]??'1';
+const judgmentStride=Number(strideArg);
+if(!Number.isInteger(judgmentStride)||judgmentStride<1||judgmentStride>8)throw Error('Invalid --judgment-stride (1..8)');
+if(flags.some(f=>!['--resume','--replay-time-scale=2','--require-realtime'].includes(f)&&!f.startsWith('--limit=')&&!f.startsWith('--interval-ms=')&&!f.startsWith('--busy-policy=')&&!f.startsWith('--spatial-images=')&&!f.startsWith('--perception-images=')&&!f.startsWith('--judgment-stride=')))throw Error('Invalid runner flag');
 if(requireRealtime&&busyPolicy!=='skip-obsolete')throw Error('--require-realtime requires --busy-policy=skip-obsolete: a queue policy would delay input delivery');
+if(judgmentStride>1&&!requireRealtime)throw Error('--judgment-stride>1 requires --require-realtime: carried windows must not be counted as full coverage');
 if(limitArg&&(!Number.isInteger(limit)||limit!<1))throw Error('Invalid limit');
 validateRealtimeInterval(intervalMs);
 const raw=await readFile(inputArg),input=JSON.parse(raw.toString()),out=resolve(outArg);
@@ -44,12 +50,12 @@ const sampled=projectReplayClock(all,intervalMs,2);
 const rows=limit?sampled.slice(0,limit):sampled;
 let plannedStates=0,lastBucket:number|undefined,lastRecording:string|undefined;
 for(const row of rows){const bucket=Math.floor(row.atMs/8000);if(lastBucket!==bucket||lastRecording!==row.recordingId)plannedStates++;lastBucket=bucket;lastRecording=row.recordingId;}
-const binding={inputSHA256:createHash('sha256').update(raw).digest('hex'),planned:rows.length,sourcePlanned:all.length,windowMs:8000,samplingMs:2000,plannedStates,mode:accelerated?'accelerated-replay':'realtime',intervalMs,replayTimeScale:2,replayMinimumIntervalMs:2000,sourceCoverage:rows.length===all.length?'all-original-observations':'original-prefix-no-sampling',realtimeEnforced:requireRealtime,locationStatuses:'known-new-or-boundary',spatialImages,perceptionImages,extractionMode:'single-window-worker',evidencePolicy:'wait-for-independent-facts',contextPolicy:'spatial-session-context-v1',memoryLibraryPolicy:'place-visits-windows-sources-v1',runtimePolicy:'projected-suffix-clock-durable-timing-v1',revisitPolicy:'sift-ransac-required/v1',revisitLimit:2,busyPolicy};
+const binding={inputSHA256:createHash('sha256').update(raw).digest('hex'),planned:rows.length,sourcePlanned:all.length,windowMs:8000,samplingMs:2000,plannedStates,mode:accelerated?'accelerated-replay':'realtime',intervalMs,replayTimeScale:2,replayMinimumIntervalMs:2000,sourceCoverage:rows.length===all.length?'all-original-observations':'original-prefix-no-sampling',realtimeEnforced:requireRealtime,locationStatuses:'known-new-or-boundary',spatialImages,perceptionImages,judgmentStride,extractionMode:'single-window-worker',evidencePolicy:'wait-for-independent-facts',contextPolicy:'spatial-session-context-v1',memoryLibraryPolicy:'place-visits-windows-sources-v1',runtimePolicy:'projected-suffix-clock-durable-timing-v1',revisitPolicy:'sift-ransac-required/v1',revisitLimit:2,busyPolicy};
 if(resume){const manifest=JSON.parse(await readFile(join(out,'manifest.json'),'utf8'));for(const [key,value] of Object.entries(binding))if(manifest[key]!==value)throw Error('Resume manifest mismatch: '+key);}
 if(!resume)await mkdir(out,{recursive:false});
 const start=Date.now(),attemptId=Date.now()+'-'+randomUUID();
 const reasoner=await createPiSpatialReasoner(join(out,'pi'),spatialJsonVlm(join(out,'pi-requests'),8000,8,true,1600),{resume,spatialImages});
-const service=await SpatialMemoryService.create(out,spatialPerceptionModel(out,{perceptionImages}),{reasoner,resume,maxPending:requireRealtime?32:12,extractionConcurrency:1,maxReasonCalls:8,windowMs:8000,evidencePolicy:'wait',busyPolicy,revisitMatcher:imageMatchPlaceMatcher(undefined,{timeoutMs:20000,maxDim:640,minInliers:20}),revisitPolicy:'required',revisitLimit:2});
+const service=await SpatialMemoryService.create(out,spatialPerceptionModel(out,{perceptionImages}),{reasoner,resume,maxPending:requireRealtime?32:12,extractionConcurrency:1,maxReasonCalls:8,windowMs:8000,evidencePolicy:'wait',busyPolicy,judgmentStride,revisitMatcher:imageMatchPlaceMatcher(undefined,{timeoutMs:20000,maxDim:640,minInliers:20}),revisitPolicy:'required',revisitLimit:2});
 if(!resume)await writeFile(join(out,'manifest.json'),JSON.stringify({schema:'spatial-memory-run-v6',...binding,producer:'spatial-memory-pi-v6',storageSchema:4,agent:'pi-spatial-memory-v2',spatialAssessmentRequired:true,context:'persistent-session-with-structured-state-head',longTerm:'organized-place-visits-with-add-notes',extractionConcurrency:1,maxReasonCalls:8,maxPending:requireRealtime?32:12,questions:false,judge:false,resume:false},null,2),{flag:'wx'});
 const timer=setInterval(()=>console.log(JSON.stringify({stage:'spatial-memory',elapsedMs:Date.now()-start,...service.progress()})),10000);timer.unref();
 type Delivery={observationId:string;index:number;attemptId:string;plannedDueMs:number|null;deliveredAtMs:number;deliveredWallMs:number;deliveryLagMs:number|null};

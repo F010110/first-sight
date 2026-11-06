@@ -364,7 +364,7 @@ test('failed spatial prefix preserves later extracted observations and resumes f
 });
 
 test('long-term transaction failure cannot create place/state/checkpoint or publish short-term changes',async()=>{
-  const f=await fixture();const store=new SpatialLongTermStore(f.root);try{const row=await f.row('a',0);store.archive(row);store.saveFacts('a',facts(row));assert.throws(()=>store.commit(row,assessment('a'),()=>{throw Error('checkpoint failure');}),/checkpoint failure/);assert.deepEqual(store.counts(),{observations:1,spatialStates:0,stateVersions:0,incompleteWindows:0,missingFacts:0,coveredObservations:0,places:0,visits:0,pending:1,skippedWindows:0,skippedObservations:0,deferredObservations:0});assert.equal(store.checkpoint(1),null);}finally{store.close();await f.cleanup();}
+  const f=await fixture();const store=new SpatialLongTermStore(f.root);try{const row=await f.row('a',0);store.archive(row);store.saveFacts('a',facts(row));assert.throws(()=>store.commit(row,assessment('a'),()=>{throw Error('checkpoint failure');}),/checkpoint failure/);assert.deepEqual(store.counts(),{observations:1,spatialStates:0,stateVersions:0,incompleteWindows:0,missingFacts:0,coveredObservations:0,places:0,visits:0,pending:1,skippedWindows:0,skippedObservations:0,skippedByReason:{},deferredObservations:0});assert.equal(store.checkpoint(1),null);}finally{store.close();await f.cleanup();}
 });
 
 test('new observation does not inherit location; cold start never rebuilds context from archive',async()=>{
