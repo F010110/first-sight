@@ -138,6 +138,14 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    // identity is still not accepted and the next turn must re-assess with the pixels.
    if(historicalSupplies<3&&a.assessment?.location?.status==='known'&&Array.isArray(a.assessment.location.sourceIds)){
     const cited=a.assessment.location.sourceIds as string[];
+    // After the platform has supplied and the model has seen its place's historical window,
+    // a repeated known claim only lacks the citation. Add that inspected source; the identity
+    // was already re-asserted by the model with the pixels in context.
+    if(historicalSupplies>0){
+     const claimed=a.assessment.location.placeId as string|null;
+     const support=[...delivered.entries()].find(([id,record])=>id!==input.row.id&&inspected.has(id)&&record.location.placeId===claimed)?.[0];
+     if(support&&!cited.includes(support)){a.assessment.location.sourceIds=[...cited,support];cited.push(support);}
+    }
     // Only when there is no already-inspected historical support for this claim.
     if(!cited.some(id=>id!==input.row.id&&inspected.has(id))){
      const pending=cited.filter(id=>id!==input.row.id&&delivered.has(id)&&!inspected.has(id)).slice(0,3);
