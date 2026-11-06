@@ -2,6 +2,15 @@
 
 ## 当前状态与约定（2026-11-02）
 
+- **图像预算与"拆分 vs 合并"实验（2026-11-06，100帧实测）**：用户要求验证两件事：不拆图片理解与空间推断是否会让总时长显著超过8秒；空间推断少传或不传图片能否在不掉质量的前提下降时。新增两个**仅用于实验**的开关并写入manifest（默认不变）：`--spatial-images=window|ends|none`（ends=本窗窗头与窗尾各三摄，共6图；none=只给独立事实）与`--perception-images=all|front`（front=每时刻仅前摄，共4图）。`ends/none` 只减少当前窗交付给空间Agent的图片，窗内所有观察的独立事实仍交付、仍可作为来源引用；新增回归测试验证"只发窗头窗尾6图且中间观察仍可引用"。
+  - **单请求延迟基准**（`run/_image-budget-bench`，重放真实捕获请求，3窗×9变体，n=3）：perception 12图 p50 3.96s → 4图 2.98s → 3图 1.56s；judgment 12图 4.63s → 6图 4.41s → 3图 4.21s → **0图 5.36s（反而更慢：输出token 230→351）**；"事实+判断"合并成一次调用 7.15s。即拆分比合并多付一次图片prefill（≈1.4s/窗），但合并仍要约7.1s（且未含工具续轮），还会失去独立事实、来源隔离和迟到修订。
+  - **100帧强制实时**（2s输入、8s窗、skip-obsolete；`run/unioncity-rt100-imgB-percfront-v1`/`-imgC-judgeends-v1`/`-imgD-both-v1`，基线 `run/unioncity-rt100-v8`）：A基线 perception p50 4.53s、judgment p50 5.45s、seal→commit p50 10.40s、3跳过；B（前端单摄）10.16s但jut p90 28.7s、5跳过；C（判断只给窗头窗尾）9.85s、judgment p90 9.33s、2跳过，是唯一同时改善p50/p90与跳过数的配置；D（两者都减）8.75s但7跳过、1次判断预算耗尽、最大149s。**结论：只减判断侧图片略快且更稳；减前端图片会让独立事实变弱、Agent多轮重试，反而更差，不采用。**
+  - **满覆盖质量对照**（队列模式，Flash整体裁判，25窗/100观察）：A（12图）两次 `run/unioncity-q100-imgA-window-v1(-judge)`=60/100、8条确认矛盾，`run/unioncity-q100-imgA2-window-v1(-judge)`=95/100、1条；C（6图）`run/unioncity-q100-imgC-ends-v1(-judge)`=100/100、0条，`run/unioncity-q100-imgC2-ends-v1(-judge2)`=95/100、0条（第一次裁判因Flash输出未绑定version 24而fail-closed，换目录重跑成功）。A的低分来自它把窗头的站台细节写进理由、且到v12才把"站台"改名"内部"，被裁判在currentReason/identity/windowScope判矛盾；**同配置跨运行波动（60↔95）大于图片预算差异，因此只能说"6图没有观测到质量下滑"，不能说6图更好**。裁判本身也有一次输出未绑定而失败，属Flash稳定性问题。
+  - **对8秒目标的含义**：总时长的主因不是图片体积，而是每窗至少两次4–5秒调用（实际seal→commit p50≈10s）外加Agent多轮/重试；把图片从12降到6只省约0.5s，合并成一次调用只省约1.4s，都不足以稳定进入8秒。真正可选的是拉长窗口周期（10–12s）或允许有界并发、有序提交（均需用户批准），本轮不擅自改窗口定义或并发语义。
+  - **另发现的尾部缺陷（未修，待批准）**：B/D 出现同一 `Known identity requires delivered working context or inspected historical evidence` 连续被拒6次、单窗烧掉9轮（45–149s），属重试预算放大而非图片问题；是否把"同一拒绝重复N次即记为judgment-budget-exhausted并释放"列入下一项，等用户决定。
+  - 本轮改动（两个实验开关＋1项回归测试）后全库 **589/589** 通过；默认行为未变（`window`/`all`），失败与基线运行目录全部保留，未删除、未移动tag。
+
+
 - **813强制实时：仍未跑通（2026-11-05，暂停付费迭代）**。六次尝试均保留了目录与请求：v1机器休眠12小时；v2/v3/v4窗口证据循环耗尽轮次；v5在380观察时压缩摘要非法导致fail-closed（已加一次带错误回传的重试）；v6在412观察时`skipWindow`报“Only a complete pending source prefix may skip spatial inference”——容量压力下窗口乱序完成，跳过会破坏前缀，属真实顺序缺陷，尚未修。**已确认有效的部分**：强制实时本身工作（多次运行`deliveryLagMs` p50≈24ms、p95≈39ms、`realtime.satisfied=true`、背压≈0）；跳过策略确实在跑（每轮数十窗被跳过）；裸unknown被拒、boundary可用；压缩重试、判断预算耗尽按跳过分账（`judgmentFailureSkips`，上限5）均已实现。**暴露出的核心事实**：空间Agent单窗p50≈19秒，而输入每8秒一窗，强制实时下必然跳过约一半以上窗口——这不是bug，是吞吐与实时约束的直接冲突；要么接受大量跳过，要么放宽实时或提高代理吞吐。下一步应先修skipWindow的前缀约束（乱序时不得直接跳过），再决定是否继续用实时模式跑813。
 
 - **本轮代码状态（2026-11-05，已提交）+ 运行中**：`unknown`只禁止裸弃权，`unknown+boundary.regions` 恢复为合法过渡；强制实时已实测通过（100帧：滞后p95 38ms、0背压、satisfied=true）；跳过窗改为**立即释放容量**，实时模式容量32；`memory_inspect` 在本判断内累积已看来源，`known` 缺证据时最多补给3次并给出可引用ID，连续失败后禁止再用known、逼其改交new/boundary。全库588/588。813 rt-v1 因机器休眠12小时失败、rt-v2 因v37证据循环失败（均已定位并修复），rt-v3 正在跑。
