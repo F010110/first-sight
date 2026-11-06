@@ -2,6 +2,11 @@
 
 ## 当前状态与约定（2026-11-02）
 
+- **813 强制实时首次通过（2026-11-06，16 秒窗）**：`run/unioncity-memory-full813-rt-w16-batchfix2-v1` 完成 813/813 观察；**95 个状态 + 7 个忙时跳过 = 102 计划窗**，覆盖 757/813 观察（93.1%），0 判断失败、0 缺失事实、0 pending、0 投递违规（max lag 428ms、0 背压）、`realtime.satisfied=true`、`completed=true`。判断 p50/p95 **12.25 / 20.72s**、封窗→提交 p50/p95 **22.25 / 32.39s**、perceptionToCommit p50/p95 12.93 / 21.90s；126 次 Pi 请求（1.33/窗），12 次重试（6 次 known 供给、3 次 regionChangeEvidence、1 relations、1 schema、1 other），无 deadline/matcher 失败；18 地点 / 20 访问；DB SHA256 `7a228194ccedbfa4b9ada696e26f1e4a7bcdea5954de67031b6b27c863782010`；估算成本 **$0.635**（perception $0.149 / Pi $0.486），耗时 27.4 分钟。
+  - 使能修复：16s 窗、匹配器 20s→5s 且不可用不中止、实时容量 32→64、失败计数改为"连续 5 次"、notes/relations/context/schema 本地修复、known 供给+紧凑修复。流式提取（`--extraction=streaming`）在 96 帧通过但在 813 的 hard window 上连续撞 32s deadline，**不作为 813 默认**。
+  - 已知缺口：7 个忙时跳过窗（56 观察）没有位置判断、`revisions=0`；`fullWindowCoverage=false`。整体裁判要求 `skipped_windows=0`，因此该运行**无法直接进入现有 813 裁判**；要么扩展裁判支持"显式缺口、只评已判断窗"，要么下一轮降低单窗工作量/窗口观察数来提高覆盖。默认仍是 8000 窗，本次通过使用显式 `--window-ms=16000`。
+
+
 - **窗口间隔实验与回退（2026-11-06）**：按要求把"根据研究做的改动"（图像预算开关、`--judgment-stride` 调度、相关测试/skill 说明、离线反事实脚本）全部回退到 `70c5423`（昨天的版本）；实验记录与运行目录保留，未删除。只保留文档链接修复。
   - 新增可配置窗口 `--window-ms`（默认 8000，4000–20000、必须是采样间隔的整数倍）；窗口观察数 = `windowMs/2000`；bucket 边界、`associate`/`skipWindow` 的 `endExclusiveMs`、runner `plannedStates` 都随窗口计算；perception prompt 与 skill 去掉"最多4次/8秒"硬编码；transport 的 `windowSources` 上限 4→6；新增 12 秒窗口测试（6 观察/窗、18 图、endExclusive=12000）。全库 **589/589** 通过。
   - 100 帧强制实时对比（2s 输入、skip-obsolete、只改窗口）：
