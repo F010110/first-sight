@@ -69,6 +69,20 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
      if(name==='memory_add'&&/relations|revisions|memory notes|placeUpdates|rename/i.test(message)){
       const repaired=structuredClone(a);if(repaired.assessment){repaired.assessment.relations=[];delete repaired.assessment.placeUpdates;delete repaired.assessment.revisions;}delete repaired.notes;delete repaired.rename;
       result=await run(repaired,invocation);lastToolResult={kind:'optional-fields-dropped',reason:message.slice(0,240)};
+     }else if(name==='memory_add'&&/Undelivered working context reference/i.test(message)){
+      // An expired contextRef is not evidence of identity; drop refs and let the cited sources stand.
+      const repaired=structuredClone(a);if(repaired.assessment?.location)delete repaired.assessment.location.contextRefs;
+      result=await run(repaired,invocation);lastToolResult={kind:'context-refs-dropped',reason:message.slice(0,240)};
+     }else if(name==='memory_add'&&/Known identity requires/i.test(message)){
+      // The validator lists the platform's own historical candidates for the claimed place.
+      // Inspect one of them and cite it; this is evidence-backed and costs no model turn.
+      const match=message.match(/Historical source candidates for this place: (\[[^\]]*\])/);
+      let candidates:string[]=[];try{candidates=match?JSON.parse(match[1]??'[]'):[];}catch{}
+      const target=candidates.find((id:string)=>typeof id==='string'&&!inspected.has(id));
+      if(!target)throw error;
+      await input.inspect([target]);inspected.add(target);
+      const repaired=structuredClone(a);repaired.assessment.location.sourceIds=[...new Set([...(repaired.assessment.location.sourceIds??[]),target])];
+      result=await run(repaired,invocation);lastToolResult={kind:'known-support-inspected',observationId:target,note:'A listed historical source was inspected and cited; identity is not accepted automatically.'};
      }else throw error;}return {content:asText(result),details:{},...(result&&typeof result==='object'&&result.terminate===true?{terminate:true}:{})};}});
  const timeline=tool('memory_timeline','Paginated committed history previews; previews are navigation, not proof.',Type.Object({afterMs:Type.Optional(Type.Number({minimum:0})),beforeMs:Type.Optional(Type.Number({minimum:0})),cursor:Type.Optional(Type.Integer({minimum:0}))}),async a=>{
   const input=requireCurrent(),after=a.afterMs??0,before=a.beforeMs??input.row.atMs,cursor=a.cursor??0;
