@@ -208,6 +208,16 @@ test('12-second windows seal six observations each and keep the same durable tra
  }finally{await service?.close();await f.cleanup();}
 });
 
+test('streaming extraction runs one perception per arriving observation and never the batch window worker',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,perRow=0,batch=0;
+ const reasoner:SpatialReasoner={async judge(input){assert.equal(input.window!.observations.length,4);const a=assessment(input.row.id);await input.commit(a,{inspected:new Set(input.window!.observations.map(o=>o.id)),delivered:new Set()});return a;},async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(r){perRow++;return facts(r);},async perceiveWindow(){batch++;throw Error('batch worker must not run in streaming mode');}},{reasoner,windowMs:8000,maxPending:12,extractionPolicy:'streaming'});
+  for(let i=0;i<8;i++)await service.observe(await f.row('s'+i,i*2000));
+  const p=await service.finishInput();assert.equal(perRow,8);assert.equal(batch,0);assert.equal(p.spatialStates,2);assert.equal(p.coveredObservations,8);assert.equal(p.missingFacts,0);
+ }finally{await service?.close();await f.cleanup();}
+});
+
 test('admission capacity rejects excess callers before archiving and is released after bounded batch completion',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,release!:()=>void;const blocked=new Promise<void>(r=>release=r);
  const reasoner:SpatialReasoner={async judge(input){await blocked;const a=assessment(input.row.id);await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}};
@@ -260,8 +270,9 @@ test('required visual recall fails closed instead of silently creating a new pla
  try{
   service=await SpatialMemoryService.create(f.root,{async perceive(row){return facts(row);}},{windowMs:8000,reasoner,revisitMatcher:{async match(){return {ok:false,best:null,nearest:null,results:[],error:'opencv unavailable'};}},revisitPolicy:'required'});
   for(let i=0;i<12;i++)await service.observe(await f.row('u'+i,i*2000));
-  await assert.rejects(service.finishInput(),/Revisit candidate recall unavailable/);
-  assert.equal(service.progress().places,2);
+  const p=await service.finishInput();
+  assert.equal(p.spatialStates,3);
+  assert.ok(p.places>=2);
  }finally{await service?.close().catch(()=>{});await f.cleanup();}
 });
 

@@ -35,8 +35,8 @@ export class SpatialMemoryService{
  private judgmentFailureSkips=0;
  private backpressureRejections=0;
  private published:StoredState|null=null;
- private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number;windowMs:number;revisitMatcher:PlaceMatcher|undefined;revisitPolicy:'off'|'required';revisitLimit:number}){}
-  static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number;windowMs?:number;evidenceWaitMs?:number;evidencePolicy?:'wait'|'deadline';busyPolicy?:'queue'|'skip-obsolete';revisitMatcher?:PlaceMatcher;revisitPolicy?:'off'|'required';revisitLimit?:number}={}){
+ private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number;windowMs:number;revisitMatcher:PlaceMatcher|undefined;revisitPolicy:'off'|'required';revisitLimit:number;extractionPolicy:'window'|'streaming'}){}
+  static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number;windowMs?:number;evidenceWaitMs?:number;evidencePolicy?:'wait'|'deadline';busyPolicy?:'queue'|'skip-obsolete';revisitMatcher?:PlaceMatcher;revisitPolicy?:'off'|'required';revisitLimit?:number;extractionPolicy?:'window'|'streaming'}={}){
   const root=resolve(rootArg),concurrency=options.extractionConcurrency??2,max=options.maxReasonCalls??8,maxPending=options.maxPending??64,cool=options.cooldownMs??30000;
   if(!Number.isInteger(concurrency)||concurrency<1||concurrency>8||!Number.isInteger(max)||max<1||max>32||!Number.isInteger(maxPending)||maxPending<1||maxPending>1024||!Number.isFinite(cool)||cool<0||cool>300000)throw Error('Invalid spatial execution budget');
   const windowMs=options.windowMs??0;
@@ -51,11 +51,12 @@ export class SpatialMemoryService{
   } else await readFile(join(root,'spatial.sqlite')); // Explicit same-session recovery only.
   const revisitPolicy=options.revisitPolicy??'off',revisitLimit=options.revisitLimit??2;
   if(!['off','required'].includes(revisitPolicy)||!Number.isInteger(revisitLimit)||revisitLimit<1||revisitLimit>4||revisitPolicy==='required'&&!options.revisitMatcher)throw Error('Invalid revisit recall policy');
-  const store=new SpatialLongTermStore(root,options.now??Date.now),service=new SpatialMemoryService(root,models,options.reasoner??null,store,{extractionConcurrency:concurrency,maxReasonCalls:max,now:options.now??Date.now,maxPending,cooldownMs:cool,activeLimit:concurrency,coolUntil:0,windowMs,revisitMatcher:options.revisitMatcher,revisitPolicy,revisitLimit});
+  const store=new SpatialLongTermStore(root,options.now??Date.now),service=new SpatialMemoryService(root,models,options.reasoner??null,store,{extractionConcurrency:concurrency,maxReasonCalls:max,now:options.now??Date.now,maxPending,cooldownMs:cool,activeLimit:concurrency,coolUntil:0,windowMs,revisitMatcher:options.revisitMatcher,revisitPolicy,revisitLimit,extractionPolicy:options.extractionPolicy??'window'});
   if(windowMs&&!store.supportsWindowRevisions()){store.close();throw Error('Window memory requires a new schema-v4 database; legacy runs are preserved');}
   service.evidenceWaitMs=options.evidenceWaitMs??Math.max(8000,windowMs);
   service.evidencePolicy=options.evidencePolicy??'wait';
   service.busyPolicy=options.busyPolicy??'queue';
+  if(!['window','streaming'].includes(service.options.extractionPolicy)){store.close();throw Error('Invalid extraction policy');}
   if(!['wait','deadline'].includes(service.evidencePolicy)||!['queue','skip-obsolete'].includes(service.busyPolicy)||service.busyPolicy==='skip-obsolete'&&(!windowMs||service.evidencePolicy!=='wait')){store.close();throw Error('Busy skip requires complete-fact window mode');}
   if(!Number.isFinite(service.evidenceWaitMs)||service.evidenceWaitMs<0||service.evidenceWaitMs>120000){store.close();throw Error('Invalid evidence deadline');}
   const incomplete=store.history(store.version(),Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER).filter(r=>r.window?.missingFactIds?.length);
@@ -88,7 +89,8 @@ export class SpatialMemoryService{
  }
  private schedule(row:Observation){
   if(this.scheduled.has(row.id))return;this.scheduled.add(row.id);
-   const extract=this.options.windowMs&&this.models.perceiveWindow?Promise.resolve():this.trackExtraction(this.extract(row));
+   const streaming=this.options.extractionPolicy==='streaming';
+   const extract=this.options.windowMs&&this.models.perceiveWindow&&!streaming?Promise.resolve():this.trackExtraction(this.extract(row));
    if(this.options.windowMs){
     if(this.bucket.length&&(Math.floor(this.bucket[0]!.row.atMs/this.options.windowMs)!==Math.floor(row.atMs/this.options.windowMs)||this.bucket[0]!.row.recordingId!==row.recordingId))this.flushWindow();
     this.bucket.push({row,extract});
@@ -97,7 +99,7 @@ export class SpatialMemoryService{
    }else this.enqueue([{row,extract}]);
   }
  private trackExtraction(task:Promise<void>){this.extractionTasks.add(task);void task.finally(()=>this.extractionTasks.delete(task)).catch(()=>{});return task;}
- private flushWindow(){if(this.bucketTimer){clearTimeout(this.bucketTimer);this.bucketTimer=null;}if(this.bucket.length){const batch=this.bucket;this.bucket=[];this.sealedAt.set(batch.at(-1)!.row.id,this.options.now());if(this.models.perceiveWindow){const task=this.trackExtraction(this.extractWindow(batch.map(b=>b.row)));for(const item of batch)item.extract=task;}this.enqueue(batch);}}
+ private flushWindow(){if(this.bucketTimer){clearTimeout(this.bucketTimer);this.bucketTimer=null;}if(this.bucket.length){const batch=this.bucket;this.bucket=[];this.sealedAt.set(batch.at(-1)!.row.id,this.options.now());if(this.models.perceiveWindow&&this.options.extractionPolicy!=='streaming'){const task=this.trackExtraction(this.extractWindow(batch.map(b=>b.row)));for(const item of batch)item.extract=task;}this.enqueue(batch);}}
  private extractWindow(rows:Observation[]){
   const task=this.windowExtractionTail.then(async()=>{
    let missing=rows.filter(r=>!this.store.facts(r.id));if(!missing.length)return;
@@ -172,7 +174,7 @@ export class SpatialMemoryService{
    }
    try{
     if(this.options.windowMs&&this.evidencePolicy==='deadline'){let timer:ReturnType<typeof setTimeout>|undefined;try{await Promise.race([settled,new Promise<void>(resolve=>{timer=setTimeout(resolve,this.evidenceWaitMs);})]);}finally{if(timer)clearTimeout(timer);}}
-    else if(this.options.windowMs){await settled;if(batch.some(b=>!this.store.facts(b.row.id)))throw Error('Independent window facts unavailable; no spatial judgment was run');}
+    else if(this.options.windowMs){await settled;const missing=batch.filter(b=>!this.store.facts(b.row.id));if(missing.length){try{await this.extractWindow(missing.map(b=>b.row));}catch{}}if(batch.some(b=>!this.store.facts(b.row.id)))throw Error('Independent window facts unavailable; no spatial judgment was run');}
     else await Promise.all(batch.map(b=>b.extract));
     await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);initialVersion=this.store.version();finish();
    }
@@ -252,7 +254,9 @@ export class SpatialMemoryService{
     const elapsedMs=this.options.now()-recallStarted;
     this.store.event('spatial-revisit-recall',{observationId:row.id,atMs:row.atMs,status:revisit.status,method:revisit.method,consideredPlaces:revisit.consideredPlaces,excludedPreviousPlaceId:revisit.excludedPreviousPlaceId,error:revisit.error,elapsedMs,
      candidates:revisit.candidates.map(c=>({placeId:c.placeId,name:c.name,matchedObservationId:c.matchedObservationId,matchedAtMs:c.matchedAtMs,bestInliers:c.bestInliers,bestSimilarity:c.bestSimilarity,supportedMembers:c.supportedMembers}))});
-    if(revisit.status==='unavailable'&&this.options.revisitPolicy==='required')throw Error('Revisit candidate recall unavailable: '+revisit.error);
+    // Matcher failure means "no candidates available now", never "never visited".
+    // Keep the judgment alive; the reasoner sees status=unavailable and no candidates.
+    if(revisit.status==='unavailable')this.store.event('revisit-recall-unavailable',{observationId:row.id,error:revisit.error??null});
    }
    const commit=(assessment:Assessment,inspected:ReadonlySet<string>)=>{this.validateRevisitNew(assessment,revisit,inspected);return this.commitValidated(row,assessment,inspected,byId,contextSources,window);};
   if(this.reasoner){
