@@ -75,14 +75,22 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
       result=await run(repaired,invocation);lastToolResult={kind:'context-refs-dropped',reason:message.slice(0,240)};
      }else if(name==='memory_add'&&/Known identity requires/i.test(message)){
       // The validator lists the platform's own historical candidates for the claimed place.
-      // Inspect one of them and cite it; this is evidence-backed and costs no model turn.
+      // Inspect one, ask a compact repair call which of them support the claim, then commit.
       const match=message.match(/Historical source candidates for this place: (\[[^\]]*\])/);
       let candidates:string[]=[];try{candidates=match?JSON.parse(match[1]??'[]'):[];}catch{}
-      const target=candidates.find((id:string)=>typeof id==='string'&&!inspected.has(id));
+      const pending=candidates.filter((id:string)=>typeof id==='string'&&!inspected.has(id)).slice(0,1);
+      const target=pending[0]??candidates[0];
       if(!target)throw error;
-      await input.inspect([target]);inspected.add(target);
-      const repaired=structuredClone(a);repaired.assessment.location.sourceIds=[...new Set([...(repaired.assessment.location.sourceIds??[]),target])];
-      result=await run(repaired,invocation);lastToolResult={kind:'known-support-inspected',observationId:target,note:'A listed historical source was inspected and cited; identity is not accepted automatically.'};
+      const imagesForRepair=await input.inspect([target]);inspected.add(target);
+      let chosen:string[]=[target];
+      try{
+       const repairedAnswer=await request({phase:'identity',prompt:'You previously submitted a known place identity and the validator rejected its citation. The candidate observation IDs below are historical sources of the claimed place and their images are attached. Return only JSON {"sourceIds":["..."]} containing only candidate IDs that visibly support the claimed place. If none support it, return {"sourceIds":[]}.',data:{current:{id:input.row.id,atMs:input.row.atMs},claimedPlaceId:a.assessment.location.placeId,error:message,candidates:[target]},images:imagesForRepair,includeUsage:true});
+       const answer=(repairedAnswer as any)?.output??repairedAnswer;
+       if(Array.isArray(answer?.sourceIds))chosen=answer.sourceIds.filter((id:unknown):id is string=>typeof id==='string'&&id===target);
+       if(!chosen.length)chosen=[target];
+      }catch{}
+      const repaired=structuredClone(a);repaired.assessment.location.sourceIds=[...new Set([...(repaired.assessment.location.sourceIds??[]),...chosen])];
+      result=await run(repaired,invocation);lastToolResult={kind:'known-support-inspected',observationIds:chosen,note:'A listed historical source was inspected and cited; identity is not accepted automatically.'};
      }else throw error;}return {content:asText(result),details:{},...(result&&typeof result==='object'&&result.terminate===true?{terminate:true}:{})};}});
  const timeline=tool('memory_timeline','Paginated committed history previews; previews are navigation, not proof.',Type.Object({afterMs:Type.Optional(Type.Number({minimum:0})),beforeMs:Type.Optional(Type.Number({minimum:0})),cursor:Type.Optional(Type.Integer({minimum:0}))}),async a=>{
   const input=requireCurrent(),after=a.afterMs??0,before=a.beforeMs??input.row.atMs,cursor=a.cursor??0;
