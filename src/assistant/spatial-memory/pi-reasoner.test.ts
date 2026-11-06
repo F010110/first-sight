@@ -34,6 +34,29 @@ test('compaction is prefetched in the background, never blocks a turn, and keeps
  }finally{await service?.close().catch(()=>{});if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true});}
 });
 
+test('malformed optional fields are dropped locally instead of costing another model turn',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-repeat-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
+ const sources=join(dir,'sources');await mkdir(sources);
+ const row=async(id:string,atMs:number):Promise<Observation>=>{const views=[];for(const direction of ['front','left','right']){const bytes=Buffer.from(id+direction),path=join(sources,id+'-'+direction+'.png');await writeFile(path,bytes);views.push({id,direction,path,sha256:createHash('sha256').update(bytes).digest('hex')});}return {id,atMs,views};};
+ let service:SpatialMemoryService|undefined,calls=0;
+ try{
+  const request=async(input:any)=>{
+   calls++;
+   const id=input.data.current.id;
+   if(id==='q3')return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'A',reason:'first',sourceIds:[id],regionChangeEvidence:['first']},hypotheses:[],unresolved:[],relations:[]}}},usage};
+   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'B',reason:'malformed optional relation',sourceIds:[id],regionChangeEvidence:['first']},hypotheses:[],unresolved:[],relations:[{kind:'same-facility',referenceId:'not-inspected',reason:'bad',sourceIds:[id]}]}}},usage};
+  };
+  const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request,{judgmentDeadlineMs:60000});
+  service=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(r){return {summary:'facts '+r.id,details:['x']};}},{reasoner,windowMs:8000,busyPolicy:'skip-obsolete',maxPending:12});
+  for(let i=0;i<8;i++)await service.observe(await row('q'+i,i*2000));
+  const p=await service.finishInput();
+  assert.equal(p.spatialStates,2);
+  assert.equal(p.skippedWindows,0);
+  assert.equal(p.coveredObservations,8);
+  assert.ok(calls<=2,'a malformed optional field must be repaired without another model turn: '+calls);
+ }finally{await service?.close().catch(()=>{});if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true});}
+});
+
 test('Pi session and skill run the spatial tool loop, commit durably and record skill versions',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-pi-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
  const sources=join(dir,'sources');await mkdir(sources);

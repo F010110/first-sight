@@ -20,7 +20,7 @@ type Invocation=Parameters<AgentHarnessTool<undefined>['execute']>[4];
  * explicit working context, tool authorization, durable SQLite commit and
  * skill versioning; Pi supplies the session, tool loop and compaction.
  */
-export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJsonRequest)=>Promise<unknown>,options:{maxRequests?:number;resume?:boolean;maxContextChars?:number;keepRecentTokens?:number}={}):Promise<SpatialReasoner>{
+export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJsonRequest)=>Promise<unknown>,options:{maxRequests?:number;resume?:boolean;maxContextChars?:number;keepRecentTokens?:number;judgmentDeadlineMs?:number}={}):Promise<SpatialReasoner>{
   const root=resolve(rootArg);await mkdir(root,{recursive:true});
   const contextPolicy={version:'spatial-session-context-v1',maxChars:options.maxContextChars??48000,keepRecentTokens:options.keepRecentTokens??2000};
   if(!Number.isInteger(contextPolicy.maxChars)||contextPolicy.maxChars<1000||!Number.isInteger(contextPolicy.keepRecentTokens)||contextPolicy.keepRecentTokens<1)throw Error('Invalid spatial session context budget');
@@ -39,13 +39,13 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   session=await repo.open(metadata,BACKGROUND_CONTEXT);
  }else session=await repo.create({cwd:process.cwd()},BACKGROUND_CONTEXT);
-  let current:JudgeInput|null=null,lastMessages:any[]=[],preparedSummary:{summary:string;covered:number;atMs:number}|null=null,prefetching:Promise<void>|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],baseImageIds=new Set<string>(),viewCalls=0,lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null,contextChars=recoveredContextChars,historicalSupplies=0;
+  let current:JudgeInput|null=null,lastMessages:any[]=[],judgmentStartedAt=0,preparedSummary:{summary:string;covered:number;atMs:number}|null=null,prefetching:Promise<void>|null=null,delivered=new Map<string,HistoryRecord>(),inspected=new Set<string>(),images:SpatialJsonImage[]=[],baseImageIds=new Set<string>(),viewCalls=0,lastToolResult:unknown=null,committed:StoredState|null=null,requests=0,turnRequests=0,compactionFailure:string|null=null,contextChars=recoveredContextChars,historicalSupplies=0;
   let recovering=false;const recoveryStates=new Map<number,StoredState>();
  const provider=accountedPiProvider({request,singleToolArguments:false,view:()=>{
   if(!current)throw Error('No active spatial judgment');
    const shown=viewCalls++===0?images:images.filter(v=>!baseImageIds.has(v.id));
    return {current:{id:current.row.id,atMs:current.row.atMs},runtimeContext:{mode:'spatial-memory-v2',locationPolicy:{statuses:['known','new','unknown+boundary'],rule:'Every window is either committed to a place (known/new) or explicitly a transition between two regions (status unknown plus boundary.regions). A bare unknown is not a valid answer.'},currentObservation:{id:current.row.id,atMs:current.row.atMs},...current.window?{window:current.window}:{facts:current.facts},previousRegion:current.previousRegion,revisit:current.revisit??null,workingContext:spatialStateHead(current.context),deliveredIds:[...delivered.keys()],inspectedIds:[...inspected],lastToolResult,feedback:current.feedback??null},images:shown,...(()=>{const ws=current.window?current.window.observations.filter(o=>shown.some(v=>v.id===o.id)).map(o=>({id:o.id,atMs:o.atMs})):[];return ws.length?{windowSources:ws}:{};})()};
-  },onRequest:()=>{if(recovering)throw Error('Checkpoint recovery is forbidden from invoking a model');if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);if(++turnRequests>12||++requests>(options.maxRequests??8000))throw Error('Spatial Pi request guard exhausted');}});
+  },onRequest:()=>{if(recovering)throw Error('Checkpoint recovery is forbidden from invoking a model');if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);if(options.judgmentDeadlineMs&&judgmentStartedAt&&Date.now()-judgmentStartedAt>options.judgmentDeadlineMs)throw Error('Spatial judgment deadline exceeded after '+Math.round(Date.now()-judgmentStartedAt)+'ms');if(++turnRequests>12||++requests>(options.maxRequests??8000))throw Error('Spatial Pi request guard exhausted');}});
  const requireCurrent=()=>{if(!current)throw Error('No active spatial judgment');return current;};
  const deliver=(record:HistoryRecord)=>{delivered.set(record.observationId,record);for(const member of record.window?.observations??[])delivered.set(member.id,record);};
   const checkDelivered=(ids:unknown,max:number,tool:string)=>requireDeliveredIds(ids,max,new Set(delivered.keys()),tool);
@@ -63,7 +63,13 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
      if(assessment.relations.length||assessment.revisions?.length||assessment.placeUpdates?.length||assessment.memoryNotes?.length||assessment.placeRename)throw Error('Interim assessment cannot commit relations/revisions/place updates/notes/rename');
    input.evaluate?.(assessment,{inspected,delivered:new Set(delivered.keys())});input.context.location=assessment.location;
   }
-   const result=await run(a,invocation);return {content:asText(result),details:{},...(result&&typeof result==='object'&&result.terminate===true?{terminate:true}:{})};}});
+    let result:any;try{result=await run(a,invocation);}catch(error){const message=String(error);
+     // Optional fields must not cost a full model turn. A malformed relation, note or rename is
+     // dropped locally and the location commit retried once; the location itself is unchanged.
+     if(name==='memory_add'&&/relations|revisions|memory notes|placeUpdates|rename/i.test(message)){
+      const repaired=structuredClone(a);if(repaired.assessment){repaired.assessment.relations=[];delete repaired.assessment.placeUpdates;delete repaired.assessment.revisions;}delete repaired.notes;delete repaired.rename;
+      result=await run(repaired,invocation);lastToolResult={kind:'optional-fields-dropped',reason:message.slice(0,240)};
+     }else throw error;}return {content:asText(result),details:{},...(result&&typeof result==='object'&&result.terminate===true?{terminate:true}:{})};}});
  const timeline=tool('memory_timeline','Paginated committed history previews; previews are navigation, not proof.',Type.Object({afterMs:Type.Optional(Type.Number({minimum:0})),beforeMs:Type.Optional(Type.Number({minimum:0})),cursor:Type.Optional(Type.Integer({minimum:0}))}),async a=>{
   const input=requireCurrent(),after=a.afterMs??0,before=a.beforeMs??input.row.atMs,cursor=a.cursor??0;
   if(!Number.isFinite(after)||!Number.isFinite(before)||after<0||before<after||before>input.row.atMs||!Number.isInteger(cursor)||cursor<0)throw Error('Invalid causal timeline range');
@@ -107,9 +113,9 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
  const assessmentSchema=Type.Object({
   location:Type.Object({status:Type.Union([Type.Literal('new'),Type.Literal('known'),Type.Literal('unknown')]),placeId:Type.Union([Type.String(),Type.Null()]),name:Type.String({maxLength:240}),reason:Type.String({minLength:1,maxLength:1600}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12}),contextRefs:Type.Optional(Type.Array(Type.String(),{maxItems:10})),boundary:Type.Optional(Type.Object({regions:Type.Array(Type.String({maxLength:240}),{minItems:2,maxItems:2})})),regionChangeEvidence:Type.Optional(Type.Array(Type.String({minLength:1,maxLength:400}),{maxItems:4}))}),
    hypotheses:strings(8),unresolved:strings(8),
-   placeUpdates:Type.Optional(Type.Array(Type.Object({key:Type.String({minLength:1,maxLength:120}),value:Type.String({minLength:1,maxLength:1200}),status:Type.Union([Type.Literal('asserted'),Type.Literal('uncertain'),Type.Literal('retracted')]),reason:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}),{maxItems:8})),
-  relations:Type.Array(Type.Object({kind:Type.Union([Type.Literal('same-facility'),Type.Literal('different-region')]),referenceId:Type.String(),reason:Type.String({minLength:1,maxLength:1200}),sourceIds:Type.Array(Type.String(),{minItems:2,maxItems:8})}),{maxItems:8}),
-  revisions:Type.Optional(Type.Array(Type.Object({observationId:Type.String(),location:revisionLocation}),{maxItems:3}))
+   placeUpdates:Type.Optional(Type.Unknown()),
+  relations:Type.Optional(Type.Unknown()),
+  revisions:Type.Optional(Type.Unknown())
  });
   const record=tool('memory_add','Atomically add a complete-window assessment and sourced notes. The database manages place/visit/IDs. Optional rename:{name,reason,sourceIds} updates the name of a confirmed known place without changing its identity or past records; match location.name and include current source. Do not rename on unknown/boundary/new. A persistent place may cover continuous station interior; use an accurate evolving name. A visible old landmark does not establish current occupancy. Never copy historical features into current reasons.',Type.Object({assessment:assessmentSchema,notes:Type.Optional(Type.Array(Type.Object({text:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}),{maxItems:6})),rename:Type.Optional(Type.Object({name:Type.String({minLength:1,maxLength:240}),reason:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}))}),async(a,invocation)=>{
    const input=requireCurrent();
@@ -266,7 +272,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
     }finally{recovering=false;recoveryStates.clear();}
    },
   async judge(input:JudgeInput){
-   current=input;delivered=new Map();images=[];inspected=new Set();lastToolResult=null;committed=null;turnRequests=0;historicalSupplies=0;
+   current=input;delivered=new Map();images=[];inspected=new Set();lastToolResult=null;committed=null;turnRequests=0;historicalSupplies=0;judgmentStartedAt=Date.now();
    const windowImages=input.windowViews??input.row.views;
    images=[...windowImages];inspected=new Set(windowImages.map(v=>v.id));baseImageIds=new Set(windowImages.map(v=>v.id));viewCalls=0;
    // Skipped windows must not disappear from the reasoning. Deliver the newest skipped
