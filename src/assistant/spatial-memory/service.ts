@@ -33,6 +33,7 @@ export class SpatialMemoryService{
  private judgmentStartedAt=new Map<string,number>();
  private peakAdmitted=0;
  private judgmentFailureSkips=0;
+ private consecutiveJudgmentFailures=0;
  private backpressureRejections=0;
  private published:StoredState|null=null;
  private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number;windowMs:number;revisitMatcher:PlaceMatcher|undefined;revisitPolicy:'off'|'required';revisitLimit:number;extractionPolicy:'window'|'streaming'}){}
@@ -176,13 +177,13 @@ export class SpatialMemoryService{
     if(this.options.windowMs&&this.evidencePolicy==='deadline'){let timer:ReturnType<typeof setTimeout>|undefined;try{await Promise.race([settled,new Promise<void>(resolve=>{timer=setTimeout(resolve,this.evidenceWaitMs);})]);}finally{if(timer)clearTimeout(timer);}}
     else if(this.options.windowMs){await settled;const missing=batch.filter(b=>!this.store.facts(b.row.id));if(missing.length){try{await this.extractWindow(missing.map(b=>b.row));}catch{}}if(batch.some(b=>!this.store.facts(b.row.id)))throw Error('Independent window facts unavailable; no spatial judgment was run');}
     else await Promise.all(batch.map(b=>b.extract));
-    await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);initialVersion=this.store.version();finish();
+    await this.associate(batch.at(-1)!.row,this.options.windowMs?batch.map(b=>b.row):undefined);this.consecutiveJudgmentFailures=0;initialVersion=this.store.version();finish();
    }
    catch(e){
     // A window whose bounded judgment budget is exhausted becomes an explicit gap and the stream
     // continues; it is never presented as a judged window. Repeated failures still stop the run.
-    if(this.busyPolicy==='skip-obsolete'&&this.judgmentFailureSkips<5){
-     this.judgmentFailureSkips++;this.store.skipWindow(batch.map(b=>b.row),this.options.windowMs);
+    if(this.busyPolicy==='skip-obsolete'&&this.consecutiveJudgmentFailures<5){
+     this.judgmentFailureSkips++;this.consecutiveJudgmentFailures++;this.store.skipWindow(batch.map(b=>b.row),this.options.windowMs);
      this.store.event('spatial-call-skipped',{tailId,reason:'judgment-budget-exhausted',error:String(e),observationIds:batch.map(b=>b.row.id)});
      release();for(const b of batch)this.deliveredAt.delete(b.row.id);return;
     }

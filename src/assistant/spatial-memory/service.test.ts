@@ -218,6 +218,19 @@ test('streaming extraction runs one perception per arriving observation and neve
  }finally{await service?.close();await f.cleanup();}
 });
 
+test('non-consecutive judgment failures do not stop the run; the consecutive cap still applies',async()=>{
+ const f=await fixture();let service:SpatialMemoryService|undefined,calls=0;
+ const reasoner:SpatialReasoner={async judge(input){calls++;if(calls%2===0)throw Error('scripted judgment failure');const a=assessment(input.row.id);await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}};
+ try{
+  service=await SpatialMemoryService.create(f.root,{async perceive(r){return facts(r);}},{reasoner,windowMs:8000,busyPolicy:'skip-obsolete',maxPending:16});
+  for(let i=0;i<48;i++)await service.observe(await f.row('k'+i,i*2000));
+  const p=await service.finishInput();
+  assert.equal(p.spatialStates,6);
+  assert.equal(p.skippedWindows,6);
+  assert.equal(service.progress().judgmentFailureSkips,6);
+ }finally{await service?.close().catch(()=>{});await f.cleanup();}
+});
+
 test('admission capacity rejects excess callers before archiving and is released after bounded batch completion',async()=>{
  const f=await fixture();let service:SpatialMemoryService|undefined,release!:()=>void;const blocked=new Promise<void>(r=>release=r);
  const reasoner:SpatialReasoner={async judge(input){await blocked;const a=assessment(input.row.id);await input.commit(a,{inspected:new Set([input.row.id]),delivered:new Set()});return a;},async close(){}};
