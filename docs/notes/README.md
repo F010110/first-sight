@@ -1,6 +1,6 @@
 # 建议与笔记索引
 
-本目录保存**外部建议与研究笔记**，是线索来源，不是当前架构或状态：架构看 [docs/active/README.md](../../active/README.md)，状态与待办看 [TODO.md](../../../TODO.md)。
+本目录保存**外部建议与研究笔记**，是线索来源，不是当前架构或状态：架构看 [docs/active/README.md](../active/README.md)，状态与待办看 [TODO.md](../../TODO.md)。
 
 ## 结构
 
