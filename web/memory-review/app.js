@@ -20,7 +20,7 @@ async function load(){
 
 function renderHeader(){
  const d=state.data,r=d.run.receipt,j=d.judge;
- $('#run-meta').innerHTML=`<b>${esc(d.run.id)}</b> · ${r.coveredObservations}/${r.observations} 观察 · ${r.spatialStates} 窗 + ${r.skippedWindows} 跳过 · 约束 <b>${d.constraint?.overall??'—'}/100</b> · 严格裁判 ${j.overall?.overall??'—'}/100 · 分组 ${d.grouped.summary.meanGroupScore??'—'}`;
+ $('#run-meta').innerHTML=`<b>${esc(d.run.id)}</b> · ${r.coveredObservations}/${r.observations} 观察 · ${r.spatialStates} 窗 + ${r.skippedWindows} 跳过 · 约束 <b>${d.constraint?.overall??'—'}/100</b>${d.constraint?.overallTested!=null?`（测试 ${d.constraint.overallTested}）`:''} · 严格裁判 ${j.overall?.overall??'—'}/100 · 分组 ${d.grouped.summary.meanGroupScore??'—'}`;
 }
 
 function render(){

@@ -75,6 +75,7 @@ def main():
     ap.add_argument('--bundle',required=True)
     ap.add_argument('--reference',required=True)
     ap.add_argument('--out',required=True)
+    ap.add_argument('--session',help='optional Pi session JSONL; records revisit-candidate availability')
     a=ap.parse_args()
     bundle_path=Path(a.bundle);ref_path=Path(a.reference)
     b=json.loads(bundle_path.read_text(encoding='utf-8'))
@@ -89,6 +90,28 @@ def main():
         for o in st['memberIds']:
             agent[o]={'placeId':loc.get('placeId'),'name':loc.get('name'),'status':loc.get('status'),'version':v}
     skipped=[o for o in obs if o not in agent]
+    session={}
+    if a.session:
+        for line in open(a.session,encoding='utf-8'):
+            try:events=json.loads(line)
+            except:continue
+            for ev in events if isinstance(events,list) else [events]:
+                if ev.get('type')!='message':continue
+                msg=ev.get('message',{})
+                if msg.get('role')!='user':continue
+                for part in msg.get('content',[]):
+                    text=part.get('text','') if isinstance(part,dict) else ''
+                    if '"revisit"' not in text:continue
+                    try:d=json.loads(text)
+                    except:continue
+                    w=d.get('window') or {};r=d.get('revisit') or {}
+                    session[w.get('startMs')]={'status':r.get('status'),'candidates':r.get('candidates') or []}
+    def matcher_ok(o):
+        if not a.session:return None
+        v=agent.get(o,{}).get('version')
+        if v is None:return False
+        start=states[v].get('window',{}).get('startMs')
+        return session.get(start,{}).get('status')=='ok'
 
     def coarse_of(o):
         x=ref.get(o);return COARSE.get(x['placeId']) if x else None
@@ -136,9 +159,12 @@ def main():
         reps=[center(r) for r in rs];reps=[r for r in reps if r]
         for x,y in itertools.combinations(reps,2):
             revisits.append({'place':p,'a':x,'b':y,'sameId':same_id(x,y),
-                             'aName':agent.get(x,{}).get('name'),'bName':agent.get(y,{}).get('name')})
+                             'aName':agent.get(x,{}).get('name'),'bName':agent.get(y,{}).get('name'),
+                             'matcherAvailable':(matcher_ok(x) and matcher_ok(y)) if a.session else None})
     scored_revisits=[x for x in revisits if x['sameId'] is not None]
     same_recall=rate(sum(1 for x in scored_revisits if x['sameId']),len(scored_revisits))
+    tested_revisits=[x for x in scored_revisits if x.get('matcherAvailable') is True]
+    same_recall_tested=rate(sum(1 for x in tested_revisits if x['sameId']),len(tested_revisits)) if tested_revisits else None
 
     # ---- association: continuity inside a reference visit ----
     continuity=[]
@@ -162,6 +188,7 @@ def main():
     diff_spec=rate(sum(1 for x in scored_diff if x['sameId'] is False),len(scored_diff))
     false_merges=[x for x in scored_diff if x['sameId'] is True]
     association=round(same_recall*0.30+diff_spec*0.50+continuity_score*0.20,1)
+    association_tested=round((diff_spec*0.50+continuity_score*0.20)/0.70,1) if same_recall_tested is None else round(same_recall_tested*0.30+diff_spec*0.50+continuity_score*0.20,1)
 
     # ---- sequence: major coarse-group boundaries, +/- one window ----
     ref_bounds=[{'at':idx[coarse_runs[i][1][0]],'old':coarse_runs[i-1][0],'new':coarse_runs[i][0]} for i in range(1,len(coarse_runs))]
@@ -218,6 +245,9 @@ def main():
     facts_score=rate(sum(1 for x in crit if x['recalled']),len(crit))
 
     overall=round(association*WEIGHTS['association']+sequence*WEIGHTS['sequence']+online_score*WEIGHTS['online']+facts_score*WEIGHTS['facts'],1)
+    overall_tested=round(association_tested*WEIGHTS['association']+sequence*WEIGHTS['sequence']+online_score*WEIGHTS['online']+facts_score*WEIGHTS['facts'],1)
+    matcher_windows=len(session)
+    matcher_unavailable=sum(1 for v in session.values() if v.get('status')!='ok') if session else None
     boundary_uncertain=sum(1 for o in obs if ref.get(o,{}).get('boundaryUncertain'))
     scorecard={
       'schema':'spatial-constraint-scorecard-v1',
@@ -226,12 +256,14 @@ def main():
       'coverage':{'plannedObservations':len(obs),'judgedObservations':len(agent),'skippedObservations':len(skipped),'judgedWindows':len(states),'skippedWindows':b.get('scope',{}).get('coverage',{}).get('skippedWindows'),'placeRuns':len(place_runs),'coarseRuns':len(coarse_runs),'boundaryUncertainObservations':boundary_uncertain},
       'weights':WEIGHTS,
       'dimensions':{
-        'association':{'score':association,'samePlaceRecall':same_recall,'revisitPairs':len(scored_revisits),'revisitHits':sum(1 for x in scored_revisits if x['sameId']),'differentPlaceSpecificity':diff_spec,'differentPairs':len(scored_diff),'falseMerges':len(false_merges),'continuity':continuity_score,'continuityPairs':len(scored_cont),'continuityHits':sum(1 for x in scored_cont if x['sameId'])},
+        'association':{'score':association,'samePlaceRecall':same_recall,'revisitPairs':len(scored_revisits),'revisitHits':sum(1 for x in scored_revisits if x['sameId']),'samePlaceRecallTested':same_recall_tested,'testedRevisitPairs':len(tested_revisits),'untestedRevisitPairs':len(scored_revisits)-len(tested_revisits),'matcherUnavailableWindows':matcher_unavailable,'matcherWindows':matcher_windows,'differentPlaceSpecificity':diff_spec,'differentPairs':len(scored_diff),'falseMerges':len(false_merges),'continuity':continuity_score,'continuityPairs':len(scored_cont),'continuityHits':sum(1 for x in scored_cont if x['sameId'])},
         'sequence':{'score':sequence,'majorBoundaries':len(ref_bounds),'agentChanges':len(agent_changes),'truePositives':tp,'falsePositives':fp,'falseNegatives':fn,'precision':precision,'recall':recall,'delaysSec':delays},
         'online':{'score':online_score,'checkpoints':len(online),'correct':sum(1 for x in online if x['correct']),'misses':[x for x in online if not x['correct']]},
         'facts':{'score':facts_score,'criticalFacts':len(crit),'criticalRecalled':sum(1 for x in crit if x['recalled']),'diagnosticOnly':True},
       },
       'overall':overall,
+      'overallTested':overall_tested,
+      'revisitValidity':{'testedPairs':len(tested_revisits),'untestedPairs':len(scored_revisits)-len(tested_revisits),'matcherUnavailableWindows':matcher_unavailable,'matcherWindows':matcher_windows,'note':'Untested revisit pairs had no available revisit candidate (matcher timeout); they are not evidence that the agent cannot reuse a place.'},
       'findings':{
         'revisits':revisits,
         'falseMerges':false_merges,
@@ -244,7 +276,7 @@ def main():
       'caveats':[
         'Reference is user-accepted, not independently verified gold; uniqueGroundTruth=false and reasonable merge/split is allowed.',
         'Boundary-uncertain observations are excluded from definite association pairs; the reference transition labels are descriptive, not per-frame truth.',
-        'Revisit set is small (actual repeated reference places); 0/9 is a real but statistically limited finding, not a benchmark-scale estimate.',
+        'Revisit pairs are untested when the SIFT/RANSAC matcher was unavailable; the as-run score counts them as failures, the tested-dimension score excludes the invalid revisit dimension.',
         'Facts are text presence in committed state/window facts, not question-agent retrieval; fact dimension is diagnostic and weighted 10%.',
         'Skipped observations are coverage gaps, not failures; the score is constraint-based, not navigation-safety or product acceptance.',
       ],
@@ -257,9 +289,10 @@ def main():
       f"- 覆盖：{len(agent)}/{len(obs)} 观察，{len(states)} 判断窗 + {b.get('scope',{}).get('coverage',{}).get('skippedWindows')} 跳过窗；{len(place_runs)} 个参考地点段 / {len(coarse_runs)} 个粗粒度区域段",
       f"- 参考：`{scorecard['inputs']['reference']}`（{scorecard['inputs']['referenceSHA256'][:16]}…）",
       '',
-      f"## 总分：**{overall} / 100**",'',
+      f"## 总分：**{overall} / 100**（系统 as-run；测试维度 {overall_tested}）",'',
+      f"- 回访 matcher 超时 {matcher_unavailable if matcher_unavailable is not None else '未提供 session'}/{matcher_windows if matcher_windows else '—'} 窗；9 个回访对中已测 {len(tested_revisits)} 个。未测回访不是 Agent 复用能力的证据。",'',
       '| 维度 | 权重 | 得分 | 说明 |','|---|---:|---:|---|',
-      f"| 地点关联 | 45% | {association} | 同地点回访 {same_recall}%（{sum(1 for x in scored_revisits if x['sameId'])}/{len(scored_revisits)}）、不同地点特异度 {diff_spec}%（{len(scored_diff)-len(false_merges)}/{len(scored_diff)}）、段内连续 {continuity_score}%（{sum(1 for x in scored_cont if x['sameId'])}/{len(scored_cont)}） |",
+      f"| 地点关联 | 45% | {association} | 同地点回访 {same_recall}%（{sum(1 for x in scored_revisits if x['sameId'])}/{len(scored_revisits)}，已测 {len(tested_revisits)}）、不同地点特异度 {diff_spec}%（{len(scored_diff)-len(false_merges)}/{len(scored_diff)}）、段内连续 {continuity_score}%（{sum(1 for x in scored_cont if x['sameId'])}/{len(scored_cont)}） |",
       f"| 地点序列 | 25% | {sequence} | 重大区域边界 F1 {sequence}（TP {tp}/FP {fp}/FN {fn}），±1 窗匹配 |",
       f"| 在线可用 | 20% | {online_score} | {sum(1 for x in online if x['correct'])}/{len(online)} 个检查点粗粒度区域正确 |",
       f"| 关键事实 | 10% | {facts_score} | 关键事实 {sum(1 for x in crit if x['recalled'])}/{len(crit)} 出现在已提交状态（诊断项） |",
@@ -282,5 +315,5 @@ def main():
       '',
     ]
     (out/'scorecard.md').write_text('\n'.join(lines),encoding='utf-8')
-    print(json.dumps({'overall':overall,'association':association,'sequence':sequence,'online':online_score,'facts':facts_score,'revisits':len(scored_revisits),'falseMerges':len(false_merges),'out':str(out)},ensure_ascii=False))
+    print(json.dumps({'overall':overall,'overallTested':overall_tested,'association':association,'sequence':sequence,'online':online_score,'facts':facts_score,'revisits':len(scored_revisits),'falseMerges':len(false_merges),'out':str(out)},ensure_ascii=False))
 if __name__=='__main__':main()
