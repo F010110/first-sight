@@ -42,6 +42,8 @@ export async function createSpatialMemoryReviewServer(config:Config){
  if(bundle.hashes?.database!==hash(dbBytes))throw Error('Run database changed after the judge bundle was built');
  const reportBytes=await readFile(join(judge,'report.json')),report=JSON.parse(reportBytes.toString());
  if(report?.completed!==true)throw Error('Judge report is not completed');
+ let scorecard:any=null;
+ try{scorecard=JSON.parse((await readFile(join(judge,'scorecard.json'))).toString());}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
  const verdicts=await readWindowVerdicts(judge);
  const grouped=groupedMemoryReport(bundle,{segments:sample.segments??[]},verdicts);
  const states=bundle.states;
@@ -109,6 +111,7 @@ export async function createSpatialMemoryReviewServer(config:Config){
   schema:'spatial-memory-review-page-v1',
   run:{id:basename(run),path:run,hashes:bundle.hashes,integrity:bundle.integrity,receipt:{observations:receipt.observations,spatialStates:receipt.spatialStates,skippedWindows:receipt.skippedWindows,skippedObservations:receipt.skippedObservations,coveredObservations:receipt.coveredObservations,windowMs:receipt.windowMs,mode:receipt.mode,extractionMode:receipt.extractionMode,realtimeEnforced:receipt.realtimeEnforced,elapsedMs:receipt.elapsedMs,realtime:receipt.realtime??null}},
   judge:{dir:judge,model:report.model,overall:report.scores,coverage:report.coverage,coverageScope:report.coverageScope,gate:report.gate,authority:report.authority||null,limitations:report.limitations??null},
+  constraint:scorecard,
   grouped:{summary:grouped.summary,coverage:grouped.coverage,transitions:grouped.transitions,merges:grouped.merges,splits:grouped.splits,revisits:grouped.revisits,note:grouped.note},
   groups:grouped.groups,segments:sample.segments??[],
   windows:states.map(compact),findings,

@@ -2,6 +2,17 @@
 
 ## 当前状态与约定（2026-11-02）
 
+- **约束式空间记忆评测与正式成绩（2026-11-07）**：整体裁判把边界不确定帧当成逐帧真值，v4（6/8 站台 + 2/8 站内楼梯，4 帧 `boundaryUncertain`）被判 identity/currentReason/scope 三矛盾，属于误判。按 `docs/notes/suggestions/建议16.md` 改为约束式评测：**不要求复现唯一分段，只检查同/不同地点、关键事实、序列和在线可用性。**
+  - 同地点回访：参考同一 `placeId` 的 9 个重复访问对，只有复用同一地点 ID 才算命中；**0/9**。这是真实弱点：五金店前/内、Union Street、公园街角、餐厅门口的回访都新建了 ID 或换了错误地点。
+  - 不同地点：16 个粗粒度区域段的全部 **104 对**；Agent 用同一 ID 即错误合并。特异度 **97.1%（101/104）**，3 个错误合并：Pawnbrokers 覆盖公园街角、Choke 覆盖砖墙店、South Side 覆盖街角。
+  - 段内连续：42 个参考地点段首末清晰帧，**27/36（75.0%）**；失败主要是段内换 ID/错误地点。
+  - 地点序列：15 个**重大粗粒度边界**，±1 窗匹配；TP 11 / FP 1 / FN 4，**F1 81.5**；匹配延迟 −10…+16s。
+  - 在线：19 个已提交检查点，粗粒度区域正确 **15/19（78.9%）**；4 个错误：v25 street→pawn、v35 brick-shop→diner、v45 hardware→street、v70 street→gas。
+  - 关键事实：20 条 critical（楼梯/闸机/五金/当铺/餐厅/砖墙店/消防/酒吧/加油站/洗衣店/古典入口/电梯/屋顶等）在已提交状态/窗事实中出现 **20/20**；事实维度仅作诊断，权重 10%。
+  - 权重：关联 45% + 序列 25% + 在线 20% + 事实 10% → **正式约束分 74.7/100**。旧严格裁判 80/100 保留为诊断，不再作为本轮正式成绩。
+  - v4 不再扣分：站台→站厅属于同一 `subway` 粗粒度组（minor boundary），`boundaryUncertain` 帧不参与 definite 地点对；楼梯事实保留。v48/v74 的窗尾细节、v17/v14 的描述细节不进入 location/identity 主分。
+  - 局限：参考是用户接受版而非独立 gold；回访正例仅 9 对；事实是文本存在检查，不是问答检索；7 个跳过窗/56 观察是覆盖缺口，不按错误计；分数不代表导航安全或产品验收。空间位置判断 Agent 本轮测试到此收尾，后续做问答/检索等更多功能。
+  - 代码：`scripts/evaluation/score-spatial-constraints.py`（bundle + reference → scorecard）；报告 `run/unioncity-memory-full813-rt-w16-batchfix2-constraints-v3/scorecard.json/md`，并复制到裁判目录；审核页顶部同时显示约束分与严格分。
 - **分组空间记忆报告（2026-11-07）**：`80/100` 是整体裁判五维 0–4（location/identity/organization/evidence/uncertainty）等权映射，**不是 5 次重复实验**；813 观察被压成一个总评，看不出哪段地点访问错了。新增 `grouped-memory-report.ts` / `run-grouped-memory-report.ts`：按人工确认参考的**地点访问**（placeId＋时间连续段，42 组）分组，把已付费的逐窗 `comparison-*.json` identity/currentReason/windowScope verdict 聚合为每组 0–100（supported=1、uncertain=0.5、contradicted=0），并机械报告覆盖缺口、合并/拆分、重访复用和边界滞后；**不调用模型，不改参考/原图/生产库**。`runGroundedReview` 现在自动写 `groups.json/groups.md`，独立 CLI 可对旧裁判目录免费重算。
   - 813 实测（`run/unioncity-memory-full813-rt-w16-batchfix2-groups-v5`）：42 组（41 组有判断窗），均分 **93.6**、中位数 **100**；分布 100 分 35 组、75–99 3 组、50–74 2 组、0 分 1 组。**0 分不是“所有帧都看错”**：segment-014 只有 2 个被分配的判断窗（覆盖 13/17 观察），两窗 identity 都 contradicted，跨组 v36 也 contradicted；但两窗的 currentReason 都 supported，即画面描述（灰方砖、深砖墙、柜台、货架）准确，错在把砖墙店认成 "Choke餐厅内部"。报告现在同时显示每组 `覆盖 obs/判断 obs` 与 `↗跨组矛盾窗`，避免把窗口分误读成逐帧全错。窗口级 identity 88 supported / 2 uncertain / 5 contradicted，evidence 87/3/5。**11 个合并**（如 "Union Street现金兑换店前..." 覆盖 6 个参考地点、"古典建筑内部走廊" 覆盖 5 个）；**5 个重复参考地点全部未复用同一候选 ID**（hardware-front/interior、union-street、park-corner、diner-front）；41 个参考边界中 36 个落在窗内、20 个在一窗内出现候选变化。
   - 分组分**不等于** 80/100：整体分对任何确证矛盾做机械封顶，分组分是单个访问内窗口判断的准确比例；两者并列展示，不互相替代。分组分仍受 16s 窗粒度限制（部分组只有 1–2 窗），跳过窗算覆盖缺口不算 0 分，813 仍是 `partial-explicit-gaps`。下一步用该报告跑 96/813 对比，再考虑 `qwen3.7-flash` 质量回归。

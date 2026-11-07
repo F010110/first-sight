@@ -20,7 +20,7 @@ async function load(){
 
 function renderHeader(){
  const d=state.data,r=d.run.receipt,j=d.judge;
- $('#run-meta').innerHTML=`<b>${esc(d.run.id)}</b> · ${r.coveredObservations}/${r.observations} 观察 · ${r.spatialStates} 窗 + ${r.skippedWindows} 跳过 · 裁判 <b>${j.overall?.overall??'—'}/100</b> · 分组 <b>${d.grouped.summary.meanGroupScore??'—'}</b> · ${d.findings.length} findings`;
+ $('#run-meta').innerHTML=`<b>${esc(d.run.id)}</b> · ${r.coveredObservations}/${r.observations} 观察 · ${r.spatialStates} 窗 + ${r.skippedWindows} 跳过 · 约束 <b>${d.constraint?.overall??'—'}/100</b> · 严格裁判 ${j.overall?.overall??'—'}/100 · 分组 ${d.grouped.summary.meanGroupScore??'—'}`;
 }
 
 function render(){
@@ -92,7 +92,7 @@ function renderInfo(frame,detail){
   <section class="card"><h2>Agent 判定 ${frame.version?tag('窗 v'+frame.version,'info'):''}</h2>${agent}</section>
   <section class="card"><h2>裁判判断</h2>${judge}</section>
   <section class="card"><h2>其他写入库的信息</h2>${db}</section>
-  <section class="card" style="grid-column:1/-1"><h2>人工审核</h2>${reviewForm(frame,review)}</section>`;
+  <section class="card full"><h2>人工审核</h2>${reviewForm(frame,review)}</section>`;
 }
 
 function latestReview(type,id){return [...(state.data?.reviews||[])].reverse().find(r=>r.targetType===type&&r.targetId===String(id))??null;}
