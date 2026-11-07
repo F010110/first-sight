@@ -35,7 +35,8 @@ node dist/current/desktop/spatial-memory-review-server.js `
 页面内容：
 
 - **按组**：人工参考的一个地点访问（placeId＋时间连续段）为一组，显示组内逐窗 `identity/currentReason/windowScope`、覆盖观察数、合并/拆分、重访复用和边界滞后。
-- **按窗**：95 个判断窗的候选地点、理由、窗头/窗尾三摄原图、裁判盲取证、逐窗对照理由、裁判发现和库写入（place/visit/notes/revisions/memoryReceipt）。
+- **按窗**：95 个判断窗的候选地点、理由、**窗内逐帧原图播放器**（三摄原图、8 帧缩略图、窗头/窗尾/播放）、裁判盲取证、逐窗对照理由、裁判发现和库写入（place/visit/notes/revisions/memoryReceipt）。组页每个窗也有三摄缩略图。
+- **原图浏览**：813 个观察逐帧播放，显示三摄原图、参考段/地点/可见性、覆盖窗的候选判断与裁判 verdict；可 2 秒/帧播放。这是原图审核的主入口，裁判接触图只作辅助。
 - **裁判发现**：11 条 contradicted/uncertain 及引用原文。
 - **原始记录**：地点、访问、笔记、资料修订、数据库 hash。
 - **跳过窗**：7 个忙时跳过窗的 56 个观察；没有位置判断，原图与事实仍在库中，算覆盖缺口而不是 0 分。

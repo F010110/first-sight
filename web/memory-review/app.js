@@ -1,6 +1,6 @@
 'use strict';
 const $=s=>document.querySelector(s);
-const state={data:null,tab:'groups',filter:'all',group:null,groupDetail:null,windowDetail:null,view:'group',selectedVersion:null};
+const state={data:null,tab:'groups',filter:'all',group:null,groupDetail:null,windowDetail:null,view:'group',selectedVersion:null,frames:null,frameIndex:0,windowFrame:0,playTimer:null};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=ms=>{if(ms===null||ms===undefined)return '—';const s=Math.floor(ms/1000);return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`};
 const pct=(n,d)=>d?`${(100*n/d).toFixed(1)}%`:'—';
@@ -81,6 +81,9 @@ function renderDetail(){
   else el.innerHTML='<p class="panel muted">从左侧选择一个参考地点组。</p>';
  }else if(state.tab==='windows'){
   el.innerHTML=state.windowDetail?windowHtml(state.windowDetail,false):'<p class="panel muted">从左侧选择一个判断窗。</p>';
+ }else if(state.tab==='frames'){
+  if(!state.frames){el.innerHTML='<p class="panel muted">???????</p>';loadFrames().then(()=>{if(state.tab==='frames')renderDetail();}).catch(error=>{el.innerHTML=`<p class="panel">${esc(String(error))}</p>`;});}
+  else el.innerHTML=frameBrowserHtml();
  }else if(state.tab==='findings')el.innerHTML=findingsHtml();
  else if(state.tab==='library')el.innerHTML=libraryHtml();
  else if(state.tab==='skipped')el.innerHTML=skippedHtml();
@@ -113,6 +116,8 @@ function groupHtml(detail){
 
 function windowCard(w,kind){
  const cmp=w.comparison||{},cls=w.identity==='contradicted'?'bad':w.identity==='uncertain'?'warn':'';
+ const first=w.observations?.[0];
+ const thumbs=first?`<div class="views mini mt8">${sortViews(first.views).map(v=>`<figure><img loading="lazy" src="${esc(v.url)}" data-action="image" data-url="${esc(v.url)}" data-caption="${esc(first.id)} ? ${esc(v.direction)}"><figcaption>${esc(v.direction)}</figcaption></figure>`).join('')}</div>`:'';
  return `<div class="window-card ${cls}">
   <div class="window-head"><div><b>v${w.version}</b> · ${fmt(w.startMs)}–${fmt(w.endExclusiveMs)} · ${w.members??''}${kind==='cross'?' <span class="tag info">↗ 跨组</span>':''}</div>
    <div>${verdictTag(w.identity)}${w.currentReason?verdictTag(w.currentReason):''}${w.windowScope?verdictTag(w.windowScope):''}</div></div>
@@ -120,25 +125,82 @@ function windowCard(w,kind){
   <div class="reason small">${esc(w.assessment?.location?.reason||'')}</div>
   ${cmp.identity?.reason?`<div class="small"><span class="muted">identity：</span>${esc(cmp.identity.reason)}</div>`:''}
   ${cmp.currentReason?.reason?`<div class="small"><span class="muted">currentReason：</span>${esc(cmp.currentReason.reason)}</div>`:''}
+  ${thumbs}
   <div class="row mt8"><a class="button" href="#" data-action="window" data-version="${w.version}">查看该窗三摄与库信息 →</a>${w.sheetUrl?`<a href="#" data-action="image" data-url="${w.sheetUrl}" data-caption="v${w.version} 裁判接触图">裁判接触图</a>`:''}</div>
  </div>`;
 }
 
+function playerHtml(observations,index,mode){
+ const list=observations||[];
+ if(!list.length)return '<p class="muted">?????????</p>';
+ const i=Math.max(0,Math.min(index,list.length-1)),obs=list[i];
+ const thumbs=list.length<=24?`<div class="thumbs">${list.map((o,j)=>{const front=(o.views||[]).find(v=>v.direction==='front')||(o.views||[])[0];return `<button class="thumb ${j===i?'active':''}" data-action="frame-seek" data-index="${j}" title="${esc(o.id)}">${front?`<img loading="lazy" src="${esc(front.url)}" alt="">`:''}</button>`;}).join('')}</div>`:'';
+ return `<div class="player">
+  <div class="player-controls">
+   <button data-action="frame-first">? ${mode==='window'?'??':'??'}</button>
+   <button data-action="frame-prev">? ???</button>
+   <button data-action="frame-play">${state.playTimer?'? ??':'? ??'}</button>
+   <button data-action="frame-next">??? ?</button>
+   <button data-action="frame-last">${mode==='window'?'??':'??'} ?</button>
+   <span class="muted small">${i+1}/${list.length} ? ${fmt(obs.atMs)} ? ${esc(obs.id)}</span>
+   <input type="range" min="0" max="${Math.max(0,list.length-1)}" value="${i}" data-action="frame-seek" aria-label="????">
+  </div>
+  <div class="views large">${sortViews(obs.views).map(v=>`<figure><img loading="eager" src="${esc(v.url)}" data-action="image" data-url="${esc(v.url)}" data-caption="${esc(obs.id)} ? ${esc(v.direction)}"><figcaption>${esc(v.direction)} ? ${esc(obs.id)}</figcaption></figure>`).join('')}</div>
+  ${thumbs}
+ </div>`;
+}
+async function loadFrames(){
+ if(state.frames)return;
+ const response=await fetch('/api/frames');if(!response.ok)throw Error('????????');
+ state.frames=(await response.json()).observations;
+}
+function frameBrowserHtml(){
+ const frames=state.frames||[];
+ if(!frames.length)return '<p class="panel muted">???????</p>';
+ const index=Math.max(0,Math.min(state.frameIndex,frames.length-1)),f=frames[index],ref=f.reference||{};
+ const claim=f.skipped?tag('?????????','warn'):`${statusTag(f.status)} <b>${esc(f.placeName||'?')}</b> ${verdictTag(f.identity)}`;
+ return `<article class="panel">
+  <h1>???? <span class="muted small">${index+1}/${frames.length}</span></h1>
+  <div class="muted">${esc(f.id)} ? ${fmt(f.atMs)} ? source ${fmt(f.sourceAtMs)}</div>
+  ${playerHtml(frames,index,'frame')}
+  <div class="grid2 mt12">
+   <div class="kv"><span class="k">???</span><span>${esc(ref.segmentId||'')}</span><span class="k">????</span><span>${esc(ref.placeId||'')}</span><span class="k">???</span><span>${esc(ref.visibility||'')}${ref.boundaryUncertain?' ? ?????':''}</span><span class="k">????</span><span>${esc(ref.description||'?')}</span></div>
+   <div class="kv"><span class="k">??</span><span>${claim}</span><span class="k">???</span><span>${f.version?`<a href="#" data-action="window" data-version="${f.version}">v${f.version}</a>`:'?'}</span><span class="k">identity ??</span><span>${esc(f.identityReason||'?')}</span><span class="k">??</span><span>${esc(f.summary||'?')}</span></div>
+  </div>
+ </article>`;
+}
+function frameLength(){return state.tab==='frames'?(state.frames?.length??0):(state.windowDetail?.observations?.length??0);}
+function frameIndex(){return state.tab==='frames'?state.frameIndex:state.windowFrame;}
+function setFrame(index){
+ const length=frameLength();if(!length)return;
+ const i=Math.max(0,Math.min(index,length-1));
+ if(state.tab==='frames')state.frameIndex=i;else state.windowFrame=i;
+ renderDetail();
+}
+function stopPlay(){if(state.playTimer){clearInterval(state.playTimer);state.playTimer=null;}}
+function togglePlay(){
+ if(state.playTimer){stopPlay();renderDetail();return;}
+ if(!frameLength())return;
+ state.playTimer=setInterval(()=>{
+  const length=frameLength(),i=frameIndex();
+  if(i>=length-1){stopPlay();renderDetail();return;}
+  setFrame(i+1);
+ },2000);
+ renderDetail();
+}
 function windowHtml(w,fromGroup){
  const cmp=w.comparison||{},ground=w.grounding||{},loc=w.assessment?.location||{};
- const first=w.observations?.[0],last=w.observations?.[w.observations.length-1];
- const views=obs=>obs?`<div class="views">${sortViews(obs.views).map(v=>`<figure><img loading="lazy" src="${esc(v.url)}" data-action="image" data-url="${esc(v.url)}" data-caption="${esc(obs.id)} · ${esc(v.direction)}"><figcaption>${esc(obs.id)} · ${esc(v.direction)}</figcaption></figure>`).join('')}</div>`:'';
+ const observations=w.observations||[],index=Math.max(0,Math.min(state.windowFrame,Math.max(0,observations.length-1))),frame=observations[index],frameRef=frame?.reference||{};
  return `<article class="panel">
   <div class="spread"><div><h1>v${w.version} ${verdictTag(w.identity)}</h1>
-   <div class="muted">${fmt(w.startMs)}–${fmt(w.endExclusiveMs)} · ${esc(w.segmentId||'')} · 候选 <code>${esc(w.placeId||'—')}</code> · 访问 <code>${esc(w.visitId||'—')}</code></div></div>
-   <div class="row">${fromGroup?'<a href="#" data-action="back-group">← 返回组</a>':''}<a href="#" data-action="image" data-url="${esc(w.sheetUrl||'')}" data-caption="v${w.version} 裁判接触图">裁判接触图</a></div></div>
-  <div class="tag-row mt8">${statusTag(loc.status)}${tag(loc.name||'—')}${loc.boundary?tag('boundary: '+loc.boundary.regions.join(' ↔ '),'info'):''}</div>
+   <div class="muted">${fmt(w.startMs)}?${fmt(w.endExclusiveMs)} ? ${esc(w.segmentId||'')} ? ?? <code>${esc(w.placeId||'?')}</code> ? ?? <code>${esc(w.visitId||'?')}</code></div></div>
+   <div class="row">${fromGroup?'<a href="#" data-action="back-group">? ???</a>':''}<a href="#" data-action="image" data-url="${esc(w.sheetUrl||'')}" data-caption="v${w.version} ?????">?????</a></div></div>
+  <div class="tag-row mt8">${statusTag(loc.status)}${tag(loc.name||'?')}${loc.boundary?tag('boundary: '+loc.boundary.regions.join(' ? '),'info'):''}</div>
   <div class="reason mt8">${esc(loc.reason||'')}</div>
-  <div class="split mt12">
-   <div><h3>窗头</h3>${views(first)}<div class="muted small">${esc(first?.facts?.summary||'')}</div></div>
-   <div><h3>窗尾</h3>${views(last)}<div class="muted small">${esc(last?.facts?.summary||'')}</div></div>
-  </div>
-  <h2>裁判逐窗判断</h2>
+  <h3>????????${observations.length} ??</h3>
+  ${playerHtml(observations,index,'window')}
+  ${frame?`<div class="kv mt8"><span class="k">?????</span><span>${esc(frameRef.segmentId||'')} ? ${esc(frameRef.placeId||'')} ? ${esc(frameRef.visibility||'')}${frameRef.boundaryUncertain?' ? ?????':''}</span><span class="k">?????</span><span>${esc(frame.facts?.summary||'')}</span></div>`:''}
+  <h2>??????</h2>
   <div class="grid2">
    <div class="kv"><span class="k">identity</span><span>${verdictTag(w.identity)}</span><span class="k">identity 理由</span><span>${esc(cmp.identity?.reason||'—')}</span>
     <span class="k">currentReason</span><span>${verdictTag(w.currentReason)}</span><span class="k">currentReason 理由</span><span>${esc(cmp.currentReason?.reason||'—')}</span>
@@ -216,7 +278,7 @@ function renderTools(){
 }
 
 async function selectGroup(id){
- state.view='group';state.group=id;state.tab='groups';renderTabs();
+ stopPlay();state.view='group';state.group=id;state.tab='groups';state.windowFrame=0;renderTabs();
  const response=await fetch('/api/group/'+encodeURIComponent(id));
  if(!response.ok){$('#detail').innerHTML=`<p class="panel">${esc((await response.json()).error)}</p>`;return;}
  state.groupDetail=await response.json();state.windowDetail=null;
@@ -228,7 +290,7 @@ async function selectWindow(version){
  state.tab=state.tab==='groups'?'groups':state.tab;
  const response=await fetch('/api/window/'+version);
  if(!response.ok){$('#detail').innerHTML=`<p class="panel">${esc((await response.json()).error)}</p>`;return;}
- state.windowDetail=await response.json();state.view='window';state.selectedVersion=version;
+ stopPlay();state.windowDetail=await response.json();state.view='window';state.windowFrame=0;state.selectedVersion=version;
  state.group=state.windowDetail.group?.segmentId??state.group;
  renderSidebar();renderDetail();
 }
@@ -246,28 +308,38 @@ async function saveReview(button){
  const result=await response.json();state.data.reviews=result.reviews;renderSummary();renderDetail();
 }
 
+document.addEventListener('error',event=>{const el=event.target;if(el&&el.tagName==='IMG'){el.classList.add('broken');el.alt='??????';}},true);
 document.addEventListener('click',async event=>{
  const el=event.target.closest('[data-action]');if(!el)return;
  const action=el.dataset.action;
- if(action==='tab'){event.preventDefault();state.tab=el.dataset.tab;if(state.tab==='groups'&&!state.group)state.group=state.data.groups[0]?.segmentId??null;if(state.tab==='groups'&&state.group&&!state.groupDetail)await selectGroup(state.group);else{renderTabs();renderSidebar();renderDetail();}return;}
+ if(action==='tab'){event.preventDefault();stopPlay();state.tab=el.dataset.tab;if(state.tab==='groups'&&!state.group)state.group=state.data.groups[0]?.segmentId??null;if(state.tab==='groups'&&state.group&&!state.groupDetail)await selectGroup(state.group);else{renderTabs();renderSidebar();renderDetail();}return;}
  if(action==='filter'){event.preventDefault();state.filter=el.dataset.filter;renderSidebar();return;}
  if(action==='group'){event.preventDefault();await selectGroup(el.dataset.id);return;}
  if(action==='window'){event.preventDefault();await selectWindow(Number(el.dataset.version));return;}
  if(action==='back-group'){event.preventDefault();if(state.group)await selectGroup(state.group);return;}
+ if(action==='frame-prev'){event.preventDefault();setFrame(frameIndex()-1);return;}
+ if(action==='frame-next'){event.preventDefault();setFrame(frameIndex()+1);return;}
+ if(action==='frame-first'){event.preventDefault();setFrame(0);return;}
+ if(action==='frame-last'){event.preventDefault();setFrame(frameLength()-1);return;}
+ if(action==='frame-play'){event.preventDefault();togglePlay();return;}
+ if(action==='frame-seek'){event.preventDefault();if(el.dataset.index!==undefined)setFrame(Number(el.dataset.index));return;}
  if(action==='image'){event.preventDefault();openModal(el.dataset.url,el.dataset.caption);return;}
  if(action==='close-modal'){closeModal();return;}
  if(action==='save-review'){event.preventDefault();await saveReview(el);return;}
 });
+document.addEventListener('change',event=>{
+ const el=event.target.closest?.('[data-action="frame-seek"]');if(!el||el.dataset.index!==undefined)return;
+ setFrame(Number(el.value));
+});
 document.addEventListener('keydown',event=>{
  if(event.key==='Escape'){closeModal();return;}
  if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight')return;
- if(state.tab==='groups'){
-  const list=state.data.groups;let i=list.findIndex(g=>g.segmentId===state.group);
-  i=Math.max(0,Math.min(list.length-1,i+(event.key==='ArrowRight'?1:-1)));selectGroup(list[i].segmentId);
- }else if(state.tab==='windows'||state.view==='window'){
-  const list=state.data.windows;let i=list.findIndex(w=>w.version===state.selectedVersion);
-  i=Math.max(0,Math.min(list.length-1,i+(event.key==='ArrowRight'?1:-1)));selectWindow(list[i].version);
- }
+ const step=event.key==='ArrowRight'?1:-1;
+ if(state.tab==='frames'){setFrame(frameIndex()+step);return;}
+ if(state.tab==='windows'){const list=state.data.windows;let i=list.findIndex(w=>w.version===state.selectedVersion);i=Math.max(0,Math.min(list.length-1,i+step));selectWindow(list[i].version);return;}
+ if(state.view==='window'){setFrame(frameIndex()+step);return;}
+ const list=state.data.groups;let i=list.findIndex(g=>g.segmentId===state.group);
+ i=Math.max(0,Math.min(list.length-1,i+step));selectGroup(list[i].segmentId);
 });
 
 load().catch(error=>{$('#detail').innerHTML=`<p class="panel">${esc(String(error))}</p>`;});

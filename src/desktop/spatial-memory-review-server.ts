@@ -168,6 +168,17 @@ export async function createSpatialMemoryReviewServer(config:Config){
    json(res,200,{group,segment,skipped:skipped.map((x:any)=>({...x,detail:referenceById.get(x.id)?.annotation??x.reference})),windows:group.windows.map(w=>({...windowDetail(w.version),share:w.share,members:w.members})),crossWindows:group.crossWindows.map(w=>({...windowDetail(w.version),members:w.members}))});return;
   }
   if(path.startsWith('/api/window/')){const version=Number(path.slice('/api/window/'.length));if(!Number.isInteger(version))throw new HttpError(400,'Invalid window');json(res,200,windowDetail(version));return;}
+  if(path==='/api/frames'){
+   const observations=bundle.observations.map(o=>{
+    const r=referenceById.get(o.id)?.annotation??null,version=windowOf.get(o.id)??null,state=version?stateByVersion.get(version):null,cmp=version?comparisonByVersion.get(version):null,loc=state?.assessment?.location??null;
+    return {id:o.id,atMs:o.atMs,sourceAtMs:o.sourceAtMs,reference:r,version,skipped:version===null,
+     placeId:loc?.placeId??null,placeName:loc?.name??null,status:loc?.status??null,reason:loc?.reason??null,
+     identity:cmp?.identity?.verdict??null,currentReason:cmp?.currentReason?.verdict??null,windowScope:cmp?.windowScope?.verdict??null,
+     identityReason:cmp?.identity?.reason??null,summary:(o.facts as any)?.summary??null,
+     views:(o.views??[]).map((v:any)=>({direction:v.direction,url:`/original/${encodeURIComponent(o.id)}/${encodeURIComponent(v.direction)}`,sha256:v.sha256}))};
+   });
+   json(res,200,{observations});return;
+  }
   if(path==='/api/export'){json(res,200,{...overview(),reviewToken:undefined});return;}
   if(path.startsWith('/original/')){const parts=path.split('/'),obsId=parts[2],dir=parts[3];if(!obsId||!dir)throw new HttpError(400,'Invalid original path');const bytes=await originalImage(decodeURIComponent(obsId),decodeURIComponent(dir));send(res,200,'image/png',bytes);return;}
   if(path.startsWith('/sheet/')){const version=Number(path.slice('/sheet/'.length));const bytes=await sheetImage(version);send(res,200,'image/png',bytes);return;}

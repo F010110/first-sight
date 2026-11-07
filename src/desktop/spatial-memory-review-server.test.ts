@@ -36,6 +36,7 @@ test('review server binds one run, serves judgement/reference/image and only app
    const overview=await get('/api/overview');assert.equal(overview.status,200);assert.equal(overview.json.groups.length,1);assert.equal(overview.json.windows.length,1);assert.equal(overview.json.skipped.length,0);
    const group=await get('/api/group/s1');assert.equal(group.json.group.identityScore,100);assert.equal(group.json.windows.length,1);
    const window=await get('/api/window/1');assert.equal(window.json.observations.length,2);assert.equal(window.json.comparison.identity.verdict,'supported');
+   const frames=await get('/api/frames');assert.equal(frames.json.observations.length,2);assert.equal(frames.json.observations[0].reference.placeId,'a');assert.equal(frames.json.observations[0].views.length,1);
    const image=await get('/original/o1/front');assert.equal(image.status,200);assert.equal(sha(image.buffer),viewSha);
    assert.equal((await get('/api/window/999')).status,404);
    const auth=await fetch(base+'/api/review',{method:'POST',headers:{'content-type':'application/json','origin':base,'x-review-token':overview.json.reviewToken},body:JSON.stringify({targetType:'group',targetId:'s1',verdict:'agree',note:'ok'})});

@@ -90,3 +90,13 @@ footer td,footer th{border-color:#1d2631}
 
 .mt6{margin-top:6px}.mt8{margin-top:8px}.mt12{margin-top:12px}
 .latest{flex-basis:100%}
+
+.player-controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.player-controls input[type=range]{flex:1;min-width:150px}
+.views.large img{height:340px;object-fit:contain;background:#000}
+.thumbs{display:flex;gap:4px;overflow:auto;margin-top:6px;padding-bottom:4px}
+.thumb{padding:0;border:2px solid transparent;background:transparent;border-radius:6px;line-height:0}
+.thumb.active{border-color:var(--accent)}
+.thumb img{height:42px;width:68px;object-fit:cover;border-radius:4px;display:block}
+.views.mini img{height:82px}
+img.broken{opacity:.25}
