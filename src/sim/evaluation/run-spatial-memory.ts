@@ -9,7 +9,7 @@ import {spatialJsonVlm} from '../../agent/spatial-json-vlm.js';
 import type {Observation} from '../../assistant/spatial-memory/contracts.js';
 import {projectReplayClock} from './spatial-window-plan.js';
 import {validateRealtimeInterval,deliveryDueAt,attemptArtifact,appendRunRecord,readRunRecords} from './spatial-run-runtime.js';
-import {imageMatchPlaceMatcher} from '../../assistant/spatial-memory/visual-revisit.js';
+import {imageIndexPlaceMatcher} from '../../assistant/spatial-memory/visual-revisit.js';
 
 // Production reconstruction entry: no annotation bundle, judge, or user questions.
 const [inputArg,outArg,confirm,...flags]=process.argv.slice(2);
@@ -27,7 +27,11 @@ const intervalArg=flags.find(f=>f.startsWith('--interval-ms=')),intervalMs=inter
 const windowArg=flags.find(f=>f.startsWith('--window-ms=')),windowMs=windowArg?Number(windowArg.split('=')[1]):8000;
 if(!Number.isInteger(windowMs)||windowMs<4000||windowMs>20000||windowMs%intervalMs!==0)throw Error('Invalid --window-ms (multiple of the sampling interval, 4000..20000)');
 const judgmentDeadlineMs=Math.max(30000,windowMs*2);
-if(flags.some(f=>!['--resume','--replay-time-scale=2','--require-realtime'].includes(f)&&!f.startsWith('--limit=')&&!f.startsWith('--interval-ms=')&&!f.startsWith('--busy-policy=')&&!f.startsWith('--window-ms=')&&!f.startsWith('--extraction=')))throw Error('Invalid runner flag');
+const revisitImagesArg=flags.find(f=>f.startsWith('--revisit-images-per-place=')),revisitImagesPerPlace=revisitImagesArg?Number(revisitImagesArg.split('=')[1]):4;
+if(!Number.isInteger(revisitImagesPerPlace)||revisitImagesPerPlace<2||revisitImagesPerPlace>8)throw Error('Invalid --revisit-images-per-place (2..8)');
+const revisitPlacesArg=flags.find(f=>f.startsWith('--revisit-max-places=')),revisitMaxPlaces=revisitPlacesArg?Number(revisitPlacesArg.split('=')[1]):64;
+if(!Number.isInteger(revisitMaxPlaces)||revisitMaxPlaces<8||revisitMaxPlaces>256)throw Error('Invalid --revisit-max-places (8..256)');
+if(flags.some(f=>!['--resume','--replay-time-scale=2','--require-realtime'].includes(f)&&!f.startsWith('--limit=')&&!f.startsWith('--interval-ms=')&&!f.startsWith('--busy-policy=')&&!f.startsWith('--window-ms=')&&!f.startsWith('--extraction=')&&!f.startsWith('--revisit-images-per-place=')&&!f.startsWith('--revisit-max-places=')))throw Error('Invalid runner flag');
 if(requireRealtime&&busyPolicy!=='skip-obsolete')throw Error('--require-realtime requires --busy-policy=skip-obsolete: a queue policy would delay input delivery');
 if(limitArg&&(!Number.isInteger(limit)||limit!<1))throw Error('Invalid limit');
 validateRealtimeInterval(intervalMs);
@@ -41,13 +45,13 @@ const sampled=projectReplayClock(all,intervalMs,2);
 const rows=limit?sampled.slice(0,limit):sampled;
 let plannedStates=0,lastBucket:number|undefined,lastRecording:string|undefined;
 for(const row of rows){const bucket=Math.floor(row.atMs/windowMs);if(lastBucket!==bucket||lastRecording!==row.recordingId)plannedStates++;lastBucket=bucket;lastRecording=row.recordingId;}
-const binding={inputSHA256:createHash('sha256').update(raw).digest('hex'),planned:rows.length,sourcePlanned:all.length,windowMs,samplingMs:2000,plannedStates,mode:accelerated?'accelerated-replay':'realtime',intervalMs,replayTimeScale:2,replayMinimumIntervalMs:2000,sourceCoverage:rows.length===all.length?'all-original-observations':'original-prefix-no-sampling',realtimeEnforced:requireRealtime,locationStatuses:'known-new-or-boundary',judgmentDeadlineMs,extractionPolicy,extractionMode:extractionPolicy==='streaming'?'per-observation-streaming':'single-window-worker',evidencePolicy:'wait-for-independent-facts',contextPolicy:'spatial-session-context-v1',memoryLibraryPolicy:'place-visits-windows-sources-v1',runtimePolicy:'projected-suffix-clock-durable-timing-v1',revisitPolicy:'sift-ransac-required/v1',revisitLimit:2,busyPolicy};
+const binding={inputSHA256:createHash('sha256').update(raw).digest('hex'),planned:rows.length,sourcePlanned:all.length,windowMs,samplingMs:2000,plannedStates,mode:accelerated?'accelerated-replay':'realtime',intervalMs,replayTimeScale:2,replayMinimumIntervalMs:2000,sourceCoverage:rows.length===all.length?'all-original-observations':'original-prefix-no-sampling',realtimeEnforced:requireRealtime,locationStatuses:'known-new-or-boundary',judgmentDeadlineMs,extractionPolicy,extractionMode:extractionPolicy==='streaming'?'per-observation-streaming':'single-window-worker',evidencePolicy:'wait-for-independent-facts',contextPolicy:'spatial-session-context-v1',memoryLibraryPolicy:'place-visits-windows-sources-v1',runtimePolicy:'projected-suffix-clock-durable-timing-v1',revisitPolicy:'sift-ransac-required/v1',revisitLimit:2,revisitImagesPerPlace,revisitMaxPlaces,busyPolicy};
 if(resume){const manifest=JSON.parse(await readFile(join(out,'manifest.json'),'utf8'));for(const [key,value] of Object.entries(binding))if(manifest[key]!==value)throw Error('Resume manifest mismatch: '+key);}
 if(!resume)await mkdir(out,{recursive:false});
 const start=Date.now(),attemptId=Date.now()+'-'+randomUUID();
 const reasoner=await createPiSpatialReasoner(join(out,'pi'),spatialJsonVlm(join(out,'pi-requests'),8000,8,true,1600),{resume,judgmentDeadlineMs});
-const service=await SpatialMemoryService.create(out,spatialPerceptionModel(out),{reasoner,resume,maxPending:requireRealtime?64:12,extractionConcurrency:extractionPolicy==='streaming'?3:1,extractionPolicy,maxReasonCalls:8,windowMs,evidencePolicy:'wait',busyPolicy,revisitMatcher:imageMatchPlaceMatcher(undefined,{timeoutMs:5000,maxDim:640,minInliers:20}),revisitPolicy:'required',revisitLimit:2});
-if(!resume)await writeFile(join(out,'manifest.json'),JSON.stringify({schema:'spatial-memory-run-v6',...binding,producer:'spatial-memory-pi-v6',storageSchema:4,agent:'pi-spatial-memory-v2',spatialAssessmentRequired:true,context:'persistent-session-with-structured-state-head',longTerm:'organized-place-visits-with-add-notes',extractionConcurrency:1,maxReasonCalls:8,maxPending:requireRealtime?64:12,questions:false,judge:false,resume:false},null,2),{flag:'wx'});
+const service=await SpatialMemoryService.create(out,spatialPerceptionModel(out),{reasoner,resume,maxPending:requireRealtime?64:12,extractionConcurrency:extractionPolicy==='streaming'?3:1,extractionPolicy,maxReasonCalls:8,windowMs,evidencePolicy:'wait',busyPolicy,revisitMatcher:imageIndexPlaceMatcher(undefined,{imagesPerPlace:revisitImagesPerPlace,shortlistPlaces:8,siftImagesPerPlace:2,maxDim:640,minInliers:20}),revisitPolicy:'required',revisitLimit:2,revisitMaxPlaces});
+if(!resume)await writeFile(join(out,'manifest.json'),JSON.stringify({schema:'spatial-memory-run-v6',...binding,producer:'spatial-memory-pi-v6',storageSchema:4,agent:'pi-spatial-memory-v2',spatialAssessmentRequired:true,context:'persistent-session-with-structured-state-head',longTerm:'organized-place-visits-with-add-notes',extractionConcurrency:1,maxReasonCalls:8,maxPending:requireRealtime?64:12,revisitImagesPerPlace,revisitMaxPlaces,questions:false,judge:false,resume:false},null,2),{flag:'wx'});
 const timer=setInterval(()=>console.log(JSON.stringify({stage:'spatial-memory',elapsedMs:Date.now()-start,...service.progress()})),10000);timer.unref();
 type Delivery={observationId:string;index:number;attemptId:string;plannedDueMs:number|null;deliveredAtMs:number;deliveredWallMs:number;deliveryLagMs:number|null};
 const delivery=await readRunRecords<Delivery>(out,'delivery.jsonl');

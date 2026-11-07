@@ -1,4 +1,5 @@
-import {spawn} from 'node:child_process';
+import {spawn,type ChildProcessWithoutNullStreams} from 'node:child_process';
+import {createInterface} from 'node:readline';
 import {existsSync} from 'node:fs';
 import {resolve} from 'node:path';
 import type {PlaceMatcher,RevisitImage,RevisitMatchEntry,RevisitMatchResult} from './revisit-candidates.js';
@@ -32,6 +33,58 @@ export function imageMatchPlaceMatcher(script=resolve('scripts','media','image_m
    child.stdin.on('error',()=>{});child.stdin.write(payload);child.stdin.end();
   });
  }};
+}
+
+/** Persistent bounded index. One process, one index, no per-window spawn and no match timeout. */
+export function imageIndexPlaceMatcher(script=resolve('scripts','media','image_index.py'),options:{imagesPerPlace?:number;shortlistPlaces?:number;siftImagesPerPlace?:number;minInliers?:number;maxDim?:number;ratio?:number;python?:string}={}):PlaceMatcher{
+ const python=()=>[options.python,process.env.VLM_PYTHON,process.platform==='win32'?resolve('.venv','Scripts','python.exe'):resolve('.venv','bin','python'),'python3','python'].filter((v):v is string=>!!v).find(v=>v==='python'||v==='python3'||existsSync(v))??'python';
+ let child:ChildProcessWithoutNullStreams|null=null,sequence=0;
+ const pending=new Map<number,{resolve:(value:RevisitMatchResult)=>void;candidates:Array<{placeId:string;image:RevisitImage}>}>();
+ const finishAll=(error:string)=>{for(const item of pending.values())item.resolve({ok:false,best:null,nearest:null,results:[],error});pending.clear();};
+ const start=()=>{
+  if(child)return child;
+  const process=spawn(python(),[script],{stdio:['pipe','pipe','pipe']});child=process;
+  const lines=createInterface({input:process.stdout});
+  lines.on('line',line=>{
+   let raw:any;try{raw=JSON.parse(line);}catch{return;}
+   const waiting=pending.get(raw?.id);if(!waiting)return;pending.delete(raw.id);
+   if(raw?.ok!==true){waiting.resolve({ok:false,best:null,nearest:null,results:[],error:String(raw?.error??'image index unavailable'),...raw?.stats?{stats:raw.stats}:{}});return;}
+   const byPath=new Map(waiting.candidates.map(c=>[c.image.path,c.image.id]));
+   const convert=(entry:any):RevisitMatchEntry|null=>{
+    const observationId=typeof entry?.path==='string'?byPath.get(entry.path):undefined;
+    if(!observationId||typeof entry?.id!=='string')return null;
+    return {...entry,placeId:entry.id,observationId};
+   };
+   const results=(Array.isArray(raw.results)?raw.results:[]).map(convert).filter((entry:RevisitMatchEntry|null):entry is RevisitMatchEntry=>!!entry);
+   waiting.resolve({ok:true,best:convert(raw.best),nearest:convert(raw.nearest),results,...raw.stats?{stats:raw.stats}:{}});
+  });
+  process.on('error',error=>{finishAll(error.message);child=null;});
+  process.on('close',()=>{finishAll('image index process exited');child=null;});
+  process.stderr.on('data',()=>{});
+  return process;
+ };
+ return {
+  async match(current,candidates){
+   if(!current.length||!candidates.length)return {ok:true,best:null,nearest:null,results:[]};
+   if(!existsSync(script))return {ok:false,best:null,nearest:null,results:[],error:'image index script not found'};
+   const places=new Map<string,{placeId:string;name:string;members:Array<{observationId:string;atMs:number;path:string;direction:string}>}>();
+   for(const candidate of candidates){
+    const entry=places.get(candidate.placeId)??{placeId:candidate.placeId,name:candidate.placeId,members:[]};
+    entry.members.push({observationId:candidate.image.id,atMs:0,path:candidate.image.path,direction:candidate.image.direction});
+    places.set(candidate.placeId,entry);
+   }
+   const process=start(),id=++sequence;
+   return await new Promise<RevisitMatchResult>(resolve=>{
+    pending.set(id,{resolve,candidates});
+    process.stdin.write(JSON.stringify({op:'match',id,queries:current.map(image=>({path:image.path})),places:[...places.values()],imagesPerPlace:options.imagesPerPlace??4,shortlistPlaces:options.shortlistPlaces??8,siftImagesPerPlace:options.siftImagesPerPlace??2,minInliers:options.minInliers??20,maxDim:options.maxDim??640,ratio:options.ratio??0.75})+ '\n');
+   });
+  },
+  async close(){
+   const process=child;if(!process)return;child=null;
+   try{process.stdin.write(JSON.stringify({op:'close'})+ '\n');}catch{}
+   await new Promise<void>(resolve=>{const timer=setTimeout(()=>{try{process.kill();}catch{}resolve();},1000);process.once('close',()=>{clearTimeout(timer);resolve();});});
+  }
+ };
 }
 
 /** Current-window sentinel for tests without the native matcher. */

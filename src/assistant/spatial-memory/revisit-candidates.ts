@@ -2,11 +2,12 @@ export type RevisitMember={observationId:string;atMs:number;path:string;sha256:s
 export type RevisitPlace={placeId:string;name:string;members:RevisitMember[]};
 export type RevisitImage={id:string;direction:string;path:string;sha256:string};
 export type RevisitMatchEntry={placeId:string;observationId:string;queryObservationId?:string;queryPath?:string;inliers:number;similarity:number};
-export type RevisitMatchResult={ok:boolean;best:RevisitMatchEntry|null;nearest:RevisitMatchEntry|null;results:RevisitMatchEntry[];error?:string};
+export type RevisitMatchResult={ok:boolean;best:RevisitMatchEntry|null;nearest:RevisitMatchEntry|null;results:RevisitMatchEntry[];error?:string;stats?:Record<string,unknown>};
 
 /** Local visual matcher (SIFT+RANSAC). Scores only propose candidates; they never accept identity. */
 export interface PlaceMatcher{
  match(current:RevisitImage[],candidates:Array<{placeId:string;image:RevisitImage}>):Promise<RevisitMatchResult>;
+ close?():Promise<void>;
 }
 
 export type RevisitCandidate={

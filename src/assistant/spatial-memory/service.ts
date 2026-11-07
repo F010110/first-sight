@@ -36,8 +36,8 @@ export class SpatialMemoryService{
  private consecutiveJudgmentFailures=0;
  private backpressureRejections=0;
  private published:StoredState|null=null;
- private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number;windowMs:number;revisitMatcher:PlaceMatcher|undefined;revisitPolicy:'off'|'required';revisitLimit:number;extractionPolicy:'window'|'streaming'}){}
-  static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number;windowMs?:number;evidenceWaitMs?:number;evidencePolicy?:'wait'|'deadline';busyPolicy?:'queue'|'skip-obsolete';revisitMatcher?:PlaceMatcher;revisitPolicy?:'off'|'required';revisitLimit?:number;extractionPolicy?:'window'|'streaming'}={}){
+ private constructor(readonly root:string,private models:SpatialModels,private reasoner:SpatialReasoner|null,private store:SpatialLongTermStore,private options:{extractionConcurrency:number;maxReasonCalls:number;now:()=>number;maxPending:number;cooldownMs:number;activeLimit:number;coolUntil:number;windowMs:number;revisitMatcher:PlaceMatcher|undefined;revisitPolicy:'off'|'required';revisitLimit:number;revisitMaxPlaces:number;extractionPolicy:'window'|'streaming'}){}
+  static async create(rootArg:string,models:SpatialModels,options:{resume?:boolean;extractionConcurrency?:number;maxReasonCalls?:number;now?:()=>number;reasoner?:SpatialReasoner;maxPending?:number;cooldownMs?:number;windowMs?:number;evidenceWaitMs?:number;evidencePolicy?:'wait'|'deadline';busyPolicy?:'queue'|'skip-obsolete';revisitMatcher?:PlaceMatcher;revisitPolicy?:'off'|'required';revisitLimit?:number;revisitMaxPlaces?:number;extractionPolicy?:'window'|'streaming'}={}){
   const root=resolve(rootArg),concurrency=options.extractionConcurrency??2,max=options.maxReasonCalls??8,maxPending=options.maxPending??64,cool=options.cooldownMs??30000;
   if(!Number.isInteger(concurrency)||concurrency<1||concurrency>8||!Number.isInteger(max)||max<1||max>32||!Number.isInteger(maxPending)||maxPending<1||maxPending>1024||!Number.isFinite(cool)||cool<0||cool>300000)throw Error('Invalid spatial execution budget');
   const windowMs=options.windowMs??0;
@@ -50,9 +50,10 @@ export class SpatialMemoryService{
    try{await readFile(join(root,'spatial.sqlite'));throw Error('Existing spatial memory requires --resume');}
    catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   } else await readFile(join(root,'spatial.sqlite')); // Explicit same-session recovery only.
-  const revisitPolicy=options.revisitPolicy??'off',revisitLimit=options.revisitLimit??2;
+  const revisitPolicy=options.revisitPolicy??'off',revisitLimit=options.revisitLimit??2,revisitMaxPlaces=options.revisitMaxPlaces??64;
   if(!['off','required'].includes(revisitPolicy)||!Number.isInteger(revisitLimit)||revisitLimit<1||revisitLimit>4||revisitPolicy==='required'&&!options.revisitMatcher)throw Error('Invalid revisit recall policy');
-  const store=new SpatialLongTermStore(root,options.now??Date.now),service=new SpatialMemoryService(root,models,options.reasoner??null,store,{extractionConcurrency:concurrency,maxReasonCalls:max,now:options.now??Date.now,maxPending,cooldownMs:cool,activeLimit:concurrency,coolUntil:0,windowMs,revisitMatcher:options.revisitMatcher,revisitPolicy,revisitLimit,extractionPolicy:options.extractionPolicy??'window'});
+  if(!Number.isInteger(revisitMaxPlaces)||revisitMaxPlaces<1||revisitMaxPlaces>256)throw Error('Invalid revisit place index size');
+  const store=new SpatialLongTermStore(root,options.now??Date.now),service=new SpatialMemoryService(root,models,options.reasoner??null,store,{extractionConcurrency:concurrency,maxReasonCalls:max,now:options.now??Date.now,maxPending,cooldownMs:cool,activeLimit:concurrency,coolUntil:0,windowMs,revisitMatcher:options.revisitMatcher,revisitPolicy,revisitLimit,revisitMaxPlaces,extractionPolicy:options.extractionPolicy??'window'});
   if(windowMs&&!store.supportsWindowRevisions()){store.close();throw Error('Window memory requires a new schema-v4 database; legacy runs are preserved');}
   service.evidenceWaitMs=options.evidenceWaitMs??Math.max(8000,windowMs);
   service.evidencePolicy=options.evidencePolicy??'wait';
@@ -396,20 +397,28 @@ export class SpatialMemoryService{
   const grouped=new Map<string,{name:string;records:HistoryRecord[]}>();
   for(const record of prior){const placeId=record.location.placeId;if(!placeId)continue;const entry=grouped.get(placeId)??{name:record.location.name,records:[]};entry.name=record.location.name;entry.records.push(record);grouped.set(placeId,entry);}
   const places:RevisitPlace[]=[];
-  for(const [placeId,entry] of grouped){
+  // The recall index is bounded; the long-term store is not. Keep the most recent
+  // places and sample up to 8 observations per place, all three views.
+  const ranked=[...grouped.entries()].sort((a,b)=>(b[1].records.at(-1)?.atMs??0)-(a[1].records.at(-1)?.atMs??0)).slice(0,this.options.revisitMaxPlaces);
+  for(const [placeId,entry] of ranked){
    if(placeId===previousPlaceId)continue;
-   const records=entry.records.sort((a,b)=>a.atMs-b.atMs),chosen=[...new Set([records[0],records[Math.floor((records.length-1)/2)],records.at(-1)].filter((r):r is HistoryRecord=>!!r))];
+   const records=entry.records.sort((a,b)=>a.atMs-b.atMs),sampleCount=Math.min(8,records.length),picks:HistoryRecord[]=[];
+   for(let i=0;i<sampleCount;i++){
+    const index=sampleCount===1?0:Math.round(i*(records.length-1)/(sampleCount-1));
+    const record=records[Math.min(records.length-1,index)]!;if(!picks.includes(record))picks.push(record);
+   }
    const membersById=new Map<string,{observationId:string;atMs:number;path:string;sha256:string;direction:string}>();
-   for(const record of chosen){
+   for(const record of picks){
     const observationId=record.window?.observations.at(-1)?.id??record.observationId,observation=this.store.observation(observationId);
-    const view=observation?.views.find(v=>v.direction==='front')??observation?.views[0];
-    if(view)membersById.set(observationId,{observationId,atMs:record.atMs,path:view.path,sha256:view.sha256,direction:view.direction});
+    for(const view of observation?.views??[])membersById.set(observationId+'/'+view.direction,{observationId,atMs:record.atMs,path:view.path,sha256:view.sha256,direction:view.direction});
    }
    if(membersById.size)places.push({placeId,name:entry.name,members:[...membersById.values()].sort((a,b)=>a.atMs-b.atMs)});
   }
   if(!places.length)return {status:'ok' as const,method:'sift-ransac-plus-global-layout' as const,consideredPlaces:0,excludedPreviousPlaceId:previousPlaceId,limit:this.options.revisitLimit,error:null,candidates:[],note:'No older place candidates are available yet.'};
   if(!this.options.revisitMatcher)return revisitRecallUnavailable(places,previousPlaceId,'visual matcher not configured',this.options.revisitLimit);
-  const query=members.flatMap(o=>o.views).map(v=>({id:v.id,direction:v.direction,path:v.path,sha256:v.sha256}));
+  const first=members[0],last=members.at(-1);
+  const queryMembers=first&&last&&first!==last?[first,last]:first?[first]:[];
+  const query=queryMembers.flatMap(o=>o.views).slice(0,6).map(v=>({id:v.id,direction:v.direction,path:v.path,sha256:v.sha256}));
   const result=await this.options.revisitMatcher.match(query,places.flatMap(p=>p.members.map(m=>({placeId:p.placeId,image:{id:m.observationId,direction:m.direction,path:m.path,sha256:m.sha256}}))));
   const recall=summarizeRevisitRecall(places,previousPlaceId,result,this.options.revisitLimit);
   for(const candidate of recall.candidates)for(const image of candidate.images)if(createHash('sha256').update(await readFile(image.path)).digest('hex')!==image.sha256)throw Error('Revisit candidate source changed');
@@ -419,6 +428,7 @@ export class SpatialMemoryService{
   * proposed older places, the agent must actually inspect every candidate before
   * submitting `new`; otherwise it is forced to continue, reuse evidence, or say unknown. */
  private validateRevisitNew(assessment:Assessment,revisit:RevisitRecall|undefined,inspected:ReadonlySet<string>){
+  if(assessment.location.status==='new'&&revisit?.status==='unavailable')throw Error('Revisit candidate recall is unavailable; a new place cannot be created without a candidate check. Wait or skip this window.');
   if(assessment.location.status!=='new'||!revisit?.candidates.length)return;
   const unseen=revisit.candidates.filter(c=>!inspected.has(c.matchedObservationId));
   if(unseen.length)throw Error('Cannot submit a new place without inspecting automatically recalled older-place candidates: '+unseen.map(c=>`${c.name} [${c.matchedObservationId}] inliers=${c.bestInliers}`).join('; '));
@@ -468,5 +478,5 @@ export class SpatialMemoryService{
   const images=ids.flatMap(id=>this.store.observation(id)!.views);for(const image of images)if(createHash('sha256').update(await readFile(image.path)).digest('hex')!==image.sha256)throw Error('Read-only source changed');return structuredClone(images);
  }});}
   progress(){return {...this.store.counts(),judgmentFailureSkips:this.judgmentFailureSkips,admitted:this.admitted,capacity:this.options.maxPending,peakAdmitted:this.peakAdmitted,backpressureRejections:this.backpressureRejections,activeExtractions:this.extractionActive,bufferedObservations:this.bucket.length,failure:this.failure};}
- async close(){if(this.closed)return;try{await this.finishInput();}finally{this.closed=true;await this.reasoner?.close().catch(()=>{});this.store.close();}}
+ async close(){if(this.closed)return;try{await this.finishInput();}finally{this.closed=true;await this.reasoner?.close().catch(()=>{});await this.options.revisitMatcher?.close?.().catch(()=>{});this.store.close();}}
 }
