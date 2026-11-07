@@ -13,7 +13,7 @@ class HttpError extends Error{constructor(readonly status:number,message:string)
 const readBody=async(req:IncomingMessage)=>{let raw='';for await(const chunk of req){raw+=chunk.toString('utf8');if(Buffer.byteLength(raw)>32000)throw new HttpError(413,'Review body too large');}try{return JSON.parse(raw);}catch{throw new HttpError(400,'Invalid JSON');}};
 const time=(ms:number)=>{const s=Math.floor(ms/1000);return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;};
 
-type Review={targetType:'group'|'window';targetId:string;verdict:'agree'|'disagree'|'unsure';note:string;at:string};
+type Review={targetType:'group'|'window'|'observation';targetId:string;verdict:'agree'|'disagree'|'unsure';note:string;at:string};
 type Config={run:string;judge:string;reference:string;webRoot?:string};
 
 /** Loopback-only, read-only review page for one completed run plus its judge output.
@@ -152,9 +152,10 @@ export async function createSpatialMemoryReviewServer(config:Config){
    const body=await readBody(req);
    if(!body||Object.keys(body).some(k=>!['targetType','targetId','verdict','note'].includes(k)))throw new HttpError(400,'Invalid review fields');
    const targetType=body.targetType,targetId=String(body.targetId??'');
-   if(!['group','window'].includes(targetType)||!['agree','disagree','unsure'].includes(body.verdict)||typeof body.note!=='string'||body.note.length>2000)throw new HttpError(400,'Invalid review');
+   if(!['group','window','observation'].includes(targetType)||!['agree','disagree','unsure'].includes(body.verdict)||typeof body.note!=='string'||body.note.length>2000)throw new HttpError(400,'Invalid review');
    if(targetType==='group'&&!segmentById.has(targetId))throw new HttpError(404,'Unknown group');
    if(targetType==='window'&&!stateByVersion.has(Number(targetId)))throw new HttpError(404,'Unknown window');
+   if(targetType==='observation'&&!observationById.has(targetId))throw new HttpError(404,'Unknown observation');
    const review:Review={targetType,targetId,verdict:body.verdict,note:body.note,at:new Date().toISOString()};
    await appendFile(reviewPath,JSON.stringify(review)+'\n');reviews.push(review);json(res,200,{review,reviews});return;
   }

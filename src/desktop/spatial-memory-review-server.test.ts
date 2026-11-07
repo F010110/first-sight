@@ -41,6 +41,8 @@ test('review server binds one run, serves judgement/reference/image and only app
    assert.equal((await get('/api/window/999')).status,404);
    const auth=await fetch(base+'/api/review',{method:'POST',headers:{'content-type':'application/json','origin':base,'x-review-token':overview.json.reviewToken},body:JSON.stringify({targetType:'group',targetId:'s1',verdict:'agree',note:'ok'})});
    assert.equal(auth.status,200);assert.equal((await auth.json()).reviews.length,1);
+   const observationReview=await fetch(base+'/api/review',{method:'POST',headers:{'content-type':'application/json','origin':base,'x-review-token':overview.json.reviewToken},body:JSON.stringify({targetType:'observation',targetId:'o1',verdict:'unsure',note:'obs'})});
+   assert.equal(observationReview.status,200);assert.equal((await observationReview.json()).review.targetType,'observation');
    const noToken=await fetch(base+'/api/review',{method:'POST',headers:{'content-type':'application/json','origin':base},body:JSON.stringify({targetType:'group',targetId:'s1',verdict:'agree',note:''})});
    assert.equal(noToken.status,403);
   }finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}

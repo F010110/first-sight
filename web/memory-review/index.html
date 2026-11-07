@@ -12,24 +12,27 @@
   <div id="run-meta" class="run-meta">载入中…</div>
 </header>
 
-<nav class="tabs" aria-label="审核视图">
-  <button data-action="tab" data-tab="groups" class="active">按组</button>
-  <button data-action="tab" data-tab="windows">按窗</button>
-  <button data-action="tab" data-tab="frames">????</button>
-  <button data-action="tab" data-tab="findings">裁判发现</button>
-  <button data-action="tab" data-tab="library">原始记录</button>
-  <button data-action="tab" data-tab="skipped">跳过窗</button>
-  <a class="export" href="/api/export" download="spatial-memory-review.json">导出 JSON</a>
+<nav class="toolbar" aria-label="观察导航">
+  <button data-action="prev" title="上一观察">← 上一观察</button>
+  <button data-action="play" id="play" title="空格">▶ 播放</button>
+  <button data-action="next" title="下一观察">下一观察 →</button>
+  <span id="position" class="position"></span>
+  <input id="seek" type="range" min="0" max="0" value="0" data-action="seek" aria-label="选择观察">
+  <button data-action="next-issue">下一个矛盾</button>
+  <button data-action="next-skip">下一个跳过</button>
+  <button data-action="drawer">问题清单</button>
+  <a class="export" href="/api/export" download="spatial-memory-review.json">导出</a>
 </nav>
 
-<section id="summary" class="cards" aria-label="总览"></section>
-
-<main>
-  <aside id="sidebar" aria-label="列表"></aside>
-  <section id="detail" aria-label="详情"><p class="muted">载入中…</p></section>
+<main class="page">
+  <section id="views" class="views large" aria-label="当前观察三摄原图"></section>
+  <section id="info" class="info" aria-live="polite"></section>
 </main>
 
-<footer id="tools"></footer>
+<aside id="drawer" class="drawer" hidden aria-label="问题清单">
+  <div class="drawer-head"><h2>问题清单</h2><button data-action="close-drawer" aria-label="关闭">×</button></div>
+  <div id="drawer-body" class="drawer-body"></div>
+</aside>
 
 <div id="modal" class="modal" hidden>
   <button class="modal-close" data-action="close-modal" aria-label="关闭">×</button>

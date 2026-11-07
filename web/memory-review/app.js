@@ -1,236 +1,104 @@
 'use strict';
 const $=s=>document.querySelector(s);
-const state={data:null,tab:'groups',filter:'all',group:null,groupDetail:null,windowDetail:null,view:'group',selectedVersion:null,frames:null,frameIndex:0,windowFrame:0,playTimer:null};
+const state={data:null,frames:null,index:0,details:new Map(),detail:null,ticket:0,playing:null};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=ms=>{if(ms===null||ms===undefined)return '—';const s=Math.floor(ms/1000);return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`};
-const pct=(n,d)=>d?`${(100*n/d).toFixed(1)}%`:'—';
-const scoreClass=v=>v===null||v===undefined?'na':v===100?'s100':v>=75?'s75':v>=50?'s50':'s0';
-const scoreChip=v=>`<span class="score ${scoreClass(v)}">${v===null||v===undefined?'—':v}</span>`;
 const tag=(v,cls='')=>`<span class="tag ${cls}">${esc(v)}</span>`;
 const verdictTag=v=>v?tag(v,v==='supported'?'ok':v==='contradicted'?'bad':'warn'):tag('无','');
 const statusTag=s=>s?tag(s,s==='known'?'ok':s==='unknown'?'warn':''):tag('无','');
-const dateText=iso=>{try{return new Date(iso).toLocaleString()}catch{return iso}};
+const directionLabel=d=>({left:'左摄',front:'前摄',right:'右摄'}[d]||d);
 const sortViews=views=>[...(views||[])].sort((a,b)=>{const o={left:0,front:1,right:2};return (o[a.direction]??9)-(o[b.direction]??9)});
+const dateText=iso=>{try{return new Date(iso).toLocaleString()}catch{return iso}};
 
 async function load(){
- const response=await fetch('/api/overview');
- if(!response.ok){$('#detail').innerHTML=`<p class="panel">无法载入：${esc((await response.json().catch(()=>({}))).error||response.status)}</p>`;return;}
- state.data=await response.json();
- renderHeader();renderSummary();renderTabs();renderSidebar();renderDetail();renderTools();
+ const [overviewResponse,framesResponse]=await Promise.all([fetch('/api/overview'),fetch('/api/frames')]);
+ if(!overviewResponse.ok||!framesResponse.ok)throw Error('无法载入审核数据');
+ state.data=await overviewResponse.json();
+ state.frames=(await framesResponse.json()).observations;
+ renderHeader();render(); 
 }
 
 function renderHeader(){
  const d=state.data,r=d.run.receipt,j=d.judge;
- $('#run-meta').innerHTML=`<b>${esc(d.run.id)}</b><br>${j.model} · 总分 ${j.overall?.overall??'—'}/100 · 分组 ${d.grouped.summary.meanGroupScore??'—'} · ${d.grouped.coverage.coverageScope}<br>${r.spatialStates} 判断窗 + ${r.skippedWindows} 跳过 / ${r.observations} 观察 · ${r.windowMs/1000}s 窗 · ${r.realtimeEnforced?'强制实时':'回放'}`;
+ $('#run-meta').innerHTML=`<b>${esc(d.run.id)}</b> · ${r.coveredObservations}/${r.observations} 观察 · ${r.spatialStates} 窗 + ${r.skippedWindows} 跳过 · 裁判 <b>${j.overall?.overall??'—'}/100</b> · 分组 <b>${d.grouped.summary.meanGroupScore??'—'}</b> · ${d.findings.length} findings`;
 }
 
-function renderSummary(){
- const d=state.data,g=d.grouped.summary,c=d.grouped.coverage,w=g.windowIdentity,e=g.windowEvidence;
- const cards=[
-  ['分组均分',g.meanGroupScore??'—',`中位数 ${g.medianGroupScore??'—'} · ${g.scoredGroups}/${g.groups} 组`],
-  ['判断覆盖',`${d.run.receipt.coveredObservations}/${d.run.receipt.observations}`,`${c.coverageScope} · 跳过 ${c.skippedObservations} 观察`],
-  ['identity 窗口',`${w.supported}/${w.supported+w.uncertain+w.contradicted}`,`${w.contradicted} contradicted · ${w.uncertain} uncertain`],
-  ['evidence 窗口',`${e.supported}/${e.supported+e.uncertain+e.contradicted}`,`${e.contradicted} contradicted`],
-  ['合并 / 拆分',`${d.grouped.merges.length} / ${d.grouped.splits.length}`,'一个候选地点覆盖多个参考地点'],
-  ['重访复用',`${d.grouped.revisits.filter(r=>r.verdict==='reused').length}/${d.grouped.revisits.length}`,'参考重复地点是否复用同一候选 ID'],
-  ['裁判总分',`${d.judge.overall?.overall??'—'}`,'Dim: '+Object.entries(d.judge.overall?.dimensions||{}).map(([k,v])=>`${k} ${v}`).join(' · ')],
-  ['人工审核',d.reviews.length,`记录在 run/web-review/reviews.jsonl`]
- ];
- $('#summary').innerHTML=cards.map(([k,v,s])=>`<div class="card"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div><div class="s">${esc(s)}</div></div>`).join('');
+function render(){
+ if(!state.frames?.length)return;
+ state.index=Math.max(0,Math.min(state.index,state.frames.length-1));
+ const frame=state.frames[state.index];
+ renderBar(frame);renderViews(frame);
+ state.detail=state.details.get(frame.version)??null;
+ renderInfo(frame,state.detail);
+ if(frame.version&&!state.details.has(frame.version)){
+  const ticket=++state.ticket;
+  fetch('/api/window/'+frame.version).then(r=>r.ok?r.json():null).then(detail=>{
+   if(!detail)return;
+   state.details.set(frame.version,detail);
+   if(ticket===state.ticket&&state.index===state.frames.findIndex(f=>f.id===frame.id)){state.detail=detail;renderInfo(frame,detail);}
+  }).catch(()=>{});
+ }
 }
 
-function renderTabs(){
- document.querySelectorAll('.tabs button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===state.tab));
+function renderBar(frame){
+ $('#position').textContent=`观察 ${state.index+1}/${state.frames.length} · ${fmt(frame.atMs)} · ${frame.id}${frame.version?` · 窗 v${frame.version}`:' · 无判断'}${frame.skipped?' · 跳过':''}`;
+ const seek=$('#seek');seek.max=String(state.frames.length-1);seek.value=String(state.index);
+ $('#play').textContent=state.playing?'⏸ 暂停':'▶ 播放';
 }
 
-function renderSidebar(){
- const side=$('#sidebar'),d=state.data;
- if(state.tab==='groups'){
-  side.classList.remove('full');
-  const filters=[['all','全部'],['low','未满分'],['bad','有矛盾'],['merged','合并'],['revisit','重访'],['skipped','有跳过']];
-  const items=d.groups.filter(g=>{
-   if(state.filter==='low')return g.identityScore!==null&&g.identityScore<100;
-   if(state.filter==='bad')return g.contradictedVersions.length>0;
-   if(state.filter==='merged')return g.merged;
-   if(state.filter==='revisit')return d.grouped.revisits.some(r=>r.referencePlace===g.placeId);
-   if(state.filter==='skipped')return g.skipped>0;
-   return true;
-  });
-  side.innerHTML=`<div class="filters">${filters.map(([k,label])=>`<button data-action="filter" data-filter="${k}" class="${state.filter===k?'active':''}">${label}</button>`).join('')}</div>`+
-   items.map(g=>`<div class="item ${state.group===g.segmentId?'selected':''}" data-action="group" data-id="${esc(g.segmentId)}">
-    ${scoreChip(g.identityScore)}
-    <div class="main"><div class="title">${esc(g.title||g.placeId)}</div>
-    <div class="meta">${esc(g.segmentId)} · ${fmt(g.startMs)}–${fmt(g.endMs)} · ${g.windows.length}窗 · ${g.covered}/${g.judged} obs</div>
-    <div>${g.contradictedVersions.length?tag(g.contradictedVersions.length+' 矛盾','bad'):''}${g.uncertainVersions.length?tag(g.uncertainVersions.length+' 存疑','warn'):''}${g.merged?tag('merge','info'):''}${g.split?tag('split','warn'):''}${d.grouped.revisits.some(r=>r.referencePlace===g.placeId)?tag('revisit','info'):''}</div></div></div>`).join('');
- }else if(state.tab==='windows'){
-  side.classList.remove('full');
-  side.innerHTML=`<div class="filters"><span class="muted small">${d.windows.length} 个判断窗</span></div>`+
-   d.windows.map(w=>`<div class="item ${state.selectedVersion===w.version?'selected':''}" data-action="window" data-version="${w.version}">
-    <div class="score ${w.identity==='contradicted'?'s0':w.identity==='uncertain'?'s50':'s100'}">${w.version}</div>
-    <div class="main"><div class="title">${esc(w.placeName||'—')}</div>
-    <div class="meta">${fmt(w.startMs)}–${fmt(w.endExclusiveMs)} · ${esc(w.segmentId||'')}</div>
-    <div>${verdictTag(w.identity)}${verdictTag(w.currentReason)}</div></div></div>`).join('');
- }else side.classList.add('full');
+function renderViews(frame){
+ $('#views').innerHTML=sortViews(frame.views).map(v=>`<figure><img loading="eager" src="${esc(v.url)}" data-action="image" data-url="${esc(v.url)}" data-caption="${esc(frame.id)} · ${directionLabel(v.direction)}" alt="${esc(directionLabel(v.direction))}"><figcaption>${esc(directionLabel(v.direction))} · ${esc(frame.id)} · ${fmt(frame.atMs)}</figcaption></figure>`).join('');
 }
 
-function renderDetail(){
- const el=$('#detail'),d=state.data;
- if(state.tab==='groups'){
-  if(state.view==='window'&&state.windowDetail)el.innerHTML=windowHtml(state.windowDetail,true);
-  else if(state.groupDetail)el.innerHTML=groupHtml(state.groupDetail);
-  else el.innerHTML='<p class="panel muted">从左侧选择一个参考地点组。</p>';
- }else if(state.tab==='windows'){
-  el.innerHTML=state.windowDetail?windowHtml(state.windowDetail,false):'<p class="panel muted">从左侧选择一个判断窗。</p>';
- }else if(state.tab==='frames'){
-  if(!state.frames){el.innerHTML='<p class="panel muted">???????</p>';loadFrames().then(()=>{if(state.tab==='frames')renderDetail();}).catch(error=>{el.innerHTML=`<p class="panel">${esc(String(error))}</p>`;});}
-  else el.innerHTML=frameBrowserHtml();
- }else if(state.tab==='findings')el.innerHTML=findingsHtml();
- else if(state.tab==='library')el.innerHTML=libraryHtml();
- else if(state.tab==='skipped')el.innerHTML=skippedHtml();
+function renderInfo(frame,detail){
+ const ref=frame.reference||{};
+ const loc=detail?.assessment?.location??{status:frame.status,placeId:frame.placeId,name:frame.placeName,reason:frame.reason};
+ const cmp=detail?.comparison??{identity:{verdict:frame.identity,reason:frame.identityReason},currentReason:{verdict:frame.currentReason,reason:''},windowScope:{verdict:frame.windowScope,reason:''}};
+ const ground=detail?.grounding??null;
+ const findings=detail?.findings??[];
+ const review=latestReview('observation',frame.id);
+ const agent=frame.skipped?'<p class="muted">该观察属于跳过窗：没有位置判断，原图与独立事实仍在库中。</p>':`
+  <div class="kv"><span class="k">状态</span><span>${statusTag(loc.status)}</span>
+   <span class="k">地点</span><span>${esc(loc.name||'—')}</span>
+   <span class="k">placeId</span><span class="small"><code>${esc(loc.placeId||'—')}</code></span>
+   <span class="k">决定</span><span>${esc(detail?.locationDecision||'—')}</span>
+   <span class="k">访问</span><span class="small"><code>${esc(detail?.visitId||'—')}</code></span></div>
+  <h3>理由</h3><p class="reason">${esc(loc.reason||'—')}</p>
+  ${loc.boundary?`<p class="small">${tag('boundary: '+loc.boundary.regions.join(' ↔ '),'info')}</p>`:''}
+  ${loc.sourceIds?.length?`<p class="small muted">来源：${loc.sourceIds.map(esc).join(', ')}</p>`:''}`;
+ const judge=frame.skipped?'<p class="muted">该观察没有判断窗，裁判不评。</p>':`
+  <div class="kv"><span class="k">identity</span><span>${verdictTag(frame.identity)}</span>
+   <span class="k">currentReason</span><span>${verdictTag(frame.currentReason)}</span>
+   <span class="k">windowScope</span><span>${verdictTag(frame.windowScope)}</span></div>
+  <h3>identity 理由</h3><p class="reason">${esc(cmp.identity?.reason||'—')}</p>
+  <h3>currentReason 理由</h3><p class="reason">${esc(cmp.currentReason?.reason||'—')}</p>
+  <h3>windowScope 理由</h3><p class="reason">${esc(cmp.windowScope?.reason||'—')}</p>
+  ${ground?`<h3>盲取证</h3><div class="kv"><span class="k">窗头</span><span>${esc(ground.start?.occupiedRegion||'—')} · ${esc(ground.start?.nearGroundEvidence||'')}</span><span class="k">窗尾</span><span>${esc(ground.end?.occupiedRegion||'—')} · ${esc(ground.end?.nearGroundEvidence||'')}</span><span class="k">范围</span><span>${esc(ground.windowScope||'—')}</span></div>`:''}
+  ${findings.length?`<h3>本窗确认问题</h3>${findings.map(f=>`<div class="finding ${f.verdict==='uncertain'?'warn':''}"><div class="small"><b>${esc(f.dimension)} · ${esc(f.verdict)} · ${esc(f.severity)}</b></div><div class="q small">${esc(f.quote)}</div><div class="small">${esc(f.reason)}</div></div>`).join('')}`:''}`;
+ const db=frame.skipped?'<p class="muted">跳过窗没有新的地点/访问写入。</p>':`
+  <div class="kv"><span class="k">memoryReceipt</span><span class="small"><code>${esc(JSON.stringify(detail?.memoryReceipt??null))}</code></span>
+   <span class="k">地点</span><span>${esc(detail?.place?.name||'—')} <span class="small muted">${esc(detail?.place?.id||'')}</span></span>
+   <span class="k">访问</span><span class="small"><code>${esc(detail?.visit?.id||'—')}</code> · start ${esc(detail?.visit?.start_version??'—')}</span></div>
+  <h3>地点笔记</h3>${(detail?.notes||[]).map(n=>`<p class="small">· ${esc(n.text)} <span class="muted">(v${esc(n.created_version)})</span></p>`).join('')||'<p class="muted small">无</p>'}
+  <h3>资料修订</h3>${(detail?.revisions||[]).map(r=>`<p class="small">v${esc(r.version)} ${esc(r.key)} ${esc(JSON.stringify(r.raw))}</p>`).join('')||'<p class="muted small">无</p>'}`;
+ $('#info').innerHTML=`
+  <section class="card"><h2>位置数据标注</h2>
+   <div class="kv"><span class="k">段</span><span>${esc(ref.segmentId||'—')}</span>
+    <span class="k">地点</span><span>${esc(ref.placeId||'—')}</span>
+    <span class="k">设施</span><span>${esc(ref.facilityId||'—')}</span>
+    <span class="k">可见性</span><span>${esc(ref.visibility||'—')}${ref.boundaryUncertain?tag('边界不确定','warn'):''}</span></div>
+   <h3>描述</h3><p class="small">${esc(ref.description||'—')}</p>
+  </section>
+  <section class="card"><h2>Agent 判定 ${frame.version?tag('窗 v'+frame.version,'info'):''}</h2>${agent}</section>
+  <section class="card"><h2>裁判判断</h2>${judge}</section>
+  <section class="card"><h2>其他写入库的信息</h2>${db}</section>
+  <section class="card" style="grid-column:1/-1"><h2>人工审核</h2>${reviewForm(frame,review)}</section>`;
 }
 
-function groupHtml(detail){
- const g=detail.group,seg=detail.segment||{},d=state.data;
- const segIndex=d.segments.findIndex(s=>s.id===g.segmentId);
- const revisit=d.grouped.revisits.find(r=>r.referencePlace===g.placeId);
- return `<article class="panel">
-  <div class="spread"><div><h1>${esc(g.title||g.placeId)} ${scoreChip(g.identityScore)}</h1>
-   <div class="muted">${esc(g.segmentId)} · 参考地点 <code>${esc(g.placeId)}</code> · ${fmt(g.startMs)}–${fmt(g.endMs)} · ${esc(g.kind||'')}</div></div>
-   <div class="row">${g.merged?tag('合并','info'):''}${g.split?tag('拆分','warn'):''}${revisit?tag('重访 '+revisit.verdict,revisit.verdict==='reused'?'ok':'bad'):''}</div></div>
-  <div class="grid2 mt12">
-   <div class="kv"><span class="k">判断窗</span><span>${g.windows.length} 个（覆盖 ${g.covered}/${g.judged} 观察）</span>
-    <span class="k">identity / evidence</span><span>${g.identityScore??'—'} / ${g.evidenceScore??'—'}</span>
-    <span class="k">候选地点</span><span>${g.agentPlaces.map(p=>esc(p.name)+' ×'+p.windows).join(' · ')||'—'}</span>
-    <span class="k">参考类别</span><span>${esc(seg.kind||'')}</span>
-    <span class="k">跳过观察</span><span>${g.skipped}</span>
-    <span class="k">合并到</span><span>${g.merged?esc(g.mergedWith.join(', ')):'—'}</span></div>
-   <div><div class="k muted">参考段说明</div><p>${esc(seg.inventory||'—')}</p><div class="muted small">${esc(seg.boundaryScope||'')}</div><div class="muted small">${esc(seg.annotationAuthority||'')}</div></div>
-  </div>
-  <h2>被判断的窗</h2>
-  <div class="windows">${detail.windows.map(w=>windowCard(w,'assigned')).join('')||'<p class="muted">这个组没有判断窗。</p>'}</div>
-  ${detail.crossWindows.length?`<h2>跨组窗</h2><div class="windows">${detail.crossWindows.map(w=>windowCard(w,'cross')).join('')}</div>`:''}
-  ${detail.skipped.length?`<h2>跳过的观察</h2><p class="muted">这些观察没有位置判断；原图与事实仍在库中。</p><table><thead><tr><th>观察</th><th>时间</th><th>参考地点</th><th>可见性</th></tr></thead><tbody>${detail.skipped.map(o=>`<tr><td>${esc(o.id)}</td><td class="num">${fmt(o.atMs)}</td><td>${esc(o.detail?.placeId||'')}</td><td>${esc(o.detail?.visibility||'')}</td></tr>`).join('')}</tbody></table>`:''}
-  <h2>人工审核</h2>${reviewForm('group',g.segmentId)}
- </article>`;
-}
+function latestReview(type,id){return [...(state.data?.reviews||[])].reverse().find(r=>r.targetType===type&&r.targetId===String(id))??null;}
 
-function windowCard(w,kind){
- const cmp=w.comparison||{},cls=w.identity==='contradicted'?'bad':w.identity==='uncertain'?'warn':'';
- const first=w.observations?.[0];
- const thumbs=first?`<div class="views mini mt8">${sortViews(first.views).map(v=>`<figure><img loading="lazy" src="${esc(v.url)}" data-action="image" data-url="${esc(v.url)}" data-caption="${esc(first.id)} ? ${esc(v.direction)}"><figcaption>${esc(v.direction)}</figcaption></figure>`).join('')}</div>`:'';
- return `<div class="window-card ${cls}">
-  <div class="window-head"><div><b>v${w.version}</b> · ${fmt(w.startMs)}–${fmt(w.endExclusiveMs)} · ${w.members??''}${kind==='cross'?' <span class="tag info">↗ 跨组</span>':''}</div>
-   <div>${verdictTag(w.identity)}${w.currentReason?verdictTag(w.currentReason):''}${w.windowScope?verdictTag(w.windowScope):''}</div></div>
-  <div class="small mt6"><b>候选：</b>${esc(w.placeName||'—')} ${statusTag(w.status)} <span class="muted">${esc(w.locationDecision||'')}</span></div>
-  <div class="reason small">${esc(w.assessment?.location?.reason||'')}</div>
-  ${cmp.identity?.reason?`<div class="small"><span class="muted">identity：</span>${esc(cmp.identity.reason)}</div>`:''}
-  ${cmp.currentReason?.reason?`<div class="small"><span class="muted">currentReason：</span>${esc(cmp.currentReason.reason)}</div>`:''}
-  ${thumbs}
-  <div class="row mt8"><a class="button" href="#" data-action="window" data-version="${w.version}">查看该窗三摄与库信息 →</a>${w.sheetUrl?`<a href="#" data-action="image" data-url="${w.sheetUrl}" data-caption="v${w.version} 裁判接触图">裁判接触图</a>`:''}</div>
- </div>`;
-}
-
-function playerHtml(observations,index,mode){
- const list=observations||[];
- if(!list.length)return '<p class="muted">?????????</p>';
- const i=Math.max(0,Math.min(index,list.length-1)),obs=list[i];
- const thumbs=list.length<=24?`<div class="thumbs">${list.map((o,j)=>{const front=(o.views||[]).find(v=>v.direction==='front')||(o.views||[])[0];return `<button class="thumb ${j===i?'active':''}" data-action="frame-seek" data-index="${j}" title="${esc(o.id)}">${front?`<img loading="lazy" src="${esc(front.url)}" alt="">`:''}</button>`;}).join('')}</div>`:'';
- return `<div class="player">
-  <div class="player-controls">
-   <button data-action="frame-first">? ${mode==='window'?'??':'??'}</button>
-   <button data-action="frame-prev">? ???</button>
-   <button data-action="frame-play">${state.playTimer?'? ??':'? ??'}</button>
-   <button data-action="frame-next">??? ?</button>
-   <button data-action="frame-last">${mode==='window'?'??':'??'} ?</button>
-   <span class="muted small">${i+1}/${list.length} ? ${fmt(obs.atMs)} ? ${esc(obs.id)}</span>
-   <input type="range" min="0" max="${Math.max(0,list.length-1)}" value="${i}" data-action="frame-seek" aria-label="????">
-  </div>
-  <div class="views large">${sortViews(obs.views).map(v=>`<figure><img loading="eager" src="${esc(v.url)}" data-action="image" data-url="${esc(v.url)}" data-caption="${esc(obs.id)} ? ${esc(v.direction)}"><figcaption>${esc(v.direction)} ? ${esc(obs.id)}</figcaption></figure>`).join('')}</div>
-  ${thumbs}
- </div>`;
-}
-async function loadFrames(){
- if(state.frames)return;
- const response=await fetch('/api/frames');if(!response.ok)throw Error('????????');
- state.frames=(await response.json()).observations;
-}
-function frameBrowserHtml(){
- const frames=state.frames||[];
- if(!frames.length)return '<p class="panel muted">???????</p>';
- const index=Math.max(0,Math.min(state.frameIndex,frames.length-1)),f=frames[index],ref=f.reference||{};
- const claim=f.skipped?tag('?????????','warn'):`${statusTag(f.status)} <b>${esc(f.placeName||'?')}</b> ${verdictTag(f.identity)}`;
- return `<article class="panel">
-  <h1>???? <span class="muted small">${index+1}/${frames.length}</span></h1>
-  <div class="muted">${esc(f.id)} ? ${fmt(f.atMs)} ? source ${fmt(f.sourceAtMs)}</div>
-  ${playerHtml(frames,index,'frame')}
-  <div class="grid2 mt12">
-   <div class="kv"><span class="k">???</span><span>${esc(ref.segmentId||'')}</span><span class="k">????</span><span>${esc(ref.placeId||'')}</span><span class="k">???</span><span>${esc(ref.visibility||'')}${ref.boundaryUncertain?' ? ?????':''}</span><span class="k">????</span><span>${esc(ref.description||'?')}</span></div>
-   <div class="kv"><span class="k">??</span><span>${claim}</span><span class="k">???</span><span>${f.version?`<a href="#" data-action="window" data-version="${f.version}">v${f.version}</a>`:'?'}</span><span class="k">identity ??</span><span>${esc(f.identityReason||'?')}</span><span class="k">??</span><span>${esc(f.summary||'?')}</span></div>
-  </div>
- </article>`;
-}
-function frameLength(){return state.tab==='frames'?(state.frames?.length??0):(state.windowDetail?.observations?.length??0);}
-function frameIndex(){return state.tab==='frames'?state.frameIndex:state.windowFrame;}
-function setFrame(index){
- const length=frameLength();if(!length)return;
- const i=Math.max(0,Math.min(index,length-1));
- if(state.tab==='frames')state.frameIndex=i;else state.windowFrame=i;
- renderDetail();
-}
-function stopPlay(){if(state.playTimer){clearInterval(state.playTimer);state.playTimer=null;}}
-function togglePlay(){
- if(state.playTimer){stopPlay();renderDetail();return;}
- if(!frameLength())return;
- state.playTimer=setInterval(()=>{
-  const length=frameLength(),i=frameIndex();
-  if(i>=length-1){stopPlay();renderDetail();return;}
-  setFrame(i+1);
- },2000);
- renderDetail();
-}
-function windowHtml(w,fromGroup){
- const cmp=w.comparison||{},ground=w.grounding||{},loc=w.assessment?.location||{};
- const observations=w.observations||[],index=Math.max(0,Math.min(state.windowFrame,Math.max(0,observations.length-1))),frame=observations[index],frameRef=frame?.reference||{};
- return `<article class="panel">
-  <div class="spread"><div><h1>v${w.version} ${verdictTag(w.identity)}</h1>
-   <div class="muted">${fmt(w.startMs)}?${fmt(w.endExclusiveMs)} ? ${esc(w.segmentId||'')} ? ?? <code>${esc(w.placeId||'?')}</code> ? ?? <code>${esc(w.visitId||'?')}</code></div></div>
-   <div class="row">${fromGroup?'<a href="#" data-action="back-group">? ???</a>':''}<a href="#" data-action="image" data-url="${esc(w.sheetUrl||'')}" data-caption="v${w.version} ?????">?????</a></div></div>
-  <div class="tag-row mt8">${statusTag(loc.status)}${tag(loc.name||'?')}${loc.boundary?tag('boundary: '+loc.boundary.regions.join(' ? '),'info'):''}</div>
-  <div class="reason mt8">${esc(loc.reason||'')}</div>
-  <h3>????????${observations.length} ??</h3>
-  ${playerHtml(observations,index,'window')}
-  ${frame?`<div class="kv mt8"><span class="k">?????</span><span>${esc(frameRef.segmentId||'')} ? ${esc(frameRef.placeId||'')} ? ${esc(frameRef.visibility||'')}${frameRef.boundaryUncertain?' ? ?????':''}</span><span class="k">?????</span><span>${esc(frame.facts?.summary||'')}</span></div>`:''}
-  <h2>??????</h2>
-  <div class="grid2">
-   <div class="kv"><span class="k">identity</span><span>${verdictTag(w.identity)}</span><span class="k">identity 理由</span><span>${esc(cmp.identity?.reason||'—')}</span>
-    <span class="k">currentReason</span><span>${verdictTag(w.currentReason)}</span><span class="k">currentReason 理由</span><span>${esc(cmp.currentReason?.reason||'—')}</span>
-    <span class="k">windowScope</span><span>${verdictTag(w.windowScope)}</span><span class="k">windowScope 理由</span><span>${esc(cmp.windowScope?.reason||'—')}</span></div>
-   <div class="kv"><span class="k">盲取证·窗头</span><span>${esc(ground.start?.occupiedRegion||'—')} · ${esc(ground.start?.nearGroundEvidence||'')}</span>
-    <span class="k">盲取证·窗尾</span><span>${esc(ground.end?.occupiedRegion||'—')} · ${esc(ground.end?.nearGroundEvidence||'')}</span>
-    <span class="k">取证范围</span><span>${esc(ground.windowScope||'—')}</span>
-    <span class="k">取证限制</span><span>${esc(ground.limitations||'—')}</span>
-    <span class="k">分组</span><span>${w.group?`${esc(w.group.segmentId)} · ${w.group.identityScore??'—'} 分`: '—'}</span></div>
-  </div>
-  <h2>参考标注（本窗成员）</h2>
-  <table><thead><tr><th>观察</th><th>时间</th><th>段</th><th>地点</th><th>可见性</th><th>边界</th></tr></thead><tbody>
-   ${(w.observations||[]).map(o=>`<tr><td>${esc(o.id)}</td><td class="num">${fmt(o.atMs)}</td><td>${esc(o.reference?.segmentId||'')}</td><td>${esc(o.reference?.placeId||'')}</td><td>${esc(o.reference?.visibility||'')}</td><td>${o.reference?.boundaryUncertain?'不确定':'—'}</td></tr>`).join('')}
-  </tbody></table>
-  <h2>库写入</h2>
-  <div class="grid2"><div class="kv"><span class="k">memoryReceipt</span><span><code>${esc(JSON.stringify(w.memoryReceipt||null))}</code></span>
-    <span class="k">地点</span><span>${esc(w.place?.name||'—')} <code>${esc(w.place?.id||'')}</code></span>
-    <span class="k">访问</span><span><code>${esc(w.visit?.id||'')}</code> start ${esc(w.visit?.start_version??'')}</span>
-    <span class="k">locationDecision</span><span>${esc(w.locationDecision||'')}</span></div>
-   <div><div class="muted small">地点笔记</div>${(w.notes||[]).map(n=>`<div class="small">· ${esc(n.text)} <span class="muted">(v${n.created_version})</span></div>`).join('')||'<div class="muted small">无</div>'}
-    <div class="muted small mt6">资料修订</div>${(w.revisions||[]).map(r=>`<div class="small">v${r.version} ${esc(r.key)} ${esc(JSON.stringify(r.raw))}</div>`).join('')||'<div class="muted small">无</div>'}</div></div>
-  ${(w.findings||[]).length?`<h2>裁判发现</h2>${w.findings.map(f=>`<div class="window-card bad"><b>${esc(f.dimension)} · ${esc(f.verdict)} · ${esc(f.severity)}</b><div class="reason small">${esc(f.quote)}</div><div class="small">${esc(f.reason)}</div></div>`).join('')}`:''}
-  <details class="mt12"><summary class="muted">逐观察事实</summary>${(w.observations||[]).map(o=>`<div class="small mt6"><b>${esc(o.id)} ${fmt(o.atMs)}</b> ${esc(o.facts?.summary||'')}<div class="muted">${esc((o.facts?.details||[]).join('；'))}</div></div>`).join('')}</details>
-  <h2>人工审核</h2>${reviewForm('window',w.version)}
- </article>`;
-}
-
-function reviewForm(targetType,targetId){
- const latest=[...state.data.reviews].reverse().find(r=>r.targetType===targetType&&r.targetId===String(targetId));
- return `<form class="review" data-target-type="${targetType}" data-target-id="${esc(targetId)}">
+function reviewForm(frame,latest){
+ return `<form class="review-form" data-target-type="observation" data-target-id="${esc(frame.id)}">
   <select name="verdict"><option value="agree">同意</option><option value="disagree">不同意</option><option value="unsure">无法确定</option></select>
   <textarea name="note" maxlength="2000" placeholder="审核备注（可选）"></textarea>
   <button type="button" data-action="save-review">保存审核</button>
@@ -238,108 +106,84 @@ function reviewForm(targetType,targetId){
  </form>`;
 }
 
-function findingsHtml(){
- const fs=state.data.findings;
- return `<article class="panel"><h1>裁判发现 ${fs.length}</h1><p class="muted">这些是逐窗对照的确认/存疑项；点击可跳到窗口。</p>
-  ${fs.map(f=>`<div class="window-card ${f.verdict==='contradicted'?'bad':'warn'}">
-   <div class="window-head"><div><b>v${f.version}</b> · ${esc(f.dimension)} · ${esc(f.verdict)} · ${esc(f.severity)}</div><a href="#" data-action="window" data-version="${f.version}">查看窗口 →</a></div>
-   <div class="reason small">${esc(f.quote)}</div><div class="small">${esc(f.reason)}</div>
-   <div class="muted small">来源：${(f.sourceIds||[]).map(esc).join(', ')}</div></div>`).join('')}
- </article>`;
+function drawerHtml(){
+ const d=state.data;
+ const issues=d.findings.map(f=>{
+  const index=state.frames.findIndex(x=>x.version===f.version);
+  return `<div class="issue" data-action="jump-index" data-index="${index}">
+   <div class="small"><b>v${f.version}</b> · ${esc(f.dimension)} · <span class="${f.verdict==='contradicted'?'tag bad':'tag warn'}">${esc(f.verdict)}</span> · ${esc(f.severity)}</div>
+   <div class="q small">${esc(f.quote)}</div><div class="small muted">${esc(f.reason)}</div></div>`;
+ }).join('');
+ const skipRuns=[];let start=-1;
+ state.frames.forEach((f,i)=>{if(f.skipped&&start<0)start=i;if(!f.skipped&&start>=0){skipRuns.push([start,i-1]);start=-1;}});
+ if(start>=0)skipRuns.push([start,state.frames.length-1]);
+ const skipped=skipRuns.map(([a,b])=>`<div class="issue" data-action="jump-index" data-index="${a}"><div class="small"><b>跳过 ${state.frames[a].id} – ${state.frames[b].id}</b> · ${b-a+1} 观察</div><div class="small muted">${fmt(state.frames[a].atMs)}–${fmt(state.frames[b].atMs)}，没有位置判断</div></div>`).join('');
+ return `<h3>裁判确认/存疑 ${d.findings.length}</h3>${issues||'<p class="muted small">无</p>'}<h3>跳过窗 ${skipRuns.length}</h3>${skipped||'<p class="muted small">无</p>'}`;
 }
 
-function libraryHtml(){
- const d=state.data,p=d.places,v=d.visits,n=d.notes,r=d.revisions;
- const visitCount=id=>v.filter(x=>x.place_id===id).length,noteCount=id=>n.filter(x=>x.place_id===id).length;
- return `<article class="panel"><h1>原始记录</h1>
-  <div class="kv"><span class="k">运行</span><span><code>${esc(d.run.path)}</code></span>
-   <span class="k">DB hash</span><span><code>${esc(d.run.hashes?.database||'')}</code></span>
-   <span class="k">参考</span><span>${esc(d.judge.dir)}</span>
-   <span class="k">裁判</span><span>${esc(d.judge.model)} · ${d.judge.overall?.overall??'—'}/100 · ${esc(d.judge.coverageScope)}</span></div>
-  <h2>地点 ${p.length}</h2>
-  <table><thead><tr><th>名称</th><th>ID</th><th>创建窗</th><th>访问</th><th>笔记</th></tr></thead><tbody>${p.map(x=>`<tr><td>${esc(x.name)}</td><td class="small">${esc(x.id)}</td><td class="num">${esc(x.created_version)}</td><td class="num">${visitCount(x.id)}</td><td class="num">${noteCount(x.id)}</td></tr>`).join('')}</tbody></table>
-  <h2>访问 ${v.length}</h2>
-  <table><thead><tr><th>ID</th><th>地点</th><th>起始窗</th></tr></thead><tbody>${v.map(x=>`<tr><td class="small">${esc(x.id)}</td><td>${esc(p.find(y=>y.id===x.place_id)?.name||x.place_id)}</td><td class="num">${esc(x.start_version)}</td></tr>`).join('')}</tbody></table>
-  <h2>地点笔记 ${n.length}</h2>
-  ${n.map(x=>`<div class="window-card"><b>${esc(p.find(y=>y.id===x.place_id)?.name||x.place_id)}</b> · v${esc(x.created_version)}<div>${esc(x.text)}</div><div class="muted small">来源：${(x.sources||[]).map(s=>`${esc(s.source_id)}@v${esc(s.version)}`).join(', ')}</div></div>`).join('')||'<p class="muted">无</p>'}
-  <h2>资料修订 ${r.length}</h2>${r.length?`<pre class="small">${esc(JSON.stringify(r,null,2))}</pre>`:'<p class="muted">无</p>'}
- </article>`;
-}
+function openDrawer(){$('#drawer').hidden=false;$('#drawer-body').innerHTML=drawerHtml();}
+function closeDrawer(){$('#drawer').hidden=true;}
 
-function skippedHtml(){
- const s=state.data.skipped;
- return `<article class="panel"><h1>跳过观察 ${s.length}</h1><p class="muted">这些观察在强制实时下被跳过：没有位置判断，原图与独立事实仍在库中。它们不算 0 分，是覆盖缺口。</p>
-  <table><thead><tr><th>观察</th><th>时间</th><th>段</th><th>地点</th><th>可见性</th><th>边界</th></tr></thead><tbody>${s.map(o=>`<tr><td>${esc(o.id)}</td><td class="num">${fmt(o.atMs)}</td><td>${esc(o.reference?.segmentId||'')}</td><td>${esc(o.reference?.placeId||'')}</td><td>${esc(o.reference?.visibility||'')}</td><td>${o.reference?.boundaryUncertain?'不确定':'—'}</td></tr>`).join('')}</tbody></table>
- </article>`;
+function go(index){
+ state.index=Math.max(0,Math.min(state.frames.length-1,index));render();
 }
-
-function renderTools(){
- $('#tools').innerHTML=`<h3>网页端口</h3><table><thead><tr><th>工具</th><th>端口</th><th>命令</th><th>模型调用</th></tr></thead><tbody>${state.data.tools.map(t=>`<tr><td>${esc(t.name)}</td><td class="num"><a href="http://127.0.0.1:${t.port}/" target="_blank" rel="noopener">${t.port}</a></td><td><code>${esc(t.command)}</code></td><td>${t.models?'是':'否'}</td></tr>`).join('')}</tbody></table>`;
+function findNext(predicate,from=state.index+1){
+ for(let n=0;n<state.frames.length;n++){
+  const i=(from+n)%state.frames.length;
+  if(predicate(state.frames[i]))return i;
+ }
+ return -1;
 }
-
-async function selectGroup(id){
- stopPlay();state.view='group';state.group=id;state.tab='groups';state.windowFrame=0;renderTabs();
- const response=await fetch('/api/group/'+encodeURIComponent(id));
- if(!response.ok){$('#detail').innerHTML=`<p class="panel">${esc((await response.json()).error)}</p>`;return;}
- state.groupDetail=await response.json();state.windowDetail=null;
- const g=state.groupDetail.group;
- state.selectedVersion=g.contradictedVersions[0]??g.windows[0]?.version??g.crossWindows[0]?.version??null;
- renderSidebar();renderDetail();
+function stopPlay(){if(state.playing){clearInterval(state.playing);state.playing=null;}}
+function togglePlay(){
+ if(state.playing){stopPlay();renderBar(state.frames[state.index]);return;}
+ state.playing=setInterval(()=>{
+  if(state.index>=state.frames.length-1){stopPlay();render();return;}
+  go(state.index+1);
+ },2000);
+ renderBar(state.frames[state.index]);
 }
-async function selectWindow(version){
- state.tab=state.tab==='groups'?'groups':state.tab;
- const response=await fetch('/api/window/'+version);
- if(!response.ok){$('#detail').innerHTML=`<p class="panel">${esc((await response.json()).error)}</p>`;return;}
- stopPlay();state.windowDetail=await response.json();state.view='window';state.windowFrame=0;state.selectedVersion=version;
- state.group=state.windowDetail.group?.segmentId??state.group;
- renderSidebar();renderDetail();
-}
-function openModal(url,caption){
- if(!url)return;
- $('#modal-image').src=url;$('#modal-caption').textContent=caption||'';$('#modal').hidden=false;
-}
-function closeModal(){$('#modal').hidden=true;$('#modal-image').src='';}
 
 async function saveReview(button){
  const form=button.closest('form'),fd=new FormData(form);
  const body={targetType:form.dataset.targetType,targetId:form.dataset.targetId,verdict:fd.get('verdict'),note:String(fd.get('note')||'')};
  const response=await fetch('/api/review',{method:'POST',headers:{'content-type':'application/json','x-review-token':state.data.reviewToken},body:JSON.stringify(body)});
  if(!response.ok){alert((await response.json().catch(()=>({}))).error||'保存失败');return;}
- const result=await response.json();state.data.reviews=result.reviews;renderSummary();renderDetail();
+ const result=await response.json();state.data.reviews=result.reviews;
+ renderInfo(state.frames[state.index],state.detail);
 }
 
-document.addEventListener('error',event=>{const el=event.target;if(el&&el.tagName==='IMG'){el.classList.add('broken');el.alt='??????';}},true);
+function openModal(url,caption){if(!url)return;$('#modal-image').src=url;$('#modal-caption').textContent=caption||'';$('#modal').hidden=false;}
+function closeModal(){$('#modal').hidden=true;$('#modal-image').src='';}
+
+document.addEventListener('error',event=>{const el=event.target;if(el&&el.tagName==='IMG'){el.classList.add('broken');el.alt='原图无法加载';}},true);
+document.addEventListener('change',event=>{
+ const el=event.target.closest?.('[data-action="seek"]');if(!el)return;
+ go(Number(el.value));stopPlay();
+});
 document.addEventListener('click',async event=>{
  const el=event.target.closest('[data-action]');if(!el)return;
  const action=el.dataset.action;
- if(action==='tab'){event.preventDefault();stopPlay();state.tab=el.dataset.tab;if(state.tab==='groups'&&!state.group)state.group=state.data.groups[0]?.segmentId??null;if(state.tab==='groups'&&state.group&&!state.groupDetail)await selectGroup(state.group);else{renderTabs();renderSidebar();renderDetail();}return;}
- if(action==='filter'){event.preventDefault();state.filter=el.dataset.filter;renderSidebar();return;}
- if(action==='group'){event.preventDefault();await selectGroup(el.dataset.id);return;}
- if(action==='window'){event.preventDefault();await selectWindow(Number(el.dataset.version));return;}
- if(action==='back-group'){event.preventDefault();if(state.group)await selectGroup(state.group);return;}
- if(action==='frame-prev'){event.preventDefault();setFrame(frameIndex()-1);return;}
- if(action==='frame-next'){event.preventDefault();setFrame(frameIndex()+1);return;}
- if(action==='frame-first'){event.preventDefault();setFrame(0);return;}
- if(action==='frame-last'){event.preventDefault();setFrame(frameLength()-1);return;}
- if(action==='frame-play'){event.preventDefault();togglePlay();return;}
- if(action==='frame-seek'){event.preventDefault();if(el.dataset.index!==undefined)setFrame(Number(el.dataset.index));return;}
+ if(action==='prev'){event.preventDefault();stopPlay();go(state.index-1);return;}
+ if(action==='next'){event.preventDefault();stopPlay();go(state.index+1);return;}
+ if(action==='play'){event.preventDefault();togglePlay();return;}
+ if(action==='next-issue'){event.preventDefault();stopPlay();const i=findNext(f=>f.identity==='contradicted'||f.currentReason==='contradicted'||f.windowScope==='contradicted');if(i>=0)go(i);return;}
+ if(action==='next-skip'){event.preventDefault();stopPlay();const i=findNext(f=>f.skipped);if(i>=0)go(i);return;}
+ if(action==='drawer'){event.preventDefault();openDrawer();return;}
+ if(action==='close-drawer'){closeDrawer();return;}
+ if(action==='jump-index'){event.preventDefault();closeDrawer();stopPlay();go(Number(el.dataset.index));return;}
  if(action==='image'){event.preventDefault();openModal(el.dataset.url,el.dataset.caption);return;}
  if(action==='close-modal'){closeModal();return;}
  if(action==='save-review'){event.preventDefault();await saveReview(el);return;}
 });
-document.addEventListener('change',event=>{
- const el=event.target.closest?.('[data-action="frame-seek"]');if(!el||el.dataset.index!==undefined)return;
- setFrame(Number(el.value));
-});
 document.addEventListener('keydown',event=>{
- if(event.key==='Escape'){closeModal();return;}
- if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight')return;
- const step=event.key==='ArrowRight'?1:-1;
- if(state.tab==='frames'){setFrame(frameIndex()+step);return;}
- if(state.tab==='windows'){const list=state.data.windows;let i=list.findIndex(w=>w.version===state.selectedVersion);i=Math.max(0,Math.min(list.length-1,i+step));selectWindow(list[i].version);return;}
- if(state.view==='window'){setFrame(frameIndex()+step);return;}
- const list=state.data.groups;let i=list.findIndex(g=>g.segmentId===state.group);
- i=Math.max(0,Math.min(list.length-1,i+step));selectGroup(list[i].segmentId);
+ if(event.key==='Escape'){if(!$('#modal').hidden){closeModal();return;}if(!$('#drawer').hidden){closeDrawer();return;}stopPlay();return;}
+ if(event.target&&['INPUT','TEXTAREA','SELECT'].includes(event.target.tagName))return;
+ if(event.key==='ArrowLeft'){event.preventDefault();stopPlay();go(state.index-1);return;}
+ if(event.key==='ArrowRight'){event.preventDefault();stopPlay();go(state.index+1);return;}
+ if(event.key===' '){event.preventDefault();togglePlay();return;}
+ if(event.key==='j'||event.key==='J'){event.preventDefault();stopPlay();const i=findNext(f=>f.identity==='contradicted'||f.currentReason==='contradicted'||f.windowScope==='contradicted');if(i>=0)go(i);return;}
+ if(event.key==='s'||event.key==='S'){event.preventDefault();stopPlay();const i=findNext(f=>f.skipped);if(i>=0)go(i);return;}
 });
 
-load().catch(error=>{$('#detail').innerHTML=`<p class="panel">${esc(String(error))}</p>`;});
+load().catch(error=>{$('#info').innerHTML=`<p class="card">${esc(String(error))}</p>`;});

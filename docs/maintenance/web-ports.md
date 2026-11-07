@@ -4,7 +4,7 @@
 
 | 入口 | 端口 | 启动 | 模型调用 | 写入 | 用途 |
 |---|---:|---|---|---|---|
-| 空间记忆审核（本页） | 8892 | `npm run review:memory` | 否 | 仅 `run/<run>/web-review/reviews.jsonl` | 813 运行的分组、逐窗判断、库写入、参考标注和裁判评价 |
+| 空间记忆审核（本页） | 8892 | `npm run review:memory` | 否 | 仅 `run/<run>/web-review/reviews.jsonl` | 813 运行的逐观察审核：原图、位置标注、Agent 判定、库写入、裁判评价 |
 | 桌面助手 / 实时回放 | 8880 | `npm run assistant:web` | 否 | 会话/日志目录 | 实时与回放共用入口，不需要切换端口 |
 | 实时系统 | 8884 | `npm run realtime` | 是（需显式 `--allow-paid`） | 实时会话目录 | 真实单摄预览、记录与问答 |
 | EgoLife 只读评测 | 8886 | `npm run evaluation:web` | 否 | 无 | 已保存的 EgoLife 样本与模型取证步骤 |
@@ -34,13 +34,15 @@ node dist/current/desktop/spatial-memory-review-server.js `
 
 页面内容：
 
-- **按组**：人工参考的一个地点访问（placeId＋时间连续段）为一组，显示组内逐窗 `identity/currentReason/windowScope`、覆盖观察数、合并/拆分、重访复用和边界滞后。
-- **按窗**：95 个判断窗的候选地点、理由、**窗内逐帧原图播放器**（三摄原图、8 帧缩略图、窗头/窗尾/播放）、裁判盲取证、逐窗对照理由、裁判发现和库写入（place/visit/notes/revisions/memoryReceipt）。组页每个窗也有三摄缩略图。
-- **原图浏览**：813 个观察逐帧播放，显示三摄原图、参考段/地点/可见性、覆盖窗的候选判断与裁判 verdict；可 2 秒/帧播放。这是原图审核的主入口，裁判接触图只作辅助。
-- **裁判发现**：11 条 contradicted/uncertain 及引用原文。
-- **原始记录**：地点、访问、笔记、资料修订、数据库 hash。
-- **跳过窗**：7 个忙时跳过窗的 56 个观察；没有位置判断，原图与事实仍在库中，算覆盖缺口而不是 0 分。
-- **人工审核**：对组或窗记录 `agree/disagree/unsure`＋备注，追加到 `run/<run>/web-review/reviews.jsonl`，不改生产库、参考或原图。
+- **一次只显示一个观察**：813 个观察逐帧浏览，三摄原图（左/前/右）并排；上一观察、播放（2 秒一帧）、下一观察、拖动时间轴。
+- **当前观察的四块信息**：
+  - 位置数据标注：段、地点、设施、可见性、边界不确定性、参考描述；
+  - Agent 判定：status、地点名/placeId、locationDecision、访问、理由、boundary、来源观察；
+  - 裁判判断：identity/currentReason/windowScope verdict 和理由、盲取证窗头/窗尾、本窗确认问题；
+  - 其他写入库的信息：memoryReceipt、地点、访问、地点笔记、资料修订。
+- **问题导航**：`下一个矛盾`、`下一个跳过`、`问题清单`（11 条 findings＋7 段跳过观察），点击跳到对应观察。
+- **人工审核**：每个观察记录 `agree/disagree/unsure`＋备注，追加到 `run/<run>/web-review/reviews.jsonl`，不改生产库、参考或原图。
+- 空白证据、跳过窗和边界不确定都显式显示；跳过窗没有位置判断，不算 0 分。
 
 服务启动时校验：运行 `complete.json` 已完成、`spatial.sqlite` 的 SHA256 与裁判 bundle 绑定、参考文件与 bundle 的逐观察标注一致、裁判 `report.json` 已完成。原图与裁判接触图逐张校验 SHA256；路径必须位于对应目录内。
 
