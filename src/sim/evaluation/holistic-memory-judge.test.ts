@@ -86,12 +86,32 @@ test('read-only bundle joins position answers by source clock and hashes, strips
   const sample={reviewRequired:false,frames:observations.map(o=>({id:o.id,sourceAtMs:o.sourceAtMs,position:['SECRET-COORDINATES'],annotation:{status:'annotation-complete',placeId:'region',description:'inside',boundaryUncertain:false}}))};await writeFile(join(reference,'sample.json'),JSON.stringify(sample));
   await writeFile(join(run,'complete.json'),JSON.stringify({completed:true,inputSHA256:sha(publicBytes),planned:2,coveredObservations:2,plannedStates:2}));
   const db=new DatabaseSync(join(run,'spatial.sqlite'));
-  db.exec('CREATE TABLE spatial_schema(version);INSERT INTO spatial_schema VALUES(4);CREATE TABLE observations(seq,id,raw,facts);CREATE TABLE states(version,raw);CREATE TABLE window_members(observation_id);CREATE TABLE checkpoints(version);CREATE TABLE checkpoint_bindings(version);CREATE TABLE revisions(version);CREATE TABLE skipped_windows(version);CREATE TABLE places(id,name,created_version);CREATE TABLE visits(id,place_id,start_version);CREATE TABLE place_notes(id,place_id,text,created_version);CREATE TABLE place_note_sources(note_id,version,source_id);CREATE TABLE place_profile_revisions(place_id,version,key,raw);');
+  db.exec('CREATE TABLE spatial_schema(version);INSERT INTO spatial_schema VALUES(4);CREATE TABLE observations(seq,id,raw,facts);CREATE TABLE states(version,raw);CREATE TABLE window_members(observation_id);CREATE TABLE checkpoints(version);CREATE TABLE checkpoint_bindings(version);CREATE TABLE revisions(version);CREATE TABLE skipped_windows(version);CREATE TABLE skipped_members(observation_id);CREATE TABLE places(id,name,created_version);CREATE TABLE visits(id,place_id,start_version);CREATE TABLE place_notes(id,place_id,text,created_version);CREATE TABLE place_note_sources(note_id,version,source_id);CREATE TABLE place_profile_revisions(place_id,version,key,raw);');
   for(const [i,o] of observations.entries()){db.prepare('INSERT INTO observations VALUES(?,?,?,?)').run(i,o.id,JSON.stringify(o),'{}');db.prepare('INSERT INTO states VALUES(?,?)').run(i+1,JSON.stringify({version:i+1,observationId:o.id,assessment:{location:{reason:'inside'}}}));db.prepare('INSERT INTO window_members VALUES(?)').run(o.id);db.prepare('INSERT INTO checkpoints VALUES(?)').run(i+1);db.prepare('INSERT INTO checkpoint_bindings VALUES(?)').run(i+1);}db.close();
   const before=sha(await readFile(join(run,'spatial.sqlite'))),bundle=await prepareHolisticBundle(run,join(reference,'sample.json'),join(root,'out'));
   assert.equal(bundle.reference.length,2);assert.ok(!JSON.stringify(bundle).includes('SECRET-COORDINATES'));assert.equal(sha(await readFile(join(run,'spatial.sqlite'))),before);
   sample.frames[0]!.sourceAtMs=999;await writeFile(join(reference,'sample.json'),JSON.stringify(sample));await assert.rejects(prepareHolisticBundle(run,join(reference,'sample.json'),join(root,'bad-clock')),/source-clock mismatch/);
   sample.frames[0]!.sourceAtMs=0;await writeFile(join(reference,'sample.json'),JSON.stringify(sample));const alter=new DatabaseSync(join(run,'spatial.sqlite'));alter.exec("DELETE FROM window_members WHERE observation_id='a'");alter.close();await assert.rejects(prepareHolisticBundle(run,join(reference,'sample.json'),join(root,'bad-coverage')),/coverage/);
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('explicitly skipped windows are packaged as coverage gaps, not missing data',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'opencode/holistic-partial-'));
+ try{
+  const run=join(root,'producer'),reference=join(root,'reference');await mkdir(run);await mkdir(reference);
+  const bytes=Buffer.from([137,80,78,71,13,10,26,10,1]),image=join(root,'image.png');await writeFile(image,bytes);
+  const observations=['a','b'].map((id,i)=>({id,atMs:i*2000,sourceAtMs:i*500,views:['front','left','right'].map(direction=>({direction,path:image,sha256:sha(bytes)}))}));
+  const publicBytes=JSON.stringify({observations});await writeFile(join(reference,'public-source.json'),publicBytes);
+  const sample={reviewRequired:false,frames:observations.map(o=>({id:o.id,sourceAtMs:o.sourceAtMs,annotation:{status:'annotation-complete',placeId:'region',description:'inside',boundaryUncertain:false}}))};await writeFile(join(reference,'sample.json'),JSON.stringify(sample));
+  await writeFile(join(run,'complete.json'),JSON.stringify({completed:true,inputSHA256:sha(publicBytes),planned:2,coveredObservations:1,plannedStates:2}));
+  const db=new DatabaseSync(join(run,'spatial.sqlite'));
+  db.exec('CREATE TABLE spatial_schema(version);INSERT INTO spatial_schema VALUES(4);CREATE TABLE observations(seq,id,raw,facts);CREATE TABLE states(version,raw);CREATE TABLE window_members(observation_id);CREATE TABLE skipped_windows(version);CREATE TABLE skipped_members(observation_id);CREATE TABLE checkpoints(version);CREATE TABLE checkpoint_bindings(version);CREATE TABLE revisions(version);CREATE TABLE places(id,name,created_version);CREATE TABLE visits(id,place_id,start_version);CREATE TABLE place_notes(id,place_id,text,created_version);CREATE TABLE place_note_sources(note_id,version,source_id);CREATE TABLE place_profile_revisions(place_id,version,key,raw);');
+  for(const [i,o] of observations.entries()){db.prepare('INSERT INTO observations VALUES(?,?,?,?)').run(i,o.id,JSON.stringify(o),'{}');if(o.id==='a'){db.prepare('INSERT INTO states VALUES(?,?)').run(1,JSON.stringify({version:1,observationId:'a',assessment:{location:{reason:'inside'}}}));db.prepare('INSERT INTO window_members VALUES(?)').run('a');db.prepare('INSERT INTO checkpoints VALUES(?)').run(1);db.prepare('INSERT INTO checkpoint_bindings VALUES(?)').run(1);}else{db.prepare('INSERT INTO skipped_windows VALUES(?)').run(1);db.prepare('INSERT INTO skipped_members VALUES(?)').run('b');}}
+  db.close();
+  const bundle=await prepareHolisticBundle(run,join(reference,'sample.json'),join(root,'out'));
+  assert.equal(bundle.states.length,1);assert.equal(bundle.scope.coverage.fullCoverage,false);assert.equal(bundle.scope.coverage.skippedWindows,1);assert.equal(bundle.scope.coverage.skippedObservations,1);assert.equal(bundle.scope.coverage.judgedObservations,1);
+  const alter=new DatabaseSync(join(run,'spatial.sqlite'));alter.exec("DELETE FROM skipped_members WHERE observation_id='b'");alter.close();
+  await assert.rejects(prepareHolisticBundle(run,join(reference,'sample.json'),join(root,'bad')),/coverage/);
  }finally{await rm(root,{recursive:true,force:true});}
 });
 
