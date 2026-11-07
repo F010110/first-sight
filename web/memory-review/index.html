@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>First Sight · 空间记忆审核</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="brand"><strong>First Sight</strong><span>空间记忆审核</span></div>
+  <div id="run-meta" class="run-meta">载入中…</div>
+</header>
+
+<nav class="tabs" aria-label="审核视图">
+  <button data-action="tab" data-tab="groups" class="active">按组</button>
+  <button data-action="tab" data-tab="windows">按窗</button>
+  <button data-action="tab" data-tab="findings">裁判发现</button>
+  <button data-action="tab" data-tab="library">原始记录</button>
+  <button data-action="tab" data-tab="skipped">跳过窗</button>
+  <a class="export" href="/api/export" download="spatial-memory-review.json">导出 JSON</a>
+</nav>
+
+<section id="summary" class="cards" aria-label="总览"></section>
+
+<main>
+  <aside id="sidebar" aria-label="列表"></aside>
+  <section id="detail" aria-label="详情"><p class="muted">载入中…</p></section>
+</main>
+
+<footer id="tools"></footer>
+
+<div id="modal" class="modal" hidden>
+  <button class="modal-close" data-action="close-modal" aria-label="关闭">×</button>
+  <img id="modal-image" alt="原图">
+  <p id="modal-caption"></p>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
