@@ -3,9 +3,11 @@
 ```powershell
 npm run build
 # 先由不可变 sample + 用户 acceptance 生成唯一参考（只需一次）
-node dist/current/sim/evaluation/build-human-confirmed-reference.js run/gmod-annotated-rerender-v2-final/sample-human-confirmed.json data/annotations/unioncity-rerender-v2-user-acceptance.json run/gmod-annotated-rerender-v2-final/sample-human-confirmed.json
+node dist/current/sim/evaluation/build-human-confirmed-reference.js run/gmod-annotated-rerender-v2-final/sample.json data/annotations/unioncity-rerender-v2-user-acceptance.json run/gmod-annotated-rerender-v2-final/sample-human-confirmed.json
 node --use-env-proxy dist/current/sim/evaluation/run-holistic-memory-judge.js run/unioncity-memory-quality100-v1 run/gmod-annotated-rerender-v2-final/sample-human-confirmed.json run/unioncity-memory-judge100-v1 --confirm-paid
 ```
+
+
 
 - 新输出目录；完整schema-v4窗口库；位置标注sample与旁边public-source必须与生产输入hash、来源ID、原始时钟和300原图绑定。投递/回放时钟不是标注原始时钟。
 - 只读SQLite，不导入生产Agent，不重建记忆、不写回评审结论。标注和私有答案仅进入裁判。
@@ -46,3 +48,15 @@ node --use-env-proxy dist/current/sim/evaluation/run-grounded-memory-review.js r
 ```
 
 813为813观察/204窗，分块17块（每块12窗），实际37次请求：2校准+17盲取证+17对照+1综合。跨块时对照请求携带地点/访问表和最多8个已判定更早窗口，帮助判断身份连续性，不携带未来窗口。
+
+
+### 16-second forced-realtime path (2026-11-06)
+
+```powershell
+node --use-env-proxy dist/current/sim/evaluation/run-spatial-memory.js run/gmod-annotated-rerender-v2-final/public-source.json run/unioncity-memory-full813-rt-w16-batchfix2-v1 --confirm-paid --limit=813 --interval-ms=2000 --busy-policy=skip --require-realtime --window-ms=16000 --extraction=batch
+node --use-env-proxy dist/current/sim/evaluation/run-grounded-memory-review.js run/unioncity-memory-full813-rt-w16-batchfix2-v1 run/gmod-annotated-rerender-v2-final/sample-human-confirmed.json run/unioncity-memory-full813-rt-w16-batchfix2-judge-accepted --confirm-paid
+# the grounded review writes groups.json/groups.md; recalculate an existing judge dir for free:
+node dist/current/sim/evaluation/run-grouped-memory-report.js run/unioncity-memory-full813-rt-w16-batchfix2-judge-accepted run/gmod-annotated-rerender-v2-final/sample-human-confirmed.json run/unioncity-memory-full813-rt-w16-batchfix2-groups-v5
+```
+
+`run-grouped-memory-report` reads `bundle.json` and `comparison-*.json` only; no model call. Groups are human reference place visits (place label plus temporal continuity). Each group reports identity/evidence scores, coverage gaps, merges/splits, revisit reuse and boundary lag. Skipped windows are coverage gaps, not zero scores.
