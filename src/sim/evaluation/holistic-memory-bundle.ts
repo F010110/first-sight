@@ -4,7 +4,6 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash} from 'node:crypto';
 import type {SpatialJsonImage} from '../../agent/spatial-json-vlm.js';
 import type {JudgeClaim} from './holistic-memory-contract.js';
-import {applyUserAcceptance,type UserAcceptance} from './reference-acceptance.js';
 
 export const sha=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
 export type AuditObservation={id:string;atMs:number;sourceAtMs?:number;views:SpatialJsonImage[];facts:unknown};
@@ -20,12 +19,10 @@ export async function readRunReceipt(run:string){
  throw Error('Require a completed run receipt; no failed complete.json is accepted as success');
 }
 /** No producer/store imports: SQLite is query-only, labels join on exact ID and source clock/hash. */
-export async function prepareHolisticBundle(runArg:string,referencePath:string,outArg:string,acceptancePath?:string):Promise<AuditBundle>{
+export async function prepareHolisticBundle(runArg:string,referencePath:string,outArg:string):Promise<AuditBundle>{
  const run=resolve(runArg),out=resolve(outArg),dbPath=join(run,'spatial.sqlite');
- const before=sha(await readFile(dbPath)),referenceBytes=await readFile(referencePath);
- // The published sample is immutable; an accepted correction file is applied in memory only.
- let sample=JSON.parse(referenceBytes.toString()),acceptanceHash:string|undefined,userAcceptance:unknown;
- if(acceptancePath){const acceptanceBytes=await readFile(acceptancePath);const applied=applyUserAcceptance(sample,JSON.parse(acceptanceBytes.toString()) as UserAcceptance);sample=applied.sample;acceptanceHash=sha(acceptanceBytes);userAcceptance=sample.userAcceptance;}
+ const before=sha(await readFile(dbPath)),referenceBytes=await readFile(referencePath),sample=JSON.parse(referenceBytes.toString());
+ // The reference is the single human-confirmed file; the published assistant sample is not used directly.
  const publicBytes=await readFile(join(resolve(referencePath,'..'),'public-source.json')),publicInput=JSON.parse(publicBytes.toString());
  const receipt=await readRunReceipt(run),complete=receipt.value,completeBytes=receipt.bytes;
  if(!complete.completed||complete.inputSHA256!==sha(publicBytes)||sample.reviewRequired!==false)throw Error('Require complete memory bound to reviewed public source');
@@ -55,7 +52,7 @@ export async function prepareHolisticBundle(runArg:string,referencePath:string,o
   const notes=(db.prepare('SELECT * FROM place_notes ORDER BY created_version,id').all() as Array<{id:string;place_id:string;text:string;created_version:number}>).map(n=>({...n,sources:db.prepare('SELECT version,source_id FROM place_note_sources WHERE note_id=? ORDER BY version').all(n.id)}));
   const revisions=db.prepare('SELECT place_id,version,key,raw FROM place_profile_revisions ORDER BY version').all().map(r=>({...r,raw:JSON.parse(r.raw as string)}));
   const claims:JudgeClaim[]=[...states.map(s=>({id:'state:'+s.version,value:{version:s.version,observationId:s.observationId,memberIds:s.memberIds,assessment:s.assessment,locationDecision:s.locationDecision,visitId:s.visitId,memoryReceipt:s.memoryReceipt}})),...notes.map(n=>({id:'note:'+n.id,value:n})),...revisions.map((r,i)=>({id:'revision:'+i,value:r}))];
-  bundle={schema:'holistic-memory-audit-bundle-v1',run,hashes:{database:before,reference:sha(referenceBytes),publicInput:sha(publicBytes),complete:sha(completeBytes),...acceptanceHash?{acceptance:acceptanceHash}:{}},complete,observations,states,claims,places,visits,revisions,reference,integrity:{passed:true,observations:observations.length,states:states.length,sourceImages:observations.length*3,skippedMembers:skippedMembers.length,...counts},scope:{referenceAuthority:sample.provenance,referenceLimitations:sample.limitations,referenceIsEvaluationOnly:true,stationInteriorSinglePlaceAccepted:true,ocrAndObjectClassificationDeferred:true,coverage:{judgedWindows:states.length,skippedWindows,judgedObservations:covered.length,skippedObservations:skippedMembers.length,plannedStates:complete.plannedStates,fullCoverage,note:fullCoverage?'All planned windows were judged.':'Explicit skipped windows are evidence without a location claim; judged-window scores exclude them.'},...userAcceptance?{userAcceptance}:{},notTesting:['QA','executed long-term retrieval','navigation safety']}};
+  bundle={schema:'holistic-memory-audit-bundle-v1',run,hashes:{database:before,reference:sha(referenceBytes),publicInput:sha(publicBytes),complete:sha(completeBytes)},complete,observations,states,claims,places,visits,revisions,reference,integrity:{passed:true,observations:observations.length,states:states.length,sourceImages:observations.length*3,skippedMembers:skippedMembers.length,...counts},scope:{referenceAuthority:sample.provenance,referenceLimitations:sample.limitations,referenceIsEvaluationOnly:true,stationInteriorSinglePlaceAccepted:true,ocrAndObjectClassificationDeferred:true,coverage:{judgedWindows:states.length,skippedWindows,judgedObservations:covered.length,skippedObservations:skippedMembers.length,plannedStates:complete.plannedStates,fullCoverage,note:fullCoverage?'All planned windows were judged.':'Explicit skipped windows are evidence without a location claim; judged-window scores exclude them.'},...sample.userAcceptance?{userAcceptance:sample.userAcceptance}:{},notTesting:['QA','executed long-term retrieval','navigation safety']}};
   db.exec('COMMIT');
  }finally{db.close();}
  if(sha(await readFile(dbPath))!==before)throw Error('Database changed during read-only packaging');

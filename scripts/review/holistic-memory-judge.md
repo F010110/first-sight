@@ -2,7 +2,9 @@
 
 ```powershell
 npm run build
-node --use-env-proxy dist/current/sim/evaluation/run-holistic-memory-judge.js run/unioncity-memory-quality100-v1 run/gmod-annotated-rerender-v2-final/sample.json run/unioncity-memory-judge100-v1 --confirm-paid
+# 先由不可变 sample + 用户 acceptance 生成唯一参考（只需一次）
+node dist/current/sim/evaluation/build-human-confirmed-reference.js run/gmod-annotated-rerender-v2-final/sample-human-confirmed.json data/annotations/unioncity-rerender-v2-user-acceptance.json run/gmod-annotated-rerender-v2-final/sample-human-confirmed.json
+node --use-env-proxy dist/current/sim/evaluation/run-holistic-memory-judge.js run/unioncity-memory-quality100-v1 run/gmod-annotated-rerender-v2-final/sample-human-confirmed.json run/unioncity-memory-judge100-v1 --confirm-paid
 ```
 
 - 新输出目录；完整schema-v4窗口库；位置标注sample与旁边public-source必须与生产输入hash、来源ID、原始时钟和300原图绑定。投递/回放时钟不是标注原始时钟。
@@ -40,7 +42,7 @@ node --use-env-proxy dist/current/sim/evaluation/run-holistic-memory-judge.js ru
 
 ```powershell
 node --use-env-proxy dist/current/sim/evaluation/run-spatial-memory.js run/gmod-annotated-rerender-v2-final/public-source.json run/unioncity-memory-full813-v1 --confirm-paid --limit=813 --interval-ms=2000 --busy-policy=queue
-node --use-env-proxy dist/current/sim/evaluation/run-grounded-memory-review.js run/unioncity-memory-full813-v1 run/gmod-annotated-rerender-v2-final/sample.json run/unioncity-memory-judge813-grounded-v1 --confirm-paid
+node --use-env-proxy dist/current/sim/evaluation/run-grounded-memory-review.js run/unioncity-memory-full813-v1 run/gmod-annotated-rerender-v2-final/sample-human-confirmed.json run/unioncity-memory-judge813-grounded-v1 --confirm-paid
 ```
 
 813为813观察/204窗，分块17块（每块12窗），实际37次请求：2校准+17盲取证+17对照+1综合。跨块时对照请求携带地点/访问表和最多8个已判定更早窗口，帮助判断身份连续性，不携带未来窗口。
