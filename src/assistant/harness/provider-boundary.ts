@@ -4,7 +4,7 @@ import type {SpatialJsonRequest,SpatialJsonImage} from '../../agent/spatial-json
 
 /** JSON compatibility transport. Pi owns tool dispatch/session; existing boundary owns HTTP/accounting.
  * This is not native provider tool calling. Keep this explicit in every audit. */
-export function accountedPiProvider(options:{request:(r:SpatialJsonRequest)=>Promise<unknown>;view:()=>{current:{id:string;atMs:number};runtimeContext:unknown;images:SpatialJsonImage[];windowSources?:Array<{id:string;atMs:number}>};onRequest?:()=>void;onAssessment?:(text:string)=>void;singleToolArguments?:boolean}){
+export function accountedPiProvider(options:{request:(r:SpatialJsonRequest)=>Promise<unknown>;view:()=>{current:{id:string;atMs:number};runtimeContext:unknown;images:SpatialJsonImage[];windowSources?:Array<{id:string;atMs:number}>};onRequest?:()=>void;onImagesDelivered?:(images:SpatialJsonImage[])=>void;onAssessment?:(text:string)=>void;singleToolArguments?:boolean}){
  const model={id:'qwen3.8-flash',name:'First-Sight accounted JSON bridge',api:'openai-completions' as const,provider:'first-sight-accounted',baseUrl:'http://accounted-boundary.invalid',reasoning:false,input:['text','image'] as ('text'|'image')[],cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:128000,maxTokens:1600};
  const stream:ProviderStreams['streamSimple']=(target,context,streamOptions)=>{
   const events=createAssistantMessageEventStream();
@@ -33,7 +33,8 @@ export function accountedPiProvider(options:{request:(r:SpatialJsonRequest)=>Pro
     if(usage){message.usage.input=usage.prompt_tokens;message.usage.output=usage.completion_tokens;message.usage.totalTokens=usage.prompt_tokens+usage.completion_tokens;message.usage.cost={input:usage.prompt_tokens*.1356/1e6,output:usage.completion_tokens*.4584/1e6,cacheRead:0,cacheWrite:0,total:(usage.prompt_tokens*.1356+usage.completion_tokens*.4584)/1e6};}
     if(typeof raw.tool!=='string'||!raw.arguments||typeof raw.arguments!=='object'||!context.tools?.some(t=>t.name===raw.tool))throw Error('Invalid declared Pi tool call');
     if(raw.assessment!==undefined&&(typeof raw.assessment!=='string'||raw.assessment.length>600))throw Error('Invalid bounded assessment');
-    if(raw.assessment)options.onAssessment?.(raw.assessment);
+     if(raw.assessment)options.onAssessment?.(raw.assessment);
+     options.onImagesDelivered?.(view.images);
     message.content=[...raw.assessment?[{type:'text' as const,text:raw.assessment}]:[],{type:'toolCall',id:crypto.randomUUID(),name:raw.tool,arguments:raw.arguments}];message.stopReason='toolUse';
     events.push({type:'done',reason:'toolUse',message});events.end(message);
    }catch(error){message.stopReason=streamOptions?.signal?.aborted?'aborted':'error';message.errorMessage=String(error);events.push({type:'error',reason:message.stopReason,error:message});events.end(message);}

@@ -9,6 +9,10 @@ export type SpatialBatchProcessor={
  /** Must atomically commit every segment and bind the real durable Session tip. */
  commit(batch:SpatialEvidenceBatch,segments:SpatialBatchSegment[]):Promise<void>;
  committed?(id:string):boolean;
+ pending?():string[];
+ skipGaps?(ids:string[]):void;
+ lateRepairs?():Array<{batchId:string;sequences:number[];versions:number[];missing:string[]}>;
+ repairVersions?(jobId:string):number[]|undefined;
 };
 export type LayeredRuntimeOptions={perceptionMs:number;spatialMs:number;maxBufferedObservations:number;perceptionBudget:LaneBudget;spatialBudget:LaneBudget;requestTimeoutMs?:number;spatialTaskTimeoutMs?:number};
 
@@ -21,6 +25,8 @@ export class LayeredMemoryRuntime{
  private fatal:string|null=null;
  private lastObserved=0;
  private closed=false;
+ private consecutiveJudgmentFailures=0;
+ private judgmentFailureSkips=0;
  constructor(private archive:ObservationArchive,private models:Pick<SpatialModels,'perceiveWindow'>,private processor:SpatialBatchProcessor,private options:LayeredRuntimeOptions,recovery:{retryFailures?:boolean}={}){
   if(!models.perceiveWindow||!Number.isFinite(options.perceptionMs)||options.perceptionMs<4000||options.perceptionMs>8000||!Number.isFinite(options.spatialMs)||options.spatialMs<options.perceptionMs||!Number.isInteger(options.maxBufferedObservations)||options.maxBufferedObservations<1||!Number.isFinite(options.requestTimeoutMs??120000)||(options.requestTimeoutMs??120000)<1)throw Error('Invalid layered schedule');
   if(!Number.isFinite(options.spatialTaskTimeoutMs??1)||(options.spatialTaskTimeoutMs??1)<1)throw Error('Invalid spatial task deadline');
@@ -59,7 +65,9 @@ export class LayeredMemoryRuntime{
  private seal(lane:'perception'|'spatial',sourceAtMs:number,force=false){
   const rows=this.archive.buffered(lane),ms=lane==='perception'?this.options.perceptionMs:this.options.spatialMs,cap=lane==='perception'?Math.min(8,this.options.maxBufferedObservations):this.options.maxBufferedObservations;
   let group:ArchivedEvidence[]=[];
-  const flush=()=>{if(group.length){const budget=lane==='perception'?this.options.perceptionBudget:this.options.spatialBudget;if(this.archive.jobs(lane).length+this.archive.jobs(lane,'running').length>=budget.maxTasks)for(const row of group)this.archive.reject(row.sequence,lane,lane+'-task-overload');else this.archive.makeJob(lane,group);group=[];}};
+  const flush=()=>{if(group.length){const budget=lane==='perception'?this.options.perceptionBudget:this.options.spatialBudget;
+   const merged=lane==='spatial'&&!!this.spatialTask&&this.archive.coalesceSpatial(group,cap,budget.maxSpanMs);
+   if(!merged){if(this.archive.jobs(lane).length+this.archive.jobs(lane,'running').length>=budget.maxTasks)for(const row of group)this.archive.reject(row.sequence,lane,lane+'-task-overload');else this.archive.makeJob(lane,group);}group=[];}};
   for(const row of rows){
    if(group.length&&(Math.floor(group[0]!.observation.atMs/ms)!==Math.floor(row.observation.atMs/ms)||group[0]!.observation.recordingId!==row.observation.recordingId||row.sequence!==group.at(-1)!.sequence+1||group.length>=cap))flush();
    group.push(row);
@@ -68,6 +76,7 @@ export class LayeredMemoryRuntime{
  }
  private kick(){
   if(this.closed||this.fatal)return;
+  this.scheduleLateRepairs();
   if(!this.perceptionTask&&this.archive.jobs('perception').length){
    this.perceptionTask=Promise.resolve().then(()=>this.pumpPerception()).catch(error=>{this.fatal=String(error);}).finally(()=>{this.perceptionTask=null;this.kick();});
   }
@@ -123,22 +132,56 @@ export class LayeredMemoryRuntime{
   if(rows.some(r=>!this.archive.bySequence(r.sequence).facts))throw Error('Independent facts unavailable after bounded single-source fallback');
  }
  private async pumpSpatial(){
+  await this.releaseOrderedGaps();
   while(this.spatialReady()&&!this.stopped){
    const job=this.archive.jobs('spatial')[0]!;this.archive.jobStatus(job.id,'running');
    // Do not turn a per-request timeout into an accidental 120s limit on the
    // entire 24-turn agent. The outer ceiling covers all bounded HTTP retries.
    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(Error('Spatial batch deadline exceeded')),this.options.spatialTaskTimeoutMs??(this.options.requestTimeoutMs??120000)*24*3);
    try{
-    const rows=job.sequences.map(s=>this.archive.bySequence(s));if(rows.some(r=>!r.facts))throw Error('Independent facts missing; no spatial judgment committed');
+    const rows=job.sequences.map(s=>this.archive.bySequence(s));
     const first=rows[0]!.sequence;
-    const batch:SpatialEvidenceBatch={id:job.id,observations:rows.map(r=>({id:r.observation.id,atMs:r.observation.atMs,facts:r.facts!})),coverage:{firstSequence:first,lastSequence:rows.at(-1)!.sequence,gapBefore:first>1&&this.archive.workStatus(first-1,'spatial')!=='done'}};
+    const missingFactIds=rows.filter(r=>!r.facts).map(r=>r.observation.id);
+    const skippedBefore=this.archive.skippedFactsBefore(first).map(r=>({id:r.observation.id,atMs:r.observation.atMs,facts:r.facts}));
+    const batch:SpatialEvidenceBatch={id:job.id,observations:rows.map(r=>({id:r.observation.id,atMs:r.observation.atMs,facts:r.facts})),...skippedBefore.length?{skippedBefore}:{},coverage:{firstSequence:first,lastSequence:rows.at(-1)!.sequence,gapBefore:first>1&&this.archive.workStatus(first-1,'spatial')!=='done'},...missingFactIds.length?{missingFactIds}:{},...(this.processor.repairVersions?.(job.id)??null)?{revisionOfVersions:this.processor.repairVersions!(job.id)!}:{}};
     const segments=validateBatchCoverage(batch,await this.processor.judge(batch,controller.signal));controller.signal.throwIfAborted();
     await this.processor.commit(batch,segments);this.archive.jobStatus(job.id,'done');
+    this.consecutiveJudgmentFailures=0;
+    await this.releaseOrderedGaps();this.scheduleLateRepairs();
    }catch(error){
-    // A Pi/transaction failure stops the initial prefix. Later accepted tasks are
-    // finite and remain durable for explicit same-session recovery.
-    this.archive.jobStatus(job.id,'failed',String(error));this.stopped=String(error);
+    // Old bounded failure policy: a single failed judgment is skipped as an
+    // explicit gap so later evidence can proceed; five consecutive failures
+    // still stop the run instead of silently skipping everything.
+    if(this.consecutiveJudgmentFailures<5&&this.processor.skipGaps){
+     this.consecutiveJudgmentFailures++;this.judgmentFailureSkips++;
+     try{const ids=job.sequences.map(s=>this.archive.bySequence(s).observation.id);this.processor.skipGaps(ids);this.archive.markJobSkipped(job.id,String(error));if(this.consecutiveJudgmentFailures>=5)this.stopped='Five consecutive spatial judgment failures';}
+     catch{this.archive.jobStatus(job.id,'failed',String(error));this.stopped=String(error);}
+    }else{this.archive.jobStatus(job.id,'failed',String(error));this.stopped=String(error);}
    }finally{clearTimeout(timer);}
+  }
+ }
+ /** A gap may only be skipped when it is the complete pending prefix. Gaps that
+  * occurred while the writer was busy wait for earlier commits, then become
+  * durable skipped sources and cannot block newer spatial commits forever. */
+ private async releaseOrderedGaps(){
+  if(!this.processor.pending||!this.processor.skipGaps)return;
+  for(;;){
+   const pending=this.processor.pending(),gapIds=new Set(this.archive.spatialGaps().map(r=>r.observation.id));
+   let count=0;while(count<pending.length&&gapIds.has(pending[count]!))count++;
+   if(!count)return;
+   this.processor.skipGaps(pending.slice(0,count));
+  }
+ }
+ /** Late independent facts reopen the affected observation and, once ready,
+  * queue a revision of the original batch instead of rewriting old snapshots. */
+ private scheduleLateRepairs(){
+  if(!this.processor.lateRepairs)return;
+  for(const repair of this.processor.lateRepairs()){
+   const jobId='repair:'+repair.batchId;
+   if(this.archive.jobs('spatial').some(job=>job.id===jobId)||this.archive.jobs('spatial','running').some(job=>job.id===jobId))continue;
+   const missing=repair.missing.filter(id=>!this.archive.byIds([id])[0]!.facts);
+   if(missing.length){this.archive.reopenFacts(missing);this.seal('perception',this.archive.latest()?.observation.atMs??0,true);continue;}
+   this.archive.makeRepairJob(jobId,repair.sequences);
   }
  }
  questionEvidence(afterSequence=0,knownAtMs=Date.now()){
@@ -156,7 +199,7 @@ export class LayeredMemoryRuntime{
   return true;
  }
  retryFailures(){if(this.fatal)throw Error('Infrastructure failure requires explicit process recovery');if(this.perceptionTask||this.spatialTask)throw Error('Retry requires idle execution lanes');for(const lane of ['perception','spatial'] as const)this.archive.retryFailed(lane,{...this.budget(lane),maxTasks:(lane==='perception'?this.options.perceptionBudget:this.options.spatialBudget).maxTasks});this.stopped=null;this.kick();}
- progress(){const p=this.archive.workProgress('perception'),s=this.archive.workProgress('spatial'),archive=this.archive.progress(),spatialThroughAtMs=s.throughSequence?this.archive.bySequence(s.throughSequence).observation.atMs:null;return {...archive,spatialThroughSequence:s.throughSequence,spatialThroughAtMs,spatialLagMs:spatialThroughAtMs!==null&&archive.archivedThroughAtMs!==null?archive.archivedThroughAtMs-spatialThroughAtMs:null,fatal:this.fatal,perception:{...p,active:!!this.perceptionTask},spatial:{...s,active:!!this.spatialTask,stopped:this.stopped}};}
+ progress(){const p=this.archive.workProgress('perception'),s=this.archive.workProgress('spatial'),archive=this.archive.progress(),spatialThroughAtMs=s.throughSequence?this.archive.bySequence(s.throughSequence).observation.atMs:null;return {...archive,spatialThroughSequence:s.throughSequence,spatialThroughAtMs,spatialLagMs:spatialThroughAtMs!==null&&archive.archivedThroughAtMs!==null?archive.archivedThroughAtMs-spatialThroughAtMs:null,fatal:this.fatal,judgmentFailureSkips:this.judgmentFailureSkips,consecutiveJudgmentFailures:this.consecutiveJudgmentFailures,perception:{...p,active:!!this.perceptionTask},spatial:{...s,...this.archive.schedulingSummary(),active:!!this.spatialTask,stopped:this.stopped}};}
  async drain(){
   this.tick(0,true);
   while(this.perceptionTask||this.spatialTask){if(this.perceptionTask)await this.perceptionTask;if(this.spatialTask)await this.spatialTask;this.kick();}

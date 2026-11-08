@@ -22,8 +22,10 @@ export class ObservationArchive{
    CREATE TABLE IF NOT EXISTS coverage_gaps(seq INTEGER NOT NULL,lane TEXT NOT NULL,reason TEXT NOT NULL,available_ms REAL NOT NULL,PRIMARY KEY(seq,lane));
    CREATE TABLE IF NOT EXISTS work(seq INTEGER NOT NULL,lane TEXT NOT NULL,status TEXT NOT NULL,job TEXT,PRIMARY KEY(seq,lane));
    CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,lane TEXT NOT NULL,status TEXT NOT NULL,raw TEXT NOT NULL,error TEXT);
+   CREATE TABLE IF NOT EXISTS schedule_events(seq INTEGER PRIMARY KEY,available_ms REAL NOT NULL,kind TEXT NOT NULL,raw TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS runtime_config(id INTEGER PRIMARY KEY,raw TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS gap_resolutions(seq INTEGER NOT NULL,lane TEXT NOT NULL,available_ms REAL NOT NULL,PRIMARY KEY(seq,lane));
+   CREATE TABLE IF NOT EXISTS gap_skips(seq INTEGER PRIMARY KEY,available_ms REAL NOT NULL);
    CREATE TABLE IF NOT EXISTS archive_stats(id INTEGER PRIMARY KEY,bytes INTEGER NOT NULL,revision INTEGER NOT NULL);
    CREATE INDEX IF NOT EXISTS work_lane_status ON work(lane,status);
    CREATE INDEX IF NOT EXISTS jobs_lane_status ON jobs(lane,status);
@@ -90,6 +92,45 @@ export class ObservationArchive{
    this.db.exec('RELEASE make_job');return id;
   }catch(error){this.db.exec('ROLLBACK TO make_job; RELEASE make_job');throw error;}
  }
+ /** Late-fact repair reuses already committed source rows and never re-admits them. */
+ makeRepairJob(id:string,sequences:number[]){
+  if(!id.startsWith('repair:')||!sequences.length)throw Error('Invalid repair job');
+  this.db.exec('SAVEPOINT make_repair');try{
+   this.db.prepare("INSERT INTO jobs VALUES(?,'spatial','pending',?,NULL)").run(id,JSON.stringify(sequences));
+   this.db.exec('RELEASE make_repair');
+  }catch(error){this.db.exec('ROLLBACK TO make_repair; RELEASE make_repair');throw error;}
+ }
+ /** One bounded retry for a fact that was missing in an already committed batch. */
+ reopenFacts(ids:string[]){
+  this.db.exec('CREATE TABLE IF NOT EXISTS fact_retries(id TEXT PRIMARY KEY)');
+  this.db.exec('SAVEPOINT reopen_facts');try{
+   for(const id of ids){
+    const row=this.db.prepare('SELECT seq FROM evidence WHERE id=?').get(id) as any;if(!row)throw Error('Unknown late-fact source');
+    if(this.db.prepare('SELECT id FROM fact_retries WHERE id=?').get(id))continue;
+    this.db.prepare('INSERT INTO fact_retries VALUES(?)').run(id);
+    this.db.prepare("UPDATE work SET status='buffered',job=NULL WHERE seq=? AND lane='perception' AND status IN ('failed','gap')").run(row.seq);
+   }
+   this.db.exec('RELEASE reopen_facts');
+  }catch(error){this.db.exec('ROLLBACK TO reopen_facts; RELEASE reopen_facts');throw error;}
+ }
+ /** Merge only not-yet-running adjacent work. The active writer is never
+  * cancelled or replaced; original observation and work rows stay durable. */
+ coalesceSpatial(rows:ArchivedEvidence[],maxObservations:number,maxSpanMs:number){
+  if(!rows.length)return false;
+  const previous=this.jobs('spatial').at(-1);if(!previous)return false;
+  const prior=previous.sequences.map(seq=>this.bySequence(seq)),first=prior[0]!,last=prior.at(-1)!;
+  if(last.sequence+1!==rows[0]!.sequence||last.observation.recordingId!==rows[0]!.observation.recordingId||prior.length+rows.length>maxObservations||rows.at(-1)!.observation.atMs-first.observation.atMs>maxSpanMs)return false;
+  const joined=[...prior,...rows],id='spatial:'+joined.map(r=>r.sequence).join(':');
+  this.db.exec('SAVEPOINT spatial_coalesce');try{
+   const claimed=this.db.prepare("UPDATE jobs SET status='superseded' WHERE id=? AND status='pending'").run(previous.id);if(claimed.changes!==1)throw Error('Spatial task already running');
+   this.db.prepare("INSERT INTO jobs VALUES(?,'spatial','pending',?,NULL)").run(id,JSON.stringify(joined.map(r=>r.sequence)));
+   for(const row of prior){const changed=this.db.prepare("UPDATE work SET job=? WHERE seq=? AND lane='spatial' AND job=? AND status='pending'").run(id,row.sequence,previous.id);if(changed.changes!==1)throw Error('Previous task membership changed');}
+   for(const row of rows){const changed=this.db.prepare("UPDATE work SET status='pending',job=? WHERE seq=? AND lane='spatial' AND status='buffered'").run(id,row.sequence);if(changed.changes!==1)throw Error('New task membership changed');}
+   this.db.prepare('INSERT INTO schedule_events(available_ms,kind,raw) VALUES(?,?,?)').run(this.now(),'busy-call-coalesced',JSON.stringify({previousJobId:previous.id,jobId:id,observationSequences:rows.map(r=>r.sequence)}));
+   this.db.exec('RELEASE spatial_coalesce');return true;
+  }catch(error){this.db.exec('ROLLBACK TO spatial_coalesce; RELEASE spatial_coalesce');throw error;}
+ }
+ schedulingSummary(){return {busyCallCoalesces:(this.db.prepare("SELECT COUNT(*) AS n FROM schedule_events WHERE kind='busy-call-coalesced'").get() as any).n as number};}
  jobs(lane:string,status='pending'):Array<{id:string;sequences:number[]}>{return (this.db.prepare('SELECT id,raw FROM jobs WHERE lane=? AND status=? ORDER BY rowid').all(lane,status) as any[]).map(r=>({id:r.id,sequences:JSON.parse(r.raw)}));}
  jobStatus(id:string,status:'running'|'done'|'failed',error?:string){
   this.db.exec('SAVEPOINT job_status');try{
@@ -137,6 +178,32 @@ export class ObservationArchive{
   const total=(this.db.prepare('SELECT COUNT(*) AS n FROM evidence WHERE '+where).get(...args) as any).n as number;
   const rows=this.db.prepare('SELECT * FROM evidence WHERE '+where+' ORDER BY seq LIMIT 24 OFFSET ?').all(...args,cursor).map(r=>this.decode(r));
   return {rows,total,nextCursor:cursor+rows.length<total?cursor+rows.length:null};
+ }
+ unprocessedSpatial(afterSequence:number,limit:number,knownAtMs:number,knownRevision:number,sourceCutoffMs:number){
+  if(!Number.isInteger(afterSequence)||afterSequence<0||!Number.isInteger(limit)||limit<1||limit>24)throw Error('Invalid unprocessed evidence page');
+  const rows=this.db.prepare("SELECT e.*,w.status AS spatial_status FROM evidence e LEFT JOIN work w ON w.seq=e.seq AND w.lane='spatial' WHERE e.seq>? AND e.available_ms<=? AND e.archived_revision<=? AND e.at_ms<=? AND COALESCE(w.status,'')!='done' ORDER BY e.seq LIMIT ?").all(afterSequence,knownAtMs,knownRevision,sourceCutoffMs,limit) as any[];
+  return rows.map(row=>{const result=this.decode(row);if((result.factsRevision??0)>knownRevision||result.factsAvailableAtMs!==null&&result.factsAvailableAtMs>knownAtMs){result.facts=null;result.factsAvailableAtMs=null;}return {...result,spatialStatus:row.spatial_status??'not-admitted'};});
+ }
+ /** Gap rows are coverage debt. They are skipped in pending order so a gap
+  * never blocks every later spatial commit forever. */
+ spatialGaps():ArchivedEvidence[]{
+  return (this.db.prepare("SELECT e.* FROM evidence e JOIN work w ON w.seq=e.seq LEFT JOIN gap_skips k ON k.seq=e.seq WHERE w.lane='spatial' AND w.status='gap' AND k.seq IS NULL ORDER BY e.seq").all() as any[]).map(row=>this.decode(row));
+ }
+ markGapSkipped(sequence:number){this.db.prepare("UPDATE work SET status='gap' WHERE seq=? AND lane='spatial'").run(sequence);this.db.prepare('INSERT OR IGNORE INTO gap_skips VALUES(?,?)').run(sequence,this.now());}
+ /** A failed judgment may be skipped under the bounded consecutive-failure
+  * policy; the job becomes terminal without pretending it was committed. */
+ markJobSkipped(id:string,error:string){
+  this.db.exec('SAVEPOINT skip_job');try{
+   const job=this.db.prepare('SELECT raw FROM jobs WHERE id=?').get(id) as any;if(!job)throw Error('Unknown job');
+   this.db.prepare("UPDATE jobs SET status='skipped',error=? WHERE id=?").run(error,id);
+   for(const seq of JSON.parse(job.raw)){this.db.prepare("UPDATE work SET status='gap' WHERE seq=? AND lane='spatial'").run(seq);this.gap(seq,'spatial',error);this.db.prepare('INSERT OR IGNORE INTO gap_skips VALUES(?,?)').run(seq,this.now());}
+   this.db.exec('RELEASE skip_job');
+  }catch(e){this.db.exec('ROLLBACK TO skip_job; RELEASE skip_job');throw e;}
+ }
+ /** Skipped source facts remain available to the successor for continuity
+  * understanding, exactly as older runs delivered skipped windows. */
+ skippedFactsBefore(sequence:number,limit=8):ArchivedEvidence[]{
+  return (this.db.prepare("SELECT e.* FROM evidence e JOIN gap_skips k ON k.seq=e.seq WHERE e.seq<? ORDER BY e.seq LIMIT ?").all(sequence,limit) as any[]).map(row=>this.decode(row));
  }
  gaps(){return this.db.prepare('SELECT g.seq AS sequence,g.lane,g.reason,g.available_ms AS availableAtMs,r.available_ms AS resolvedAtMs FROM coverage_gaps g LEFT JOIN gap_resolutions r ON r.seq=g.seq AND r.lane=g.lane ORDER BY g.seq,g.lane').all();}
  progress(){

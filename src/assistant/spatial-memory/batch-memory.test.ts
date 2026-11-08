@@ -10,7 +10,7 @@ import type {Assessment,Observation} from './contracts.js';
 
 const facts={summary:'room',details:['fixed counter and doorway']};
 const cp={sessionId:'test-injected-session',tipId:'test-injected-tip',skillVersions:{'test-skill':'test-hash'}};
-function fixture(){const root=mkdtempSync(join(tmpdir(),'batch-memory-'));const path=join(root,'original.png');writeFileSync(path,'original');const sha256=createHash('sha256').update('original').digest('hex');const archive=new ObservationArchive(join(root,'archive'),1000000),memory=new BatchSpatialMemory(join(root,'memory'),archive);const add=(n:number)=>{const row:Observation={id:'o'+n,atMs:n*2000,views:['front','left','right'].map(direction=>({id:'o'+n,direction,path,sha256}))};archive.append(row);archive.saveFacts(row.id,facts);return {id:row.id,atMs:row.atMs,facts};};return {root,archive,memory,add,close:()=>{memory.close();archive.close();rmSync(root,{recursive:true,force:true});}};}
+function fixture(){const root=mkdtempSync(join(tmpdir(),'batch-memory-'));const path=join(root,'original.png');writeFileSync(path,'original');const sha256=createHash('sha256').update('original').digest('hex');const archive=new ObservationArchive(join(root,'archive'),1000000),memory=new BatchSpatialMemory(join(root,'memory'),archive);const raw=(n:number)=>{const row:Observation={id:'o'+n,atMs:n*2000,views:['front','left','right'].map(direction=>({id:'o'+n,direction,path,sha256}))};archive.append(row);return {id:row.id,atMs:row.atMs};};const add=(n:number)=>{const row=raw(n);archive.saveFacts(row.id,facts);return {...row,facts};};return {root,archive,memory,raw,add,close:()=>{memory.close();archive.close();rmSync(root,{recursive:true,force:true});}};}
 function a(id:string):Assessment{return {location:{status:'new',placeId:null,name:'room',reason:'specific current layout',sourceIds:[id],regionChangeEvidence:['doorway crossed']},hypotheses:[],unresolved:[],relations:[],memoryNotes:[{text:'distinct fixed counter',sourceIds:[id]}]};}
 
 test('multi-segment memory is atomic, supports local return, and binds every version to one real checkpoint receipt',()=>{
@@ -79,4 +79,36 @@ test('all segments and Context references share the final batch publication cuto
   assert.ok(memory.store.checkpoint(2)!.recent.every(s=>s.availableAtMs===receipt.availableAtMs));
   assert.throws(()=>memory.store.publishBatchAvailability(batch.id,states,0),/active unpublished/);
  }finally{memory.close();f.archive.close();rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('an early missing member does not force the whole segment unknown when its tail facts are available',()=>{
+ const f=fixture();try{
+  const first={...f.raw(0),facts:null},second=f.add(1),batch={id:'early-missing',observations:[first,second],missingFactIds:['o0']};
+  const [state]=f.memory.commit(batch,[{observationIds:['o0','o1'],assessment:a('o1')}],cp,new Set(),new Set());
+  assert.equal(state!.assessment.location.status,'known');assert.deepEqual(state!.window!.missingFactIds,['o0']);assert.equal(state!.atMs,2000);
+ }finally{f.close();}
+});
+
+test('a coverage gap prevents automatic reuse of the prior visit even when the same place is confirmed',()=>{
+ const f=fixture();try{
+  const one={id:'one',observations:[f.add(0)]};const [old]=f.memory.commit(one,[{observationIds:['o0'],assessment:a('o0')}],cp,new Set(),new Set());
+  f.add(1);const batch={id:'after-gap',observations:[f.add(2)],coverage:{firstSequence:3,lastSequence:3,gapBefore:true}},known=a('o2');
+  known.location={...known.location,status:'known',placeId:old!.assessment.location.placeId,sourceIds:['o2','o0']};
+  const [current]=f.memory.commit(batch,[{observationIds:['o2'],assessment:known}],cp,new Set(['o0']),new Set(['o0']));assert.notEqual(current!.visitId,old!.visitId);assert.equal(current!.window?.batch?.gapBefore,true);
+ }finally{f.close();}
+});
+
+test('missing independent facts commit as explicit unknown and a later complete rejudgment appends a revision without a new visit',()=>{
+ const f=fixture();try{
+  const row=f.raw(0),initial=a('o0');initial.location={...initial.location,status:'unknown',placeId:null,name:'unresolved area',reason:'facts not yet available'};initial.memoryNotes=[];
+  const base={id:'base',observations:[{...row,facts:null}],missingFactIds:['o0']};
+  assert.throws(()=>f.memory.commit({...base,id:'wrong'},[{observationIds:['o0'],assessment:a('o0')}],cp,new Set(),new Set()),/Missing tail-independent facts/);
+  const [first]=f.memory.commit(base,[{observationIds:['o0'],assessment:initial}],cp,new Set(),new Set());
+  assert.equal(first!.assessment.location.status,'unknown');assert.equal(first!.window!.missingFactIds![0],'o0');
+  f.archive.saveFacts('o0',facts);
+  const repaired={id:'repair:base',observations:[{id:'o0',atMs:0,facts}],revisionOfVersions:[first!.version]};
+  const [revised]=f.memory.commit(repaired,[{observationIds:['o0'],assessment:a('o0')}],cp,new Set(),new Set());
+  assert.equal(revised!.version,2);assert.equal(revised!.window?.revisionOfVersion,1);assert.equal(revised!.atMs,first!.atMs);
+  assert.equal(f.memory.receipt('repair:base')!.versions[0],2);assert.equal(f.memory.store.state(1)!.assessment.location.status,'unknown');
+ }finally{f.close();}
 });

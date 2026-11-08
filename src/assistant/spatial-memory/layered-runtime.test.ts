@@ -86,20 +86,27 @@ test('archive persists raw evidence and explicit gaps, with finite ingest capaci
  }finally{archive.close();f.cleanup();}
 });
 
-test('missing fast facts never produce a fabricated spatial completion',async()=>{
- const f=setup(),archive=new ObservationArchive(f.root,1000000);let calls=0;
- const runtime=new LayeredMemoryRuntime(archive,{perceiveWindow:async()=>[]},{judge:async()=>{calls++;return [];},commit:async()=>{throw Error('not reachable');}},{perceptionMs:6000,spatialMs:40000,maxBufferedObservations:32,perceptionBudget:budget,spatialBudget:budget});
- try{runtime.observe(f.observation(0));await runtime.drain();assert.equal(calls,0);assert.equal(runtime.progress().spatialThroughSequence,0);assert.equal(archive.gaps().length,2);assert.equal(runtime.questionEvidence().observations.length,1);}finally{archive.close();f.cleanup();}
+test('missing fast facts permit only an explicit unknown segment, never a fabricated known place',async()=>{
+ const f=setup(),archive=new ObservationArchive(f.root,1000000);let calls=0,seen:string[]|undefined;
+ const runtime=new LayeredMemoryRuntime(archive,{perceiveWindow:async()=>[]},{judge:async batch=>{calls++;seen=batch.missingFactIds;return [{observationIds:batch.observations.map(o=>o.id),assessment:{location:{status:'unknown',placeId:null,name:'pending evidence',reason:'facts unavailable',sourceIds:[batch.observations.at(-1)!.id]},hypotheses:[],unresolved:['facts missing'],relations:[]}}];},commit:async()=>{}},{perceptionMs:6000,spatialMs:40000,maxBufferedObservations:32,perceptionBudget:budget,spatialBudget:budget});
+ try{runtime.observe(f.observation(0));await runtime.drain();assert.equal(calls,1);assert.deepEqual(seen,['o0']);assert.equal(runtime.progress().spatialThroughSequence,1);assert.ok(archive.gaps().length>=1);assert.equal(runtime.questionEvidence().observations.length,1);}finally{archive.close();f.cleanup();}
 });
 
-test('durable retry is explicit, bounded and resolves gaps without erasing failure history',async()=>{
- const f=setup(),archive=new ObservationArchive(f.root,1000000);let broken=true,calls=0;
- const processor={judge:async(batch:any)=>{calls++;if(broken)throw Error('injected failure');return [{observationIds:batch.observations.map((o:any)=>o.id),assessment:assessment(batch.observations.at(-1).id)}];},commit:async()=>{}};
+test('one failed judgment is skipped as an explicit gap and later evidence continues; five consecutive failures stop',async()=>{
+ const f=setup(),archive=new ObservationArchive(f.root,1000000);let failures=1,calls=0;
+ const processor={judge:async(batch:any)=>{calls++;if(failures-->0)throw Error('injected judgment failure');return [{observationIds:batch.observations.map((o:any)=>o.id),assessment:assessment(batch.observations.at(-1).id)}];},commit:async()=>{},pending:()=>[],skipGaps:()=>{}};
  const runtime=new LayeredMemoryRuntime(archive,{perceiveWindow:async rows=>rows.map(r=>({id:r.id,facts}))},processor,{perceptionMs:6000,spatialMs:40000,maxBufferedObservations:32,perceptionBudget:budget,spatialBudget:budget});
  try{
-  runtime.observe(f.observation(0));await runtime.drain();assert.equal(calls,1);assert.equal(runtime.progress().spatialThroughSequence,0);
-  broken=false;runtime.retryFailures();await runtime.drain();assert.equal(calls,2);assert.equal(runtime.progress().spatialThroughSequence,1);assert.equal(archive.gaps().length,1);assert.ok((archive.gaps()[0] as any).resolvedAtMs);
+  runtime.observe(f.observation(0));await runtime.drain();assert.equal(calls,1);assert.equal(runtime.progress().judgmentFailureSkips,1);assert.equal(runtime.progress().spatial.stopped,null);
+  runtime.observe(f.observation(20));runtime.tick(40000);await runtime.drain();assert.equal(calls,2);assert.equal(runtime.progress().judgmentFailureSkips,1);
  }finally{archive.close();f.cleanup();}
+ const g=setup(),broken=new ObservationArchive(g.root,1000000);let attempts=0;
+ const failing={judge:async()=>{attempts++;throw Error('persistent judgment failure');},commit:async()=>{},pending:()=>[],skipGaps:()=>{}};
+ const stopped=new LayeredMemoryRuntime(broken,{perceiveWindow:async rows=>rows.map(r=>({id:r.id,facts}))},failing,{perceptionMs:6000,spatialMs:40000,maxBufferedObservations:32,perceptionBudget:budget,spatialBudget:budget});
+ try{
+  for(let i=0;i<6;i++){stopped.observe(g.observation(i*20));stopped.tick(i*20+40000);await stopped.drain();if(i<4)assert.equal(stopped.progress().spatial.stopped,null);}
+  assert.equal(attempts,5);assert.equal(stopped.progress().judgmentFailureSkips,5);assert.ok(stopped.progress().spatial.stopped);
+ }finally{broken.close();g.cleanup();}
 });
 
 test('recovering durable pending work enforces the original configuration and capacity before scheduling',async()=>{
@@ -142,4 +149,51 @@ test('a pinned evidence revision excludes late facts and new frames even when ho
   assert.equal(JSON.parse(result.content[0].text)[0].facts,null);assert.equal(evidence.readFacts.has('o0'),false);
   const timeline=evidence.tools().find(t=>t.name==='observation_timeline')!;const listing=await timeline.execute('test',{},()=>{},undefined,{} as any,BACKGROUND_CONTEXT) as any;assert.deepEqual(JSON.parse(listing.content[0].text).observations.map((r:any)=>r.id),['o0']);
  }finally{memory.close();archive.close();f.cleanup();}
+});
+
+test('busy spatial calls coalesce bounded pending windows and preserve ordered evidence for the next judgment',async()=>{
+ const f=setup(),archive=new ObservationArchive(f.root,1000000);let release!:()=>void,started!:()=>void;const gate=new Promise<void>(r=>{release=r;}),ready=new Promise<void>(r=>{started=r;}),batches:string[][]=[];
+ const runtime=new LayeredMemoryRuntime(archive,{perceiveWindow:async rows=>rows.map(r=>({id:r.id,facts}))},{judge:async batch=>{batches.push(batch.observations.map(o=>o.id));if(batches.length===1){started();await gate;}return [{observationIds:batch.observations.map(o=>o.id),assessment:assessment(batch.observations.at(-1)!.id)}];},commit:async()=>{}},{perceptionMs:6000,spatialMs:40000,maxBufferedObservations:32,perceptionBudget:budget,spatialBudget:budget});
+ try{
+  runtime.observe(f.observation(0));runtime.tick(40000);await ready;
+  runtime.observe(f.observation(20));runtime.tick(80000);runtime.observe(f.observation(40));runtime.tick(120000);
+  assert.equal(runtime.progress().spatial.busyCallCoalesces,1);assert.equal(archive.jobs('spatial').length,1);assert.deepEqual(archive.jobs('spatial')[0]!.sequences,[2,3]);
+  release();await runtime.drain();assert.deepEqual(batches,[['o0'],['o20','o40']]);assert.equal(runtime.progress().spatialThroughSequence,3);assert.equal(archive.gaps().length,0);
+ }finally{release();archive.close();f.cleanup();}
+});
+
+test('overflow gaps are skipped only at the pending prefix so later evidence can still commit',async()=>{
+ const f=setup(),archive=new ObservationArchive(f.root,1000000),memory=new BatchSpatialMemory(join(f.root,'memory'),archive);let release!:()=>void,started!:()=>void;
+ const gate=new Promise<void>(r=>{release=r;}),ready=new Promise<void>(r=>{started=r;}),batches:string[][]=[];
+ const cp={sessionId:'test',tipId:'tip',skillVersions:{skill:'hash'}},processor={
+  committed:(id:string)=>!!memory.receipt(id),pending:()=>memory.pendingIds(),
+  skipGaps:(ids:string[])=>{memory.skipSpatialGaps(ids);for(const id of ids){const row=archive.byIds([id])[0]!;archive.markGapSkipped(row.sequence);}},
+  judge:async(batch:any)=>{batches.push(batch.observations.map((o:any)=>o.id));if(batches.length===1){started();await gate;}return [{observationIds:batch.observations.map((o:any)=>o.id),assessment:assessment(batch.observations.at(-1)!.id)}];},
+  commit:async(batch:any,segments:any)=>{memory.commit(batch,segments,{...cp,tipId:'tip'+memory.store.version()},new Set(),new Set());}
+ };
+ const runtime=new LayeredMemoryRuntime(archive,{perceiveWindow:async rows=>rows.map(r=>({id:r.id,facts}))},processor,{perceptionMs:6000,spatialMs:40000,maxBufferedObservations:4,perceptionBudget:{...budget,maxTasks:2},spatialBudget:{...budget,maxTasks:1}});
+ try{
+  for(let i=0;i<4;i++)runtime.observe(f.observation(i));runtime.tick(40000);await ready;
+  runtime.observe(f.observation(4));runtime.observe(f.observation(5));release();await runtime.drain();
+  assert.ok(archive.gaps().length>=2);
+  runtime.observe(f.observation(6));runtime.observe(f.observation(7));runtime.tick(80000);await runtime.drain();
+  assert.deepEqual(batches[0],['o0','o1','o2','o3']);assert.deepEqual(batches[1],['o6','o7'],JSON.stringify(runtime.progress()));assert.equal(runtime.progress().fatal,null);assert.equal(runtime.progress().spatial.stopped,null);
+ }finally{release();memory.close();archive.close();f.cleanup();}
+});
+
+test('late independent facts reopen bounded perception and queue a revision of the original batch',async()=>{
+ const f=setup(),archive=new ObservationArchive(f.root,1000000);let retry=false,repairCommitted=false,started!:()=>void;const perceptionCalls:any[]=[];
+ const ready=new Promise<void>(r=>{started=r;}),calls:any[]=[];
+ const processor={
+  committed:()=>repairCommitted,
+  lateRepairs:()=>((retry&&!repairCommitted))?[{batchId:'b1',sequences:[1,2],versions:[1,2],missing:['o1']}]:[],
+  repairVersions:(id:string)=>id==='repair:b1'?[1,2]:undefined,
+  judge:async(batch:any)=>{calls.push({ids:batch.observations.map((o:any)=>o.id),missing:batch.missingFactIds??[],revision:batch.revisionOfVersions});if(calls.length===1)started();const pending={location:{status:'unknown' as const,placeId:null,name:'pending evidence',reason:'facts missing',sourceIds:['o1']},hypotheses:[],unresolved:['late facts'],relations:[]};return [{observationIds:batch.observations.map((o:any)=>o.id),assessment:(batch.missingFactIds?.length?pending:assessment('o1')) as Assessment}];},
+  commit:async(batch:any)=>{if(batch.id.startsWith('repair:'))repairCommitted=true;else retry=true;}
+ };
+ const runtime=new LayeredMemoryRuntime(archive,{perceiveWindow:async(rows,feedback)=>{perceptionCalls.push({ids:rows.map(r=>r.id),retry,feedback:!!feedback});if(!retry)return rows.filter(r=>r.id==='o0').map(r=>({id:r.id,facts}));return rows.map(r=>({id:r.id,facts}));}},processor,{perceptionMs:6000,spatialMs:40000,maxBufferedObservations:32,perceptionBudget:{...budget,maxTasks:2},spatialBudget:budget});
+ try{
+  runtime.observe(f.observation(0));runtime.observe(f.observation(1));runtime.tick(40000);await ready;await runtime.drain();
+  assert.equal(calls.length,2,JSON.stringify({retry,repairCommitted,perceptionCalls,o0:archive.workStatus(1,'perception'),o1:archive.workStatus(2,'perception'),failedJobs:archive.jobs('perception','failed'),progress:runtime.progress(),perception:archive.jobs('perception'),spatial:archive.jobs('spatial')}));assert.deepEqual(calls[0].missing,['o1']);assert.deepEqual(calls[1].revision,[1,2]);assert.equal(repairCommitted,true);assert.equal(archive.byIds(['o1'])[0]!.facts!==null,true);
+ }finally{archive.close();f.cleanup();}
 });

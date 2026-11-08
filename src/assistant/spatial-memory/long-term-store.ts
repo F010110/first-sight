@@ -43,9 +43,15 @@ export class SpatialLongTermStore{
  }
   close(){this.db.close();}
   /** V3 opt-in extension only. Existing v4 baselines are never opened/migrated by a v3 runner. */
-  initializeBatches(){this.db.exec('CREATE TABLE IF NOT EXISTS spatial_batches(id TEXT PRIMARY KEY,raw TEXT NOT NULL)');}
+  initializeBatches(){this.db.exec('CREATE TABLE IF NOT EXISTS spatial_batches(id TEXT PRIMARY KEY,raw TEXT NOT NULL); CREATE TABLE IF NOT EXISTS spatial_maintenance(id TEXT PRIMARY KEY,raw TEXT NOT NULL)');}
   batch(id:string):any|null{const row=this.db.prepare('SELECT raw FROM spatial_batches WHERE id=?').get(id) as any;return row?JSON.parse(row.raw):null;}
   batches():any[]{return (this.db.prepare('SELECT raw FROM spatial_batches ORDER BY rowid').all() as any[]).map(r=>JSON.parse(r.raw));}
+  maintenance(id:string):any|null{const row=this.db.prepare('SELECT raw FROM spatial_maintenance WHERE id=?').get(id) as any;return row?JSON.parse(row.raw):null;}
+  maintenanceReceipts():any[]{return (this.db.prepare('SELECT raw FROM spatial_maintenance ORDER BY rowid').all() as any[]).map(r=>JSON.parse(r.raw));}
+  atomicMaintenance<T>(id:string,run:()=>{value:T;receipt:unknown}):T{
+   if(this.maintenance(id)||this.activeBatch)throw Error('Maintenance already committed or another transaction is active');
+   this.db.exec('SAVEPOINT spatial_maintenance');try{const result=run();this.db.prepare('INSERT INTO spatial_maintenance VALUES(?,?)').run(id,JSON.stringify(result.receipt));this.db.exec('RELEASE spatial_maintenance');return result.value;}catch(error){this.db.exec('ROLLBACK TO spatial_maintenance; RELEASE spatial_maintenance');throw error;}
+  }
   atomicBatch<T>(id:string,run:()=>{value:T;receipt:unknown}):T{
    if(this.batch(id)||this.activeBatch)throw Error('Batch already committed or another batch transaction is active');
    this.db.exec('SAVEPOINT spatial_batch');
@@ -147,7 +153,7 @@ export class SpatialLongTermStore{
        renamePrevious=(this.placeProfile(location.placeId,version-1,Number.MAX_SAFE_INTEGER,window?.batch?.knowledgeCutoffMs??row.atMs) as any).place.name;
      }
     if(location.continuityCandidate&&!this.db.prepare('SELECT id FROM places WHERE id=?').get(location.continuityCandidate.placeId))throw Error('Unknown provisional continuity place');
-    const previous=revising?base:this.state(version-1),sameRecording=previous?this.observation(previous.observationId)?.recordingId===row.recordingId:false;
+     const previous=revising?base:this.state(version-1),sameRecording=previous&&!window?.batch?.gapBefore?this.observation(previous.observationId)?.recordingId===row.recordingId:false;
     let visitId:string|null=null,createdVisit=false;
     if(location.placeId){
      const previousPlace=previous?.assessment.location.placeId??previous?.assessment.location.continuityCandidate?.placeId;

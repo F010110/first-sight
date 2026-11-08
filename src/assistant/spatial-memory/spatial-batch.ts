@@ -1,7 +1,7 @@
 import type {Assessment,Facts} from './contracts.js';
 
 /** Facts-first input: original image paths are deliberately not in this contract. */
-export type SpatialEvidenceBatch={id:string;observations:Array<{id:string;atMs:number;facts:Facts}>;coverage?:{firstSequence:number;lastSequence:number;gapBefore:boolean}};
+export type SpatialEvidenceBatch={id:string;observations:Array<{id:string;atMs:number;facts:Facts|null}>;skippedBefore?:Array<{id:string;atMs:number;facts:Facts|null}>;coverage?:{firstSequence:number;lastSequence:number;gapBefore:boolean};missingFactIds?:string[];revisionOfVersions?:number[]};
 export type SpatialBatchSegment={observationIds:string[];assessment:Assessment};
 
 /** Structural coverage only. Identity and visual support remain agent/tool responsibilities. */

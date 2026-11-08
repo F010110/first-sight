@@ -15,7 +15,7 @@ test('v3 spatial and private question Sessions compact independently, retain dur
   if((r.data as any).messages&&!('tools' in (r.data as any))){summaries++;return {summary:'Working summary with source IDs and unresolved points.'};}
   return {output:{tool:'finish_test',arguments:{}},usage:{prompt_tokens:2000,completion_tokens:2}};
  };
- const options={maxContextChars:6000,keepRecentTokens:32};
+ const options={maxContextChars:6000,keepRecentTokens:32,prefetch:false};
  const space=await createV3Session(join(root,'space'),'spatial-memory-v3',request,[finish],view,options),question=await createV3Session(join(root,'question'),'visual-question-v3',request,[finish],view,options);
  try{
   await space.prompt({seed:1});await space.prompt({seed:2});await space.prompt({spatialOnly:'s'.repeat(8000)});await space.prompt({next:'space'});
@@ -32,6 +32,6 @@ test('invalid v3 summary fails closed without a hidden fallback model request or
   if((r.data as any).messages&&!('tools' in (r.data as any))){summaries++;return {summary:''};}
   calls++;return {output:{tool:'finish_test',arguments:{}},usage:{prompt_tokens:2000,completion_tokens:2}};
  };
- const role=await createV3Session(root,'spatial-memory-v3',request,[finish],view,{maxContextChars:6000,keepRecentTokens:32});
+ const role=await createV3Session(root,'spatial-memory-v3',request,[finish],view,{maxContextChars:6000,keepRecentTokens:32,prefetch:false});
  try{await role.prompt({seed:1});await role.prompt({seed:2});await role.prompt({original:'evidence'.repeat(1500)});await assert.rejects(()=>role.prompt({next:'must not send fallback'}),/compaction|summary/i);assert.equal(calls,3);assert.equal(summaries,2);assert.match(readFileSync(role.session.metadata.path!,'utf8'),/evidenceevidence/);}finally{await role.close();rmSync(root,{recursive:true,force:true});}
 });

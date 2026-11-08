@@ -25,8 +25,8 @@ export async function createV3QuestionAgent(root:string,memory:BatchSpatialMemor
   result=structuredClone(a);return {content:toolText({kind:'private-answer',...result}),details:{spatialWrite:false},terminate:true};
  }};
  const role=await createV3Session(root,'visual-question-v3',request,[...evidence.tools(),revisit,finish],()=>{
-  if(!snapshot)throw Error('No active question');return {current:{id:snapshot.observations.at(-1)?.id??snapshot.requestId,atMs:snapshot.sourceAtMs??0},runtimeContext:{...snapshot,deliveredIds:[...evidence.delivered],inspectedIds:[...evidence.inspected]},images:evidence.images};
- },options);
+  if(!snapshot)throw Error('No active question');return {current:{id:snapshot.observations.at(-1)?.id??snapshot.requestId,atMs:snapshot.sourceAtMs??0},runtimeContext:{...snapshot,deliveredIds:[...evidence.delivered],inspectedIds:[...new Set([...evidence.inspected,...evidence.images.map(i=>i.id)])]},images:evidence.images};
+ },{...options,prefetch:false,onImagesDelivered:images=>evidence.confirmImages(images)});
  return {
   async ask(question:string,signal?:AbortSignal):Promise<V3Answer>{
    if(!question.trim()||question.length>16000)throw Error('Invalid question');if(busy)throw Error('Question Session busy; no unbounded question queue');busy=true;

@@ -116,3 +116,109 @@ test('question visual recall is pinned and read-only, not a second spatial write
   const answer=await app.ask('Have I returned here?');assert.equal(answer.spatialVersion,1);assert.equal(app.progress().spatialVersion,1);assert.equal((db.prepare('SELECT COUNT(*) AS n FROM events').get() as any).n,before);db.close();
  }finally{await app.close();rmSync(f.root,{recursive:true,force:true});}
 });
+
+test('real committed IDs, visits and updates return to the same Pi Session and are available to the next tool loop',async()=>{
+ const f=fixture();let calls=0,committedId='';
+ const spatial:V3Request=async r=>{
+  calls++;const ctx=(r.data as any).runtimeContext,messages=(r.data as any).messages;
+  if(calls===1)return response('memory_propose',{segments:[{observationIds:['o0'],assessment:{location:{status:'new',placeId:null,name:'first room',reason:'visible layout',sourceIds:['o0']},hypotheses:[],unresolved:[],relations:[],memoryNotes:[{text:'fixed counter',sourceIds:['o0']}]}}]});
+  if(calls===2){const all=JSON.stringify(messages);assert.match(all,/durable-spatial-commit-receipt/);assert.match(all,/fixed counter/);const parsed=messages.flatMap((m:any)=>typeof m.content==='string'?[m.content]:m.content.filter((c:any)=>c.type==='text').map((c:any)=>c.text)).map((s:string)=>{try{return JSON.parse(s);}catch{return null;}}).find((v:any)=>v?.role==='durable-spatial-commit-receipt');assert.ok(parsed.segments[0].visitId);committedId=parsed.segments[0].location.placeId;assert.ok(committedId);return response('memory_place',{placeId:committedId});}
+  assert.match(JSON.stringify(messages),/fixed counter/);return response('memory_propose',{segments:[{observationIds:ctx.batch.observations.map((o:any)=>o.id),assessment:{location:{status:'new',placeId:null,name:'second room',reason:'different layout',sourceIds:['o20']},hypotheses:[],unresolved:[],relations:[]}}]});
+ };
+ let app=await createLayeredApplication(join(f.root,'run'),{perception,spatial,question},{matcher});
+ try{app.observe(f.row(0));await app.finishInput();app.observe(f.row(20));await app.finishInput();assert.equal(calls,3);assert.equal(app.progress().spatialVersion,2);await app.close();
+  app=await createLayeredApplication(join(f.root,'run'),{perception,spatial,question},{matcher,resume:true});await app.finishInput();assert.equal(calls,3);
+  const metadata=JSON.parse(readFileSync(join(f.root,'run','space-session','session.json'),'utf8'));const session=readFileSync(metadata.path,'utf8');assert.equal(session.split('durable-spatial-commit-receipt').length-1,2);assert.match(session,new RegExp(committedId));
+ }finally{await app.close();rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('prepared images are not recorded as model-inspected when the following provider request fails',async()=>{
+ const f=fixture(),run=join(f.root,'run');let calls=0;
+ const spatial:V3Request=async r=>{calls++;if(calls===1)return response('memory_inspect',{ids:['o0']});assert.equal(r.images.length,3);throw Error('injected provider failure before successful response');};
+ const app=await createLayeredApplication(run,{perception,spatial,question},{matcher});
+ try{app.observe(f.row(0));await app.finishInput();assert.equal(app.progress().spatialVersion,0);assert.equal(app.progress().spatial.failed,1);assert.throws(()=>readFileSync(join(run,'space-session','image-deliveries.jsonl'),'utf8'),/ENOENT/);}finally{await app.close();rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('space Pi agent commits via memory_add, receives real ID, queries it and finishes in one agent operation',async()=>{
+ const f=fixture();let calls=0,placeId='';
+ const spatial:V3Request=async r=>{
+  calls++;const messages=(r.data as any).messages;
+  if(calls===1)return response('memory_add',{segments:[{observationIds:['o0'],assessment:{location:{status:'new',placeId:null,name:'room',reason:'current layout',sourceIds:['o0']},hypotheses:[],unresolved:[],relations:[],memoryNotes:[{text:'counter',sourceIds:['o0']}]}}]});
+  if(calls===2){const result=messages.filter((m:any)=>m.role==='toolResult'&&m.toolName==='memory_add').at(-1),value=JSON.parse(result.content.find((c:any)=>c.type==='text').text);assert.equal(value.committed,true);placeId=value.segments[0].location.placeId;assert.ok(placeId);return response('memory_place',{placeId});}
+  assert.match(JSON.stringify(messages),/counter/);return response('memory_finish',{});
+ };
+ let app=await createLayeredApplication(join(f.root,'run'),{perception,spatial,question},{matcher});
+ try{app.observe(f.row(0));await app.finishInput();assert.equal(app.progress().spatialVersion,1,JSON.stringify(app.progress()));assert.equal(calls,3);await app.close();
+  app=await createLayeredApplication(join(f.root,'run'),{perception,spatial,question},{matcher,resume:true});await app.finishInput();assert.equal(calls,3);assert.equal(app.progress().spatialVersion,1);
+ }finally{await app.close();rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('crash after memory_add database effect but before Pi tool result safely replays the real receipt',async()=>{
+ const f=fixture(),run=join(f.root,'crash-effect'),script=join(f.root,'crash-effect.mjs');
+ writeFileSync(script,`
+ import {createLayeredApplication} from ${JSON.stringify(new URL('./layered-application.js',import.meta.url).href)};
+ import {BatchSpatialMemory} from ${JSON.stringify(new URL('./batch-memory.js',import.meta.url).href)};
+ const commit=BatchSpatialMemory.prototype.commit;BatchSpatialMemory.prototype.commit=function(...args){const states=commit.apply(this,args);process.exit(19);};
+ const perception=async r=>({observations:r.data.observations.map(o=>({id:o.id,facts:{summary:'room',details:['counter']}}))});
+ const spatial=async r=>({output:{tool:'memory_add',arguments:{segments:[{observationIds:['o0'],assessment:{location:{status:'new',placeId:null,name:'room',reason:'visible counter',sourceIds:['o0']},hypotheses:[],unresolved:[],relations:[]}}]}},usage:{prompt_tokens:1,completion_tokens:1}});
+ const app=await createLayeredApplication(${JSON.stringify(run)},{perception,spatial,question:spatial},{matcher:{match:async()=>({ok:true,best:null,nearest:null,results:[]})}});app.observe(${JSON.stringify(f.row(0))});await app.finishInput();
+ `);
+ const child=spawnSync(process.execPath,[script],{encoding:'utf8',timeout:15000});assert.equal(child.status,19,child.stderr);
+ let calls=0;const spatial:V3Request=async r=>{calls++;const result=(r.data as any).messages.filter((m:any)=>m.role==='toolResult'&&m.toolName==='memory_add').at(-1);assert.equal(JSON.parse(result.content[0].text).committed,true);return response('memory_finish',{});};
+ const app=await createLayeredApplication(run,{perception,spatial,question},{matcher,resume:true});
+ try{await app.finishInput();assert.equal(app.progress().spatialVersion,1);assert.equal(app.progress().spatialThroughSequence,1);assert.equal(calls,1);}finally{await app.close();rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('space agent can add, read, revise name and notes, then finish in one durable tool operation',async()=>{
+ const f=fixture();let calls=0,placeId='',visitId='';
+ const spatial:V3Request=async r=>{
+  calls++;const messages=(r.data as any).messages;
+  if(calls===1)return response('memory_add',{segments:[{observationIds:['o0'],assessment:{location:{status:'new',placeId:null,name:'room',reason:'visible layout',sourceIds:['o0']},hypotheses:[],unresolved:[],relations:[]}}]});
+  if(calls===2){const effect=messages.filter((m:any)=>m.role==='toolResult'&&m.toolName==='memory_add').at(-1),value=JSON.parse(effect.content[0].text);placeId=value.segments[0].location.placeId;visitId=value.segments[0].visitId;return response('memory_place',{placeId});}
+  if(calls===3)return response('memory_revise',{assessment:{location:{status:'known',placeId,name:'larger room',reason:'name covers observed area',sourceIds:['o0']},hypotheses:[],unresolved:[],relations:[],memoryNotes:[{text:'visible fixed counter',sourceIds:['o0']}],placeRename:{name:'larger room',reason:'broader visible range',sourceIds:['o0']}}});
+  const effect=messages.filter((m:any)=>m.role==='toolResult'&&m.toolName==='memory_revise').at(-1),value=JSON.parse(effect.content[0].text);assert.equal(value.version,2);assert.equal(value.visitId,visitId);assert.equal(value.location.placeId,placeId);return response('memory_finish',{});
+ };
+ let app=await createLayeredApplication(join(f.root,'run'),{perception,spatial,question},{matcher});
+ try{app.observe(f.row(0));await app.finishInput();assert.equal(app.progress().spatialVersion,2,JSON.stringify(app.progress()));assert.equal(calls,4);await app.close();app=await createLayeredApplication(join(f.root,'run'),{perception,spatial,question},{matcher,resume:true});await app.finishInput();assert.equal(calls,4);assert.equal(app.progress().spatialVersion,2);}finally{await app.close();rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('crash after maintenance commit replays same revision receipt without creating a second version',async()=>{
+ const f=fixture(),run=join(f.root,'maintenance-crash'),script=join(f.root,'maintenance-crash.mjs');
+ writeFileSync(script,`
+ import {createLayeredApplication} from ${JSON.stringify(new URL('./layered-application.js',import.meta.url).href)};
+ import {BatchSpatialMemory} from ${JSON.stringify(new URL('./batch-memory.js',import.meta.url).href)};
+ const original=BatchSpatialMemory.prototype.reviseCurrent;BatchSpatialMemory.prototype.reviseCurrent=function(...args){original.apply(this,args);process.exit(20);};
+ const perception=async r=>({observations:r.data.observations.map(o=>({id:o.id,facts:{summary:'room',details:['counter']}}))});
+ const spatial=async r=>{const messages=r.data.messages;const effect=messages.filter(m=>m.role==='toolResult'&&m.toolName==='memory_add').at(-1);if(!effect)return {output:{tool:'memory_add',arguments:{segments:[{observationIds:['o0'],assessment:{location:{status:'new',placeId:null,name:'room',reason:'visible',sourceIds:['o0']},hypotheses:[],unresolved:[],relations:[]}}]}},usage:{prompt_tokens:1,completion_tokens:1}};const id=JSON.parse(effect.content[0].text).segments[0].location.placeId;return {output:{tool:'memory_revise',arguments:{assessment:{location:{status:'known',placeId:id,name:'larger room',reason:'new evidence',sourceIds:['o0']},hypotheses:[],unresolved:[],relations:[],placeRename:{name:'larger room',reason:'broader scope',sourceIds:['o0']}}}},usage:{prompt_tokens:1,completion_tokens:1}};};
+ const app=await createLayeredApplication(${JSON.stringify(run)},{perception,spatial,question:spatial},{matcher:{match:async()=>({ok:true,best:null,nearest:null,results:[]})}});app.observe(${JSON.stringify(f.row(0))});await app.finishInput();
+ `);
+ const child=spawnSync(process.execPath,[script],{encoding:'utf8',timeout:15000});assert.equal(child.status,20,child.stderr);
+ let calls=0;const spatial:V3Request=async r=>{calls++;const result=(r.data as any).messages.filter((m:any)=>m.role==='toolResult'&&m.toolName==='memory_revise').at(-1);assert.equal(JSON.parse(result.content[0].text).version,2);return response('memory_finish',{});};
+ const app=await createLayeredApplication(run,{perception,spatial,question},{matcher,resume:true});
+ try{await app.finishInput();assert.equal(app.progress().spatialVersion,2);assert.equal(app.progress().spatialThroughSequence,1);assert.equal(calls,1);}finally{await app.close();rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('known revisit without inspected support receives newest and candidate historical images before it may commit',async()=>{
+ const f=fixture();let calls=0,placeId='',supplied=false;
+ const spatial:V3Request=async r=>{
+  calls++;const ctx=(r.data as any).runtimeContext,messages=(r.data as any).messages,toolResults=messages.filter((m:any)=>m.role==='toolResult');
+  if(calls===1)return response('memory_add',{segments:[{observationIds:['o0'],assessment:{location:{status:'new',placeId:null,name:'room',reason:'visible layout',sourceIds:['o0']},hypotheses:[],unresolved:[],relations:[]}}]});
+  if(calls===2)return response('memory_finish',{});
+  if(calls===3){
+   const first=toolResults.map((m:any)=>m.content?.[0]?.text).filter(Boolean).map((t:string)=>{try{return JSON.parse(t);}catch{return null;}}).find((v:any)=>v?.kind==='committed');
+   placeId=first.segments[0].location.placeId;
+   return response('memory_add',{segments:[{observationIds:[ctx.batch.observations.at(-1).id],assessment:{location:{status:'known',placeId,name:'room',reason:'same layout',sourceIds:[ctx.batch.observations.at(-1).id]},hypotheses:[],unresolved:[],relations:[]}}]});
+  }
+  if(calls===4){assert.ok(r.images.length>=3);supplied=true;return response('memory_add',{segments:[{observationIds:[ctx.batch.observations.at(-1).id],assessment:{location:{status:'known',placeId,name:'room',reason:'same layout after inspecting history',sourceIds:[ctx.batch.observations.at(-1).id,'o0']},hypotheses:[],unresolved:[],relations:[]}}]});}
+  return response('memory_finish',{});
+ };
+ const app=await createLayeredApplication(join(f.root,'run'),{perception,spatial,question},{matcher});
+ try{app.observe(f.row(0));await app.finishInput();app.observe(f.row(20));await app.finishInput();assert.equal(app.progress().spatialVersion,2,JSON.stringify(app.progress()));assert.equal(supplied,true);assert.equal(calls,5);}finally{await app.close();rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('optional relation schema errors are dropped locally and the location commits without another model turn',async()=>{
+ const f=fixture();let calls=0;
+ const spatial:V3Request=async r=>{calls++;if(calls===1)return response('memory_add',{segments:[{observationIds:['o0'],assessment:{location:{status:'new',placeId:null,name:'room',reason:'visible layout',sourceIds:['o0']},hypotheses:[],unresolved:[],relations:[{kind:'same-facility',referenceId:'not-inspected',reason:'bad optional relation',sourceIds:['o0','not-inspected']}]}}]});return response('memory_finish',{});};
+ const app=await createLayeredApplication(join(f.root,'run'),{perception,spatial,question},{matcher});
+ try{app.observe(f.row(0));await app.finishInput();assert.equal(calls,2);assert.equal(app.progress().spatialVersion,1,JSON.stringify(app.progress()));assert.equal(app.progress().spatialThroughSequence,1);}finally{await app.close();rmSync(f.root,{recursive:true,force:true});}
+});
