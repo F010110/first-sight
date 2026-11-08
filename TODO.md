@@ -2,6 +2,7 @@
 
 ## 当前状态与约定（2026-11-02）
 
+- **本轮空间重访任务收尾（2026-11-08）**：用户要求结束本轮任务。新增 `docs/active/04-non-negotiable-designs-and-pitfalls.md`（**不改 01–03/README**），记录不可改动设计、易错点、349 帧能力结论（重访 precision 50%、recall 100%、11.2min/349 帧）及未落地项。后续进入重构；不再加严格校验/不再跑付费全量。
 - **重访功能回退与独立重访 Agent（2026-11-08 用户批准）**：813 实跑证明旧重访链不可用：94 次召回中 top-1 命中正确粗组仅 **7/85（8%）**，top-2 **13/85**，且 top-1 命中的 7 次全部是 `street` 超大粗组；`min_inliers=20` 在 `image_index.py` 中从未生效，**49/85** 的 top-1 候选低于 20 inliers；7 个真实回访窗口里正确旧地点只有 **1 个**进入 top-2。5 次复用全部选中 matcher top-1，4 次是错的（v20 当铺→五金店、v32 砖墙店→Choke、v44 五金店→街道路口、v60 加油站→木质走廊）；地点档案又按已提交归属累积，错误复用会污染代表图并形成正反馈（v55/v56 Choke 133/108 inliers）。`validateRevisitNew` 要求 `new` 前检查全部候选，反而把主 Agent 推向 `known`，并增加延迟（Pi 请求 169 vs 基线 126）。
   - 初步方案（已暂停）：先回退全部重访功能，再实现独立重访 Agent 与主 Agent provisional new。**2026-11-08 用户叫停**：为单一功能再拆一个 agent 违背“给 agent 写 harness、让其自由发挥”的初衷；实时性限制又反复影响其他功能。**独立重访 Agent 方案取消**，改为评估“主 Agent 自己承担重访、暂不考虑时延”。在用户确认新方向前不继续实现。
   - 回退范围（已完成源码回退）：`service.ts` 的 recall/validate、`contracts.ts` 的 `JudgeInput.revisit`、`pi-reasoner.ts` 的候选注入与 inspect-before-new、skill 的候选段落、runner 的 `--revisit-*` 参数/收据字段、`revisit-candidates.ts`、`visual-revisit.ts`、`scripts/media/image_index.py`、`scripts/evaluation/benchmark-revisits.py`、旧 `preflight-spatial-revisit-correction.ts` 及相关测试。**保留**旧运行目录/DB/报告；通用“同地点回访”评分保留；`scripts/media/image_match.py` 因被 `src/agent/image-match.ts` 独立使用而保留。`npm run build` 通过；全量测试在用户叫停时中断，尚未确认。
