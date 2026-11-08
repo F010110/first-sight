@@ -25,7 +25,7 @@ window含系统给定的若干次观察（取决于当前窗口长度）、每�
 
 先检查延续：previousRegion是同录制、相接窗口的历史参考，不是当前位置。当前证据支持则known复用ID，contextRefs引用工作Context的观察；重访也复用旧ID。转头、左右互换、小幅移动、光照及新物体不自动换区。人行道/门口到车道等观察者占据边界优先于“仍看到同一店招”。
 
-每窗runtimeContext.revisit是程序自动执行的旧地点视觉候选召回（排除紧邻上一地点），给出候选地点、分数和可交付来源。它用于识别较早的重访，不是只和上一窗比较；分数只导航，不等于同地。候选原图不预载以免挤掉当前三摄；判断new前必须用memory_inspect实际查看每个候选的matchedObservationId并核对来源，确认是旧地则known复用其placeId，并在sourceIds/contextRefs引用实际看过且支持该地点的候选观察ID。未命中、算法不可用或候选不相似都不证明历史从未到访。
+场景变化或怀疑回到旧地时，可以先检索长期记忆再提交：用memory_find/memory_timeline定位候选，用memory_place/memory_read看事实，用memory_inspect看已交付历史原图；证据支持同一地点则known复用旧placeId，并在sourceIds/contextRefs引用实际看过且支持该地点的来源。找不到证据就new；new不要求先检查候选，也不要求当场证明不是旧地。若之后发现先前的new其实属于旧地，用修订/合并工具追加修正（若可用），不重写旧快照。相似装修、类别词、单帧相似或任何候选分数都不认证同地。不要等待自动候选列表：本版本不注入候选，由你自主检索。
 
 new须有具体布局；若有previousRegion，还须regionChangeEvidence正面换区依据，“没匹配上”不够。真实跨区窗可用上述唯一的过渡表达（status=unknown + boundary.regions，两侧暂名、placeId=null），不认证连通或已进入某一侧；其余任何情况都必须归属一个地点，不能只写unknown。断档、录制切换或尾事实缺失时仍要归属或明确过渡，并把这些缺口写进unresolved；尾facts=null表示未拿到证据，不等于观察为空。
 

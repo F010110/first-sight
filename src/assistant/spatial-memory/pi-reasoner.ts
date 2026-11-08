@@ -20,7 +20,7 @@ type Invocation=Parameters<AgentHarnessTool<undefined>['execute']>[4];
  * explicit working context, tool authorization, durable SQLite commit and
  * skill versioning; Pi supplies the session, tool loop and compaction.
  */
-export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJsonRequest)=>Promise<unknown>,options:{maxRequests?:number;resume?:boolean;maxContextChars?:number;keepRecentTokens?:number;judgmentDeadlineMs?:number}={}):Promise<SpatialReasoner>{
+export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJsonRequest)=>Promise<unknown>,options:{maxRequests?:number;resume?:boolean;maxContextChars?:number;keepRecentTokens?:number;judgmentDeadlineMs?:number;maxTurnsPerJudgment?:number}={}):Promise<SpatialReasoner>{
   const root=resolve(rootArg);await mkdir(root,{recursive:true});
   const contextPolicy={version:'spatial-session-context-v1',maxChars:options.maxContextChars??48000,keepRecentTokens:options.keepRecentTokens??2000};
   if(!Number.isInteger(contextPolicy.maxChars)||contextPolicy.maxChars<1000||!Number.isInteger(contextPolicy.keepRecentTokens)||contextPolicy.keepRecentTokens<1)throw Error('Invalid spatial session context budget');
@@ -44,8 +44,8 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
  const provider=accountedPiProvider({request,singleToolArguments:false,view:()=>{
   if(!current)throw Error('No active spatial judgment');
    const shown=viewCalls++===0?images:images.filter(v=>!baseImageIds.has(v.id));
-   return {current:{id:current.row.id,atMs:current.row.atMs},runtimeContext:{mode:'spatial-memory-v2',locationPolicy:{statuses:['known','new','unknown+boundary'],rule:'Every window is either committed to a place (known/new) or explicitly a transition between two regions (status unknown plus boundary.regions). A bare unknown is not a valid answer.'},currentObservation:{id:current.row.id,atMs:current.row.atMs},...current.window?{window:current.window}:{facts:current.facts},previousRegion:current.previousRegion,revisit:current.revisit??null,workingContext:spatialStateHead(current.context),deliveredIds:[...delivered.keys()],inspectedIds:[...inspected],lastToolResult,feedback:current.feedback??null},images:shown,...(()=>{const ws=current.window?current.window.observations.filter(o=>shown.some(v=>v.id===o.id)).map(o=>({id:o.id,atMs:o.atMs})):[];return ws.length?{windowSources:ws}:{};})()};
-  },onRequest:()=>{if(recovering)throw Error('Checkpoint recovery is forbidden from invoking a model');if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);if(options.judgmentDeadlineMs&&judgmentStartedAt&&Date.now()-judgmentStartedAt>options.judgmentDeadlineMs)throw Error('Spatial judgment deadline exceeded after '+Math.round(Date.now()-judgmentStartedAt)+'ms');if(++turnRequests>12||++requests>(options.maxRequests??8000))throw Error('Spatial Pi request guard exhausted');}});
+   return {current:{id:current.row.id,atMs:current.row.atMs},runtimeContext:{mode:'spatial-memory-v2',locationPolicy:{statuses:['known','new','unknown+boundary'],rule:'Every window is either committed to a place (known/new) or explicitly a transition between two regions (status unknown plus boundary.regions). A bare unknown is not a valid answer.'},currentObservation:{id:current.row.id,atMs:current.row.atMs},...current.window?{window:current.window}:{facts:current.facts},previousRegion:current.previousRegion,workingContext:spatialStateHead(current.context),deliveredIds:[...delivered.keys()],inspectedIds:[...inspected],lastToolResult,feedback:current.feedback??null},images:shown,...(()=>{const ws=current.window?current.window.observations.filter(o=>shown.some(v=>v.id===o.id)).map(o=>({id:o.id,atMs:o.atMs})):[];return ws.length?{windowSources:ws}:{};})()};
+  },onRequest:()=>{if(recovering)throw Error('Checkpoint recovery is forbidden from invoking a model');if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);if(options.judgmentDeadlineMs&&judgmentStartedAt&&Date.now()-judgmentStartedAt>options.judgmentDeadlineMs)throw Error('Spatial judgment deadline exceeded after '+Math.round(Date.now()-judgmentStartedAt)+'ms');if(++turnRequests>(options.maxTurnsPerJudgment??12)||++requests>(options.maxRequests??8000))throw Error('Spatial Pi request guard exhausted');}});
  const requireCurrent=()=>{if(!current)throw Error('No active spatial judgment');return current;};
  const deliver=(record:HistoryRecord)=>{delivered.set(record.observationId,record);for(const member of record.window?.observations??[])delivered.set(member.id,record);};
   const checkDelivered=(ids:unknown,max:number,tool:string)=>requireDeliveredIds(ids,max,new Set(delivered.keys()),tool);
@@ -185,19 +185,6 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    // A transition (unknown + boundary) stays legal; a bare unknown is not an answer.
    if((a.assessment?.location?.status as string)==='unknown'&&!a.assessment?.location?.boundary)throw Error('location.status: a bare unknown is not available. Assign this window to a place with known/new, or, when the window genuinely spans two regions, submit status unknown together with boundary.regions (two names) and placeId null. Put any other doubt in reason/unresolved.');
    const assessment=validateAssessment({...a.assessment,memoryNotes:a.notes??[],...a.rename?{placeRename:a.rename}:{}} as Assessment,input.row.id,inspected);
-   // A changed scene is not a new place until recalled older places are checked.
-   // Perform that check on the agent's first NEW attempt and return the images;
-   // this avoids relying on the model to remember a separate inspect call, while
-   // still leaving identity entirely to the next judgment.
-   const unchecked=assessment.location.status==='new'?(input.revisit?.candidates??[]).filter(c=>!inspected.has(c.matchedObservationId)):[];
-   if(unchecked.length){
-    const ids=unchecked.map(c=>c.matchedObservationId),originals=await input.inspect(ids);
-    images=[...input.row.views,...originals];
-    const currentWindowIds=input.window?.observations.map(o=>o.id)??[input.row.id];
-    inspected=new Set([...currentWindowIds,...ids]);
-    lastToolResult={kind:'revisit-inspection',candidates:unchecked.map(c=>({placeId:c.placeId,name:c.name,observationId:c.matchedObservationId,bestInliers:c.bestInliers})),imageCount:originals.length,note:'Recalled older-place images are now supplied. Re-evaluate whether this is a continuation/revisit or a genuinely new place; no identity was accepted automatically.'};
-    return lastToolResult;
-   }
    if(!input.expectedVersion)throw Error('Missing durable spatial commit version');
    await invocation.setMemo('spatial-commit',{sessionId:session.metadata.id,version:input.expectedVersion,observationId:input.row.id,memberIds:input.window?.observations.map(o=>o.id)??[input.row.id],assessmentHash:digest(assessment),contextChars});
   try{
@@ -207,7 +194,6 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    // A spliced or obsolete UUID must be replaced from real IDs, never auto-corrected.
    const known=new Set<string>();
    for(const r of [...input.context.recent,...input.context.anchors]){const id=(r as any).location?.placeId??(r as any).assessment?.location?.placeId;if(id)known.add(id);}
-   for(const c of input.revisit?.candidates??[])known.add(c.placeId);
    for(const r of delivered.values())if(r.location?.placeId)known.add(r.location.placeId);
    throw Error('assessment.location.placeId: '+JSON.stringify(assessment.location.placeId)+' is not an existing place. Place IDs that actually appear in this session: '+JSON.stringify([...known])+'. Read a real place with memory_place/memory_timeline or submit unknown/boundary; do not invent or splice UUIDs.');
   }
@@ -314,15 +300,8 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
     try{images.push(...await input.inspect(skipIds));for(const id of skipIds)inspected.add(id);}
     catch(error){lastToolResult={kind:'skipped-window-inspect-failed',observationIds:skipIds,error:String(error)};}
    }
-   // Automatic recall is delivered as text/source identifiers. Candidate images
-   // stay lazy so they cannot displace the twelve current-window images; the
-   // agent must memory_inspect them before treating a change as a new place.
-   for(const candidate of input.revisit?.candidates??[]){
-    const record=input.history.find(r=>r.observationId===candidate.matchedObservationId)??input.history.find(r=>r.window?.observations.some(o=>o.id===candidate.matchedObservationId));
-    if(record){delivered.set(record.observationId,record);delivered.set(candidate.matchedObservationId,record);}
-   }
     if(contextChars>=contextPolicy.maxChars){getOrThrow(await lane.compact(undefined,BACKGROUND_CONTEXT));if(compactionFailure)throw Error('Spatial compaction failed closed: '+compactionFailure);}
-    const outcome=getOrThrow(await lane.prompt(JSON.stringify({observationId:input.row.id,atMs:input.row.atMs,role:'current-independent-observation',facts:input.facts,window:input.window,revisit:input.revisit??null,stateHead:{previousRegion:input.previousRegion,lastCommittedVersion:input.context.recent.at(-1)?.version??null},sourceRefs:windowImages.map(v=>({id:v.id,direction:v.direction,sha256:v.sha256})),evidencePolicy:'Prior messages describe history. Only current runtime deliveredIds/inspectedIds authorize sources; prior visibility is not current visibility. Revisit candidates were recalled automatically from older places using images only; scores are not identity. Their historical images are not preloaded; memory_inspect the candidate before concluding that a changed scene is a new place. Historical images are not evidence of what is currently visible.'}),undefined,BACKGROUND_CONTEXT));
+    const outcome=getOrThrow(await lane.prompt(JSON.stringify({observationId:input.row.id,atMs:input.row.atMs,role:'current-independent-observation',facts:input.facts,window:input.window,stateHead:{previousRegion:input.previousRegion,lastCommittedVersion:input.context.recent.at(-1)?.version??null},sourceRefs:windowImages.map(v=>({id:v.id,direction:v.direction,sha256:v.sha256})),evidencePolicy:'Prior messages describe history. Only current runtime deliveredIds/inspectedIds authorize sources; prior visibility is not current visibility. Historical images are not evidence of what is currently visible.'}),undefined,BACKGROUND_CONTEXT));
    if(outcome.status!=='completed'||!committed)throw Error('Spatial Pi turn did not commit: '+JSON.stringify(outcome));
    const tipId=await lane.getTipId(BACKGROUND_CONTEXT);
     await appendFile(join(root,'pi-checkpoints.jsonl'),JSON.stringify(checkpointRecord(committed,tipId!))+'\n');

@@ -2,6 +2,12 @@
 
 ## 当前状态与约定（2026-11-02）
 
+- **重访功能回退与独立重访 Agent（2026-11-08 用户批准）**：813 实跑证明旧重访链不可用：94 次召回中 top-1 命中正确粗组仅 **7/85（8%）**，top-2 **13/85**，且 top-1 命中的 7 次全部是 `street` 超大粗组；`min_inliers=20` 在 `image_index.py` 中从未生效，**49/85** 的 top-1 候选低于 20 inliers；7 个真实回访窗口里正确旧地点只有 **1 个**进入 top-2。5 次复用全部选中 matcher top-1，4 次是错的（v20 当铺→五金店、v32 砖墙店→Choke、v44 五金店→街道路口、v60 加油站→木质走廊）；地点档案又按已提交归属累积，错误复用会污染代表图并形成正反馈（v55/v56 Choke 133/108 inliers）。`validateRevisitNew` 要求 `new` 前检查全部候选，反而把主 Agent 推向 `known`，并增加延迟（Pi 请求 169 vs 基线 126）。
+  - 初步方案（已暂停）：先回退全部重访功能，再实现独立重访 Agent 与主 Agent provisional new。**2026-11-08 用户叫停**：为单一功能再拆一个 agent 违背“给 agent 写 harness、让其自由发挥”的初衷；实时性限制又反复影响其他功能。**独立重访 Agent 方案取消**，改为评估“主 Agent 自己承担重访、暂不考虑时延”。在用户确认新方向前不继续实现。
+  - 回退范围（已完成源码回退）：`service.ts` 的 recall/validate、`contracts.ts` 的 `JudgeInput.revisit`、`pi-reasoner.ts` 的候选注入与 inspect-before-new、skill 的候选段落、runner 的 `--revisit-*` 参数/收据字段、`revisit-candidates.ts`、`visual-revisit.ts`、`scripts/media/image_index.py`、`scripts/evaluation/benchmark-revisits.py`、旧 `preflight-spatial-revisit-correction.ts` 及相关测试。**保留**旧运行目录/DB/报告；通用“同地点回访”评分保留；`scripts/media/image_match.py` 因被 `src/agent/image-match.ts` 独立使用而保留。`npm run build` 通过；全量测试在用户叫停时中断，尚未确认。
+  - 待确认的设计问题：①主 Agent 是否在同一持久 Session 内、用 `memory_timeline`/`memory_place`/`memory_read`/`memory_inspect` 自主检索并决定重访（去掉每窗 32s deadline 与 skip-obsolete，按顺序处理全部窗口）；②内存质量基线是否改为 queue/全覆盖，实时只约束输入落盘与投递，不约束 Agent 判断速度；③是否先做顺序处理的“质量模式”小规模验证，再决定是否重构 ingest 与 Agent 处理解耦。
+  - 状态：回退待提交；旧 813 结果（71.4/74.7）保留，不作为新方案成绩。
+
 - **约束式空间记忆评测与正式成绩（2026-11-07）**：整体裁判把边界不确定帧当成逐帧真值，v4（6/8 站台 + 2/8 站内楼梯，4 帧 `boundaryUncertain`）被判 identity/currentReason/scope 三矛盾，属于误判。按 `docs/notes/suggestions/建议16.md` 改为约束式评测：**不要求复现唯一分段，只检查同/不同地点、关键事实、序列和在线可用性。**
   - 同地点回访：参考同一 `placeId` 的 9 个重复访问对；**0/9 已测**。但 SIFT/RANSAC matcher 在 **61/95 个窗口超时**（`revisit.status=unavailable`、`candidates=[]`），9 对全部没有可用候选，因此 **0/9 是系统候选召回失败，不是 Agent 回访能力的证据**。典型：v9 创建“I&W HARDWARE店内”（`24ac5970`），v44 回到五金店时 matcher 超时（considered 9、candidates 0），Agent 新建“I&W HARDWARE五金店内部”（`294be1c2`，`locationDecision=new`）；v45 又把返回店内标成 Union Street。Agent 已按店名认出五金店，缺的是旧地点候选。
   - 不同地点：16 个粗粒度区域段的全部 **104 对**；Agent 用同一 ID 即错误合并。特异度 **97.1%（101/104）**，3 个错误合并：Pawnbrokers 覆盖公园街角、Choke 覆盖砖墙店、South Side 覆盖街角。
