@@ -15,6 +15,8 @@ memory_place(placeId,cursor?,noteCursor?)直接读取“地点→各次访问→
 
 确认同一地点后，如新图证明最初名称太窄、方向不合适或可用更准确暂名，memory_add可加rename:{name,reason,sourceIds}，同时location.name用同一新名。程序保留ID、访问和旧名历史，只追加带来源的新名版本；sourceIds含当前观察。不要仅在location.name换词而以为档案已改名，也不要为改名新建地点。连续地铁站内部可以保持一个地点，名称可从具体站台概括为站内部；这不允许把站外街道、车道也纳入站内。
 
+**重访或再次经过同一地点时必须更新描述**：确认same place后，如果当前窗的店名、招牌、入口、柜台/展示台等证据使原名称或描述更准确、更完整，或原描述缺少关键店名/区域，必须在本窗用rename或notes追加更新，保留旧版本；不能只改location.name而不写rename/notes，也不能为更新描述新建地点。
+
 ## 区域与连续性
 
 window含系统给定的若干次观察（取决于当前窗口长度）、每次三摄同时不同方向；窗口是调度单位，不是地点或经历。整窗只提交一个地点判断，当前ID是尾观察，sourceIds必须含尾ID且只引用本轮实际交付图像来源。不复制成逐帧定位，不把后帧知识伪装为早帧当时已知。skippedBefore是忙时跳过推理的早先窗口，其原图/独立事实仍保存；结合这些事实理解变化和未决，但本次位置只对应当前window，不能声称已逐窗定位，也不能把早窗事实说成当前可见或把它们默认算作本轮已看原图。
@@ -25,7 +27,7 @@ window含系统给定的若干次观察（取决于当前窗口长度）、每�
 
 先检查延续：previousRegion是同录制、相接窗口的历史参考，不是当前位置。当前证据支持则known复用ID，contextRefs引用工作Context的观察；重访也复用旧ID。转头、左右互换、小幅移动、光照及新物体不自动换区。人行道/门口到车道等观察者占据边界优先于“仍看到同一店招”。
 
-场景变化或怀疑回到旧地时，可以先检索长期记忆再提交：用memory_find/memory_timeline定位候选，用memory_place/memory_read看事实，用memory_inspect看已交付历史原图；证据支持同一地点则known复用旧placeId，并在sourceIds/contextRefs引用实际看过且支持该地点的来源。找不到证据就new；new不要求先检查候选，也不要求当场证明不是旧地。若之后发现先前的new其实属于旧地，用修订/合并工具追加修正（若可用），不重写旧快照。相似装修、类别词、单帧相似或任何候选分数都不认证同地。不要等待自动候选列表：本版本不注入候选，由你自主检索。
+**每窗必须先做重访检查**：即使看起来是连续运动，也要查看runtimeContext.revisit的候选清单（广候选、非排名；顺序/分数不代表身份），对有希望的候选用memory_inspect看旧图，再决定continuity/known复用/新建。候选很多不是忽略的理由；候选只是范围，必须看图确认。需要更多历史时用memory_find/memory_timeline定位、memory_place/memory_read看事实。证据支持同一地点则known复用旧placeId，并在sourceIds/contextRefs引用实际看过且支持该地点的来源。找不到证据就new；new不要求当场证明不是旧地，但必须已经查看并处理候选。若之后发现先前的new其实属于旧地，用修订/合并工具追加修正（若可用），不重写旧快照。相似装修、类别词、单帧相似或任何候选分数都不认证同地。
 
 new须有具体布局；若有previousRegion，还须regionChangeEvidence正面换区依据，“没匹配上”不够。真实跨区窗可用上述唯一的过渡表达（status=unknown + boundary.regions，两侧暂名、placeId=null），不认证连通或已进入某一侧；其余任何情况都必须归属一个地点，不能只写unknown。断档、录制切换或尾事实缺失时仍要归属或明确过渡，并把这些缺口写进unresolved；尾facts=null表示未拿到证据，不等于观察为空。
 
