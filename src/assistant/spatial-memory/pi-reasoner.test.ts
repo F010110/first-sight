@@ -57,27 +57,31 @@ test('malformed optional fields are dropped locally instead of costing another m
  }finally{await service?.close().catch(()=>{});if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true});}
 });
 
-test('a known claim that ignores the supplied historical window is auto-cited after the model re-asserts it',async()=>{
+test('a known claim that ignores the supplied historical window is rejected instead of auto-cited',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'opencode/spatial-known-repair-')),key=process.env.QWEN_API_KEY;process.env.QWEN_API_KEY='mock';
  const sources=join(dir,'sources');await mkdir(sources);
  const row=async(id:string,atMs:number):Promise<Observation>=>{const views=[];for(const direction of ['front','left','right']){const bytes=Buffer.from(id+direction),path=join(sources,id+'-'+direction+'.png');await writeFile(path,bytes);views.push({id,direction,path,sha256:createHash('sha256').update(bytes).digest('hex')});}return {id,atMs,views};};
- let service:SpatialMemoryService|undefined,calls=0;
+ let service:SpatialMemoryService|undefined,calls=0,sawSupplied=false,sawRejection=false;
  try{
   const request=async(input:any)=>{
    calls++;
    const id=input.data.current.id;
    if(id==='q3')return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'A',reason:'first',sourceIds:[id],regionChangeEvidence:['first']},hypotheses:[],unresolved:[],relations:[]}}},usage};
-   const placeId=input.data.runtimeContext.previousRegion?.placeId;
-   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId,name:'A',reason:'same',sourceIds:[id]},hypotheses:[],unresolved:[],relations:[]}}},usage};
+   const rt=input.data.runtimeContext,placeId=rt.previousRegion?.placeId;
+   if(!sawSupplied){sawSupplied=true;return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId,name:'A',reason:'same but no citation',sourceIds:[id]},hypotheses:[],unresolved:[],relations:[]}}},usage};}
+   if(!sawRejection){assert.equal(rt.lastToolResult.kind,'historical-evidence-inspection');assert.ok(rt.inspectedIds.includes('q3'),'supplied historical window must be inspected');sawRejection=true;return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'known',placeId,name:'A',reason:'same but still no citation',sourceIds:[id]},hypotheses:[],unresolved:[],relations:[]}}},usage};}
+   const rejection=JSON.stringify(rt.feedback?.error??rt.lastToolResult);assert.match(rejection,/Known identity requires/);
+   return {output:{tool:'memory_add',arguments:{assessment:{location:{status:'new',placeId:null,name:'B',reason:'different place after checking history',sourceIds:[id],regionChangeEvidence:['entered a different shop']},hypotheses:[],unresolved:[],relations:[]}}},usage};
   };
   const reasoner=await createPiSpatialReasoner(join(dir,'pi'),request,{judgmentDeadlineMs:60000});
-  service=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(r){return {summary:'facts '+r.id,details:['x']};}},{reasoner,windowMs:8000,busyPolicy:'skip-obsolete',maxPending:12});
+  service=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(r){return {summary:'facts '+r.id,details:['x']};}},{reasoner,windowMs:8000,busyPolicy:'queue',maxPending:12});
   for(let i=0;i<8;i++)await service.observe(await row('q'+i,i*2000));
   const p=await service.finishInput();
-  assert.equal(p.spatialStates,2);
+  assert.equal(p.spatialStates,2,JSON.stringify(p));
   assert.equal(p.skippedWindows,0);
   assert.equal(p.coveredObservations,8);
-  assert.ok(calls<=3,'one supply turn plus the auto-citation must replace the retry loop: '+calls);
+  assert.ok(calls<=4,'one supply + one rejected known + one new: '+calls);
+  assert.equal(sawSupplied,true);assert.equal(sawRejection,true);
  }finally{await service?.close().catch(()=>{});if(key===undefined)delete process.env.QWEN_API_KEY;else process.env.QWEN_API_KEY=key;await rm(dir,{recursive:true,force:true});}
 });
 

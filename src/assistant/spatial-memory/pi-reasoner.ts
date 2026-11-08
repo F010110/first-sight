@@ -61,7 +61,10 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    if((a.assessment?.location?.status as string)==='unknown'&&!a.assessment?.location?.boundary)throw Error('location.status: a bare unknown is not available. Assign this window to a place with known/new, or, when the window genuinely spans two regions, submit status unknown together with boundary.regions (two names) and placeId null. Put any other doubt in reason/unresolved.');
    const assessment=validateAssessment(a.assessment,input.row.id,inspected);
      if(assessment.relations.length||assessment.revisions?.length||assessment.placeUpdates?.length||assessment.memoryNotes?.length||assessment.placeRename)throw Error('Interim assessment cannot commit relations/revisions/place updates/notes/rename');
-   input.evaluate?.(assessment,{inspected,delivered:new Set(delivered.keys())});input.context.location=assessment.location;
+   // Read-only tools may carry a tentative assessment: identity and continuity are
+   // validated only on the final memory_add commit, so a known claim can still inspect
+   // the historical images it needs to justify itself.
+   input.context.location=assessment.location;
   }
     let result:any;try{result=await run(a,invocation);}catch(error){const message=String(error);
      // Optional fields must not cost a full model turn. A malformed relation, note or rename is
@@ -74,23 +77,10 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
       const repaired=structuredClone(a);if(repaired.assessment?.location)delete repaired.assessment.location.contextRefs;
       result=await run(repaired,invocation);lastToolResult={kind:'context-refs-dropped',reason:message.slice(0,240)};
      }else if(name==='memory_add'&&/Known identity requires/i.test(message)){
-      // The validator lists the platform's own historical candidates for the claimed place.
-      // Inspect one, ask a compact repair call which of them support the claim, then commit.
-      const match=message.match(/Historical source candidates for this place: (\[[^\]]*\])/);
-      let candidates:string[]=[];try{candidates=match?JSON.parse(match[1]??'[]'):[];}catch{}
-      const pending=candidates.filter((id:string)=>typeof id==='string'&&!inspected.has(id)).slice(0,1);
-      const target=pending[0]??candidates[0];
-      if(!target)throw error;
-      const imagesForRepair=await input.inspect([target]);inspected.add(target);
-      let chosen:string[]=[target];
-      try{
-       const repairedAnswer=await request({phase:'identity',prompt:'You previously submitted a known place identity and the validator rejected its citation. The candidate observation IDs below are historical sources of the claimed place and their images are attached. Return only JSON {"sourceIds":["..."]} containing only candidate IDs that visibly support the claimed place. If none support it, return {"sourceIds":[]}.',data:{current:{id:input.row.id,atMs:input.row.atMs},claimedPlaceId:a.assessment.location.placeId,error:message,candidates:[target]},images:imagesForRepair,includeUsage:true});
-       const answer=(repairedAnswer as any)?.output??repairedAnswer;
-       if(Array.isArray(answer?.sourceIds))chosen=answer.sourceIds.filter((id:unknown):id is string=>typeof id==='string'&&id===target);
-       if(!chosen.length)chosen=[target];
-      }catch{}
-      const repaired=structuredClone(a);repaired.assessment.location.sourceIds=[...new Set([...(repaired.assessment.location.sourceIds??[]),...chosen])];
-      result=await run(repaired,invocation);lastToolResult={kind:'known-support-inspected',observationIds:chosen,note:'A listed historical source was inspected and cited; identity is not accepted automatically.'};
+      // No auto-citation: return the rejection so the model can cite the historical image
+      // it actually inspected, or submit a different place.
+      result={kind:'known-identity-rejected',error:message,note:'No source was auto-cited. Cite an inspected historical source of the claimed place, or submit new with regionChangeEvidence / a boundary transition.'};
+      lastToolResult=result;
      }else throw error;}return {content:asText(result),details:{},...(result&&typeof result==='object'&&result.terminate===true?{terminate:true}:{})};}});
  const timeline=tool('memory_timeline','Paginated committed history previews; previews are navigation, not proof.',Type.Object({afterMs:Type.Optional(Type.Number({minimum:0})),beforeMs:Type.Optional(Type.Number({minimum:0})),cursor:Type.Optional(Type.Integer({minimum:0}))}),async a=>{
   const input=requireCurrent(),after=a.afterMs??0,before=a.beforeMs??input.row.atMs,cursor=a.cursor??0;
@@ -141,47 +131,39 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
  });
   const record=tool('memory_add','Atomically add a complete-window assessment and sourced notes. The database manages place/visit/IDs. Optional rename:{name,reason,sourceIds} updates the name of a confirmed known place without changing its identity or past records; match location.name and include current source. Do not rename on unknown/boundary/new. A persistent place may cover continuous station interior; use an accurate evolving name. A visible old landmark does not establish current occupancy. Never copy historical features into current reasons.',Type.Object({assessment:assessmentSchema,notes:Type.Optional(Type.Array(Type.Object({text:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}),{maxItems:6})),rename:Type.Optional(Type.Object({name:Type.String({minLength:1,maxLength:240}),reason:Type.String({minLength:1,maxLength:800}),sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:12})}))}),async(a,invocation)=>{
    const input=requireCurrent();
-   // A KNOWN claim may cite historical sources it has already read but not yet looked at.
-   // Deliver those originals once per judgment instead of only rejecting the call;
-   // identity is still not accepted and the next turn must re-assess with the pixels.
-   if(historicalSupplies<3&&a.assessment?.location?.status==='known'&&Array.isArray(a.assessment.location.sourceIds)){
-    const cited=a.assessment.location.sourceIds as string[];
-    // After the platform has supplied and the model has seen its place's historical window,
-    // a repeated known claim only lacks the citation. Add that inspected source; the identity
-    // was already re-asserted by the model with the pixels in context.
-    if(historicalSupplies>0){
-     const claimed=a.assessment.location.placeId as string|null;
-     const support=[...delivered.entries()].find(([id,record])=>id!==input.row.id&&inspected.has(id)&&record.location.placeId===claimed)?.[0];
-     if(support&&!cited.includes(support)){a.assessment.location.sourceIds=[...cited,support];cited.push(support);}
+   // A non-adjacent known claim is a revisit hypothesis. Before it can commit, give the
+   // same agent the claimed place's newest prior window alongside the current window.
+   // The agent compares specific layout/signage and must cite the inspected source;
+   // nothing is auto-cited and a different place must be submitted as new.
+   if(historicalSupplies<2&&a.assessment?.location?.status==='known'&&a.assessment.location.placeId){
+    const claimed=a.assessment.location.placeId as string;
+    const location=a.assessment.location;
+    const cited=Array.isArray(location.sourceIds)?location.sourceIds as string[]:[];
+    const pending=cited.filter((id:string)=>id!==input.row.id&&delivered.has(id)&&!inspected.has(id)).slice(0,3);
+    if(pending.length){
+     historicalSupplies++;
+     const originals=await input.inspect(pending);for(const id of pending)inspected.add(id);
+     images=[...(input.windowViews??input.row.views),...originals];
+     lastToolResult={kind:'historical-evidence-inspection',placeId:claimed,observationIds:pending,imageCount:originals.length,note:'The cited historical sources were supplied as images with the current window. Cite one of these exact observation IDs in location.sourceIds if they support the claim; a different place must be submitted as new. No identity was accepted automatically.'};
+     return lastToolResult;
     }
-    // Only when there is no already-inspected historical support for this claim.
-    if(!cited.some(id=>id!==input.row.id&&inspected.has(id))){
-     const pending=cited.filter(id=>id!==input.row.id&&delivered.has(id)&&!inspected.has(id)).slice(0,3);
-     if(pending.length){
+    const contextRefs=Array.isArray(location.contextRefs)?location.contextRefs as string[]:[];
+    const contextSupport=contextRefs.some(id=>[...input.context.recent,...input.context.anchors].some(r=>r.observationId===id&&((r.assessment?.location?.placeId??(r as any).location?.placeId)===claimed)));
+    const hasCited=cited.some((id:string)=>id!==input.row.id&&inspected.has(id));
+    if(!hasCited&&!contextSupport){
+     const prior=input.history.filter(r=>r.location?.placeId===claimed&&r.observationId!==input.row.id);
+     const record=prior.at(-1);
+     if(record&&!inspected.has(record.observationId)){
       historicalSupplies++;
-      const originals=await input.inspect(pending);for(const id of pending)inspected.add(id);
-      images=[...input.row.views,...originals];
-      lastToolResult={kind:'historical-evidence-inspection',observationIds:pending,imageCount:originals.length,note:'The historical sources cited for this known place are now supplied as images. Cite one of these exact observation IDs in location.sourceIds if they support the claim: '+JSON.stringify(pending)+'. No identity was accepted automatically.'};
-      return lastToolResult;
-     }
-     // The agent claims a known place but has no delivered/inspected support at all.
-     // Supply the newest stored window of THAT place once, then require a real re-judgment.
-     const claimed=a.assessment.location.placeId as string|null;
-     const profile=claimed?input.readPlace?.(claimed,0,0) as {visits?:Array<{windows:HistoryRecord[]}>}|null|undefined:undefined;
-     if(claimed&&!profile)throw Error('assessment.location.placeId: '+JSON.stringify(claimed)+' is not an existing place. Use memory_place/memory_timeline with a real ID, or submit unknown/boundary; do not invent or splice UUIDs.');
-     const window=profile?.visits?.flatMap(v=>v.windows).filter(w=>w.observationId!==input.row.id).at(-1);
-     if(window){
-      historicalSupplies++;
-      for(const member of window.window?.observations??[])delivered.set(member.id,window);
-      const target=window.observationId;
-      const originals=await input.inspect([target]);delivered.set(target,window);inspected.add(target);
-      images=[...input.row.views,...originals];
-      lastToolResult={kind:'historical-evidence-inspection',observationIds:[target],placeId:claimed,imageCount:originals.length,note:'No delivered support existed for this known place, so its newest stored window was supplied as images. Cite '+JSON.stringify([target])+' in location.sourceIds if it supports the claim; nothing was accepted automatically.'};
+      const originals=await input.inspect([record.observationId]);
+      delivered.set(record.observationId,record);
+      inspected.add(record.observationId);
+      images=[...(input.windowViews??input.row.views),...originals];
+      lastToolResult={kind:'historical-evidence-inspection',placeId:claimed,observationIds:[record.observationId],imageCount:originals.length,note:'Newest prior window of the claimed place supplied with the current window. Compare layout, signage and distinctive objects. If it is a different place, submit new with regionChangeEvidence; if it is the same, cite this observation ID in location.sourceIds. No identity was accepted automatically.'};
       return lastToolResult;
      }
     }
    }
-   if(a.assessment?.location?.status==='known'&&historicalSupplies>=2&&!a.assessment.location.sourceIds?.some((id:string)=>id!==input.row.id&&inspected.has(id)))throw Error('Do not submit known for this window again: no inspected historical source supports that place. Choose new (with region-change evidence) or, if the window truly spans two regions, unknown with boundary.regions.');
    // A transition (unknown + boundary) stays legal; a bare unknown is not an answer.
    if((a.assessment?.location?.status as string)==='unknown'&&!a.assessment?.location?.boundary)throw Error('location.status: a bare unknown is not available. Assign this window to a place with known/new, or, when the window genuinely spans two regions, submit status unknown together with boundary.regions (two names) and placeId null. Put any other doubt in reason/unresolved.');
    const assessment=validateAssessment({...a.assessment,memoryNotes:a.notes??[],...a.rename?{placeRename:a.rename}:{}} as Assessment,input.row.id,inspected);
