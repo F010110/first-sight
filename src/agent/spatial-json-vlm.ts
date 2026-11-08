@@ -4,10 +4,10 @@ import {createHash} from 'node:crypto';
 import {boundedNetworkRetry} from './bounded-network-retry.js';
 import {SpatialOutputProtocolError} from './spatial-protocol-retry.js';
 export interface SpatialJsonImage {id:string;direction:string;path:string;sha256:string}
-export interface SpatialJsonRequest {phase:'perception'|'identity';prompt:string;data:unknown;images:SpatialJsonImage[];windowSources?:Array<{id:string;atMs:number}>;responseMode?:'text';textOnlyIdentity?:boolean;includeUsage?:boolean;metadata?:{referenceBindings:Array<{alias:string;originalId:string;kind:'source'|'group'}>}}
+export interface SpatialJsonRequest {phase:'perception'|'identity';prompt:string;data:unknown;images:SpatialJsonImage[];signal?:AbortSignal|undefined;windowSources?:Array<{id:string;atMs:number}>;responseMode?:'text';textOnlyIdentity?:boolean;includeUsage?:boolean;metadata?:{referenceBindings:Array<{alias:string;originalId:string;kind:'source'|'group'}>}}
 /** Separate stateless request adapter. Metadata receipts never embed Base64. */
-export function spatialJsonVlm(root:string,maxCalls=96,maxEstimatedUSD=.4,resumeLedger=false,maxOutputTokens=1000,options:{extendedEvaluationImages?:boolean}={}){
-  if(!Number.isInteger(maxOutputTokens)||maxOutputTokens<100||maxOutputTokens>2000)throw Error('Invalid output budget');
+export function spatialJsonVlm(root:string,maxCalls=96,maxEstimatedUSD=.4,resumeLedger=false,maxOutputTokens=1000,options:{extendedEvaluationImages?:boolean;extendedOutput?:boolean}={}){
+  if(!Number.isInteger(maxOutputTokens)||maxOutputTokens<100||maxOutputTokens>(options.extendedOutput?8000:2000))throw Error('Invalid output budget');
   let calls=0,cost=0,unknownCallsReserved=0,loadPromise:Promise<void>|null=null,ledgerWrite=Promise.resolve();
   const load=()=>loadPromise??=(async()=>{
    try{
@@ -16,7 +16,8 @@ export function spatialJsonVlm(root:string,maxCalls=96,maxEstimatedUSD=.4,resume
     calls=previous.calls;cost=previous.estimatedUSD;unknownCallsReserved=previous.unknownCallsReserved;
    }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
   })();
-  return async(input:SpatialJsonRequest):Promise<unknown>=>{
+   return async(input:SpatialJsonRequest):Promise<unknown>=>{
+    input.signal?.throwIfAborted();
    if(resumeLedger)await load();
    const reservation=(128000*.1356+maxOutputTokens*.4584)/1e6;
    // A denied request must not consume/create the next paid request directory.
@@ -56,11 +57,13 @@ export function spatialJsonVlm(root:string,maxCalls=96,maxEstimatedUSD=.4,resume
    await writeFile(join(directory,'input.json'),JSON.stringify(input,null,2));
      const payload=JSON.stringify({model:'qwen3.8-flash',enable_thinking:false,temperature:0,max_tokens:maxOutputTokens,...input.responseMode==='text'?{}:{response_format:{type:'json_object'}},messages:[{role:'user',content}]});
     timing.preparationMs=performance.now()-started;
-    const {response,text}=await boundedNetworkRetry(async attempt=>{
+     const {response,text}=await boundedNetworkRetry(async attempt=>{
+      if(input.signal?.aborted)throw new DOMException('Request cancelled before network retry','AbortError');
      if(attempt>0){if(calls>=maxCalls||cost+reservation>maxEstimatedUSD)throw Error('Separated request budget exhausted');calls++;cost+=reservation;unknownCallsReserved++;}
     await writeFile(join(directory,`reservation-${attempt}.json`),JSON.stringify({attempt,model:'qwen3.8-flash',enableThinking:false,reservedInputTokens:128000,maxOutputTokens,reservation}));await ledger();
      const sent=performance.now();
-     const response=await fetch(base.replace(/\/$/,'')+'/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:payload,signal:AbortSignal.timeout(120000)});
+      input.signal?.throwIfAborted();
+      const response=await fetch(base.replace(/\/$/,'')+'/chat/completions',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:payload,signal:input.signal?AbortSignal.any([input.signal,AbortSignal.timeout(120000)]):AbortSignal.timeout(120000)});
      const headers=performance.now();const text=await response.text();
      timing.attempts.push({attempt,headersMs:headers-sent,bodyMs:performance.now()-headers});
      return {response,text};
