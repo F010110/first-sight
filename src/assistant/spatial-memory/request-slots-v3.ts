@@ -3,7 +3,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 
 /** No queue: two background lanes cannot consume the reserved question slot. */
 export class V3RequestSlots{
- private active={perception:0,spatial:0,question:0};
+ private active={perception:0,spatial:0,compaction:0,question:0};
  constructor(private cooldownMs=30000){if(!Number.isFinite(cooldownMs)||cooldownMs<0||cooldownMs>300000)throw Error('Invalid cooldown');}
  wrap(lane:keyof V3RequestSlots['active'],request:V3Request):V3Request{
   return async input=>{

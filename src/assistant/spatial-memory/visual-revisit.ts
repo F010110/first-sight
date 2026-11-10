@@ -96,3 +96,14 @@ export function unavailablePlaceMatcher(error='visual matcher not configured'):P
 }
 
 export type {RevisitImage};
+
+/** ULVN-inspired matching only: no map, belief filter, semantic identity or navigation. */
+export function ulvnPlaceMatcher(options:{python?:string;timeoutMs?:number;imagesPerPlace?:number;script?:string}={}):PlaceMatcher{
+ const python=options.python??process.env.ULVN_PYTHON;
+ const bridge=imageIndexPlaceMatcher(options.script??resolve('scripts','media','ulvn_match.py'),{...python?{python}:{},timeoutMs:options.timeoutMs??120000,imagesPerPlace:options.imagesPerPlace??6});
+ return {async match(current,candidates){
+  const result=await bridge.match(current,candidates);
+  if(result.ok&&result.results.some(r=>!current.some(q=>q.path===r.queryPath)))return {ok:false,best:null,nearest:null,results:[],method:'megaloc-lightglue-ransac',error:'ULVN matcher returned a foreign query image'};
+  return {...result,method:'megaloc-lightglue-ransac'};
+ },async close(){await bridge.close?.();}};
+}

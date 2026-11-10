@@ -59,9 +59,9 @@ export class BatchSpatialMemory{
     if(local){const n=Number(local[1]);if(n>=i||segments[n]?.assessment.location.status!=='new')throw Error('Local place reference must refer to an earlier new segment');if(!loc.sourceIds.some(id=>segments[n]!.observationIds.includes(id)))throw Error('Local revisit requires prior segment evidence');}
     else{
      if(!this.store.placeProfile(loc.placeId!))throw Error('Unknown persistent place');
-     const fromContext=loc.contextRefs?.some(id=>refs.some(r=>r.observationId===id&&r.assessment.location.placeId===loc.placeId));
+     const fromContext=loc.contextRefs?.some(id=>refs.some(r=>r.observationId===id&&r.assessment.location.placeId===loc.placeId))||refs.some(r=>r.assessment.location.placeId===loc.placeId);
      const fromHistory=loc.sourceIds.some(id=>delivered.has(id)&&inspected.has(id)&&byId.get(id)?.location.placeId===loc.placeId);
-     if(!fromContext&&!fromHistory)throw Error('Known identity requires current Context support or inspected and cited history of that place');
+     if(!fromContext&&!fromHistory)throw Error(`Known identity requires current Context support or inspected and cited history of that place. Historical source candidates for this place: ${JSON.stringify([...byId.entries()].filter(([,record])=>record.location.placeId===loc.placeId).map(([id])=>id))}. Cite an inspected historical observation ID in location.sourceIds; merely inspecting without citing is insufficient.`);
     }
    }
    // Current facts may support attribution. Historical claims still require actual

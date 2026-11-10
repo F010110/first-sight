@@ -213,7 +213,7 @@ test('known revisit without inspected support receives newest and candidate hist
   return response('memory_finish',{});
  };
  const app=await createLayeredApplication(join(f.root,'run'),{perception,spatial,question},{matcher});
- try{app.observe(f.row(0));await app.finishInput();app.observe(f.row(20));await app.finishInput();assert.equal(app.progress().spatialVersion,2,JSON.stringify(app.progress()));assert.equal(supplied,true);assert.equal(calls,5);}finally{await app.close();rmSync(f.root,{recursive:true,force:true});}
+ try{app.observe(f.row(0));await app.finishInput();app.observe(f.row(100));await app.finishInput();assert.equal(app.progress().spatialVersion,2,JSON.stringify(app.progress()));assert.equal(supplied,true);assert.equal(calls,5);}finally{await app.close();rmSync(f.root,{recursive:true,force:true});}
 });
 
 test('optional relation schema errors are dropped locally and the location commits without another model turn',async()=>{

@@ -14,7 +14,7 @@ export type SpatialBatchProcessor={
  lateRepairs?():Array<{batchId:string;sequences:number[];versions:number[];missing:string[]}>;
  repairVersions?(jobId:string):number[]|undefined;
 };
-export type LayeredRuntimeOptions={perceptionMs:number;spatialMs:number;maxBufferedObservations:number;perceptionBudget:LaneBudget;spatialBudget:LaneBudget;requestTimeoutMs?:number;spatialTaskTimeoutMs?:number};
+export type LayeredRuntimeOptions={perceptionMs:number;spatialMs:number;maxBufferedObservations:number;perceptionBudget:LaneBudget;spatialBudget:LaneBudget;requestTimeoutMs?:number;spatialTaskTimeoutMs?:number;coalesce?:boolean};
 
 /** Durable, independently scheduled lanes. Only one spatial pump may be alive,
  * including all tool continuations, transaction finalization and recovery. */
@@ -66,7 +66,7 @@ export class LayeredMemoryRuntime{
   const rows=this.archive.buffered(lane),ms=lane==='perception'?this.options.perceptionMs:this.options.spatialMs,cap=lane==='perception'?Math.min(8,this.options.maxBufferedObservations):this.options.maxBufferedObservations;
   let group:ArchivedEvidence[]=[];
   const flush=()=>{if(group.length){const budget=lane==='perception'?this.options.perceptionBudget:this.options.spatialBudget;
-   const merged=lane==='spatial'&&!!this.spatialTask&&this.archive.coalesceSpatial(group,cap,budget.maxSpanMs);
+   const merged=lane==='spatial'&&this.options.coalesce!==false&&!!this.spatialTask&&this.archive.coalesceSpatial(group,cap,budget.maxSpanMs);
    if(!merged){if(this.archive.jobs(lane).length+this.archive.jobs(lane,'running').length>=budget.maxTasks)for(const row of group)this.archive.reject(row.sequence,lane,lane+'-task-overload');else this.archive.makeJob(lane,group);}group=[];}};
   for(const row of rows){
    if(group.length&&(Math.floor(group[0]!.observation.atMs/ms)!==Math.floor(row.observation.atMs/ms)||group[0]!.observation.recordingId!==row.observation.recordingId||row.sequence!==group.at(-1)!.sequence+1||group.length>=cap))flush();

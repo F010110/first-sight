@@ -198,9 +198,10 @@ def main() -> int:
         candidate_similarity = 0.0
         for query in queries:
             outcome = match(query["feature"], (keypoints, descriptors), norm, ratio)
-            candidate_similarity = max(candidate_similarity, global_similarity(query["global"], candidate_global))
-            if candidate_best is None or outcome["inliers"] > candidate_best["inliers"]:
-                candidate_best = {**outcome, "queryPath": query["path"]}
+            pair_similarity = global_similarity(query["global"], candidate_global)
+            candidate_similarity = max(candidate_similarity, pair_similarity)
+            if candidate_best is None or (outcome["inliers"], pair_similarity) > (candidate_best["inliers"], candidate_best["similarity"]):
+                candidate_best = {**outcome, "queryPath": query["path"], "similarity": pair_similarity}
         if candidate_best is None:
             candidate_best = {"inliers": 0, "good": 0, "ratio": 0.0, "bbox": None, "queryPath": None}
         entry = {"id": candidate.get("id"), "path": candidate.get("path"), "similarity": candidate_similarity, **candidate_best}

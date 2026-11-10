@@ -18,7 +18,11 @@ export type SpatialTimingEvent={type:'archived'|'window-sealed'|'perception-star
 export type AgentCheckpoint={sessionId:string;tipId:string;skillVersions:Record<string,string>};
 export type ContinuityReference={observationId:string;placeId:string;name:string;uncertain:boolean};
 export type JudgeInput={row:Observation;facts:Facts|null;context:WorkingContext;history:HistoryRecord[];expectedVersion?:number;previousRegion?:ContinuityReference;window?:SpatialWindow;windowViews?:SpatialJsonImage[];revisit?:{status:'ok'|'unavailable';method:string;consideredPlaces:number;excludedPreviousPlaceId:string|null;error:string|null;limit:number;candidates:Array<{placeId:string;name:string;matchedObservationId:string;matchedAtMs:number;imageIds:string[]}>;note:string};readPlace?:(id:string,cursor?:number,noteCursor?:number)=>unknown;evaluate?:(assessment:Assessment,evidence:JudgeEvidence)=>void;inspect:(ids:string[])=>Promise<SpatialJsonImage[]>;commit:(assessment:Assessment,evidence:JudgeEvidence)=>Promise<StoredState>;feedback?:string|null};
-export interface SpatialReasoner{judge(input:JudgeInput):Promise<Assessment>;recover?(states:StoredState[]):Promise<void>;close():Promise<void>}
+export type BatchSegment={observationIds:string[];assessment:Assessment};
+/** One model call over a 40s facts-first batch. Segments must cover every
+ * observation exactly once in order; each segment becomes one durable window. */
+export type JudgeBatchInput={id:string;rows:Observation[];facts:Record<string,Facts|null>;context:WorkingContext;history:HistoryRecord[];expectedVersion?:number;previousRegion?:ContinuityReference;skippedBefore?:SkippedWindow[];missingFactIds?:string[];gapBefore?:boolean;revisit?:JudgeInput['revisit'];preloadImages?:SpatialJsonImage[];preloadNote?:string;readPlace?:(id:string,cursor?:number,noteCursor?:number)=>unknown;inspect:(ids:string[])=>Promise<SpatialJsonImage[]>;commitSegments:(segments:BatchSegment[],evidence:JudgeEvidence)=>Promise<StoredState[]>;feedback?:string|null};
+export interface SpatialReasoner{judge(input:JudgeInput):Promise<Assessment>;judgeBatch?(input:JudgeBatchInput):Promise<BatchSegment[]>;recover?(states:StoredState[]):Promise<void>;close():Promise<void>}
 export type HistoryRecord={observationId:string;atMs:number;facts:Facts|null;location:Location;locationDecision?:Location['status'];version:number;visitId?:string|null;provisionalVisitId?:string|null;window?:SpatialWindow};
 export type WorkingContext={current:{id:string;atMs:number};location:Location|null;recent:StoredState[];anchors:StoredState[];retrieved:HistoryRecord[];summary?:{policy:string;text:string;sourceIds:string[];throughAtMs:number};unresolved?:string[]};
 export type SpatialAction=
@@ -37,14 +41,14 @@ export function validateFacts(value:Facts):Facts{
  if(!value||typeof value.summary!=='string'||!value.summary.trim()||value.summary.length>2400||!Array.isArray(value.details)||!value.details.length||value.details.length>24||value.details.some(s=>typeof s!=='string'||!s.trim()||s.length>1200))throw Error('Invalid independent facts');
  return structuredClone(value);
 }
-export function validateAssessment(a:Assessment,current:string,inspected:ReadonlySet<string>){
+export function validateAssessment(a:Assessment,current:string,inspected:ReadonlySet<string>,deliveredFacts:ReadonlySet<string>=inspected){
   const l=a?.location;
   if(!l)throw Error('Missing location: assessment.location is a required object');
   if(!Array.isArray(l.sourceIds))throw Error('assessment.location.sourceIds: required array of inspected observation IDs');
-  const unavailable=l.sourceIds.filter(id=>!inspected.has(id));
-  if(unavailable.length)throw Error(`assessment.location.sourceIds: undelivered observation IDs ${JSON.stringify(unavailable)}; inspected IDs are ${JSON.stringify([...inspected])}. Inspect sources before citing them, or reassess using delivered evidence.`);
+  const unavailable=l.sourceIds.filter(id=>!deliveredFacts.has(id));
+  if(unavailable.length)throw Error(`assessment.location.sourceIds: undelivered observation IDs ${JSON.stringify(unavailable)}; delivered fact IDs are ${JSON.stringify([...deliveredFacts])}; inspected image IDs are ${JSON.stringify([...inspected])}. Inspect sources before citing them, or reassess using delivered evidence.`);
   if(!l.sourceIds.includes(current))throw Error(`assessment.location.sourceIds: must include current observation ID ${JSON.stringify(current)}`);
- if(!l||!['new','known','unknown'].includes(l.status)||typeof l.name!=='string'||l.name.length>240||typeof l.reason!=='string'||!l.reason.trim()||l.reason.length>1600||!Array.isArray(l.sourceIds)||!l.sourceIds.includes(current)||new Set(l.sourceIds).size!==l.sourceIds.length||l.sourceIds.some(id=>!inspected.has(id)))throw Error('Missing location or undelivered spatial evidence');
+ if(!l||!['new','known','unknown'].includes(l.status)||typeof l.name!=='string'||l.name.length>240||typeof l.reason!=='string'||!l.reason.trim()||l.reason.length>1600||!Array.isArray(l.sourceIds)||!l.sourceIds.includes(current)||new Set(l.sourceIds).size!==l.sourceIds.length||l.sourceIds.some(id=>!deliveredFacts.has(id)))throw Error('Missing location or undelivered spatial evidence');
  if(l.status==='known'?(typeof l.placeId!=='string'||!l.placeId):l.placeId!==null)throw Error('Invalid location identity');
  if(l.status!=='unknown'&&!l.name.trim())throw Error('Known/new location needs a human-readable name');
   if(l.contextRefs!==undefined&&(!Array.isArray(l.contextRefs)||l.contextRefs.length>10||new Set(l.contextRefs).size!==l.contextRefs.length||l.contextRefs.some(r=>typeof r!=='string'||!r)))throw Error('Invalid working context references');

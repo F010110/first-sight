@@ -161,17 +161,22 @@ class ImageIndex:
         sift_pairs = 0
         for place_id, items in shortlist:
             best = None
+            global_best = None
             for image, similarity in items[: max(1, sift_images_per_place)]:
                 candidate_features = self._sift(str(image.get("path") or ""))
                 for query_index, query_feature in enumerate(query_features):
                     sift_pairs += 1
                     outcome = match_pair(query_feature, candidate_features, self.norm, ratio)
-                    if best is None or outcome["inliers"] > best["inliers"]:
+                    pair_similarity = global_similarity(query_globals[query_index], self._global(str(image.get("path") or "")))
+                    pair_entry = {"id": place_id, "path": image.get("path"), "queryPath": queries[query_index].get("path"), "similarity": pair_similarity, **outcome}
+                    if global_best is None or pair_similarity > global_best["similarity"]:
+                        global_best = pair_entry
+                    if best is None or (outcome["inliers"], pair_similarity) > (best["inliers"], best["similarity"]):
                         best = {
                             "id": place_id,
                             "path": image.get("path"),
                             "queryPath": queries[query_index].get("path"),
-                            "similarity": similarity,
+                            "similarity": pair_similarity,
                             "inliers": outcome["inliers"],
                             "good": outcome["good"],
                             "ratio": outcome["ratio"],
@@ -179,6 +184,8 @@ class ImageIndex:
                         }
             if best is not None:
                 results.append(best)
+            if global_best is not None and (best is None or (global_best["path"], global_best["queryPath"]) != (best["path"], best["queryPath"])):
+                results.append(global_best)
         results.sort(key=lambda entry: (entry["inliers"], entry["similarity"]), reverse=True)
         return {
             "ok": True,

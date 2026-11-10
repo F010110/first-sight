@@ -12,10 +12,10 @@ export function validateBatchCoverage(batch:SpatialEvidenceBatch,segments:Spatia
  let cursor=0;
  for(const segment of segments){
   if(!segment.observationIds.length)throw Error('Empty spatial segment');
-  for(const id of segment.observationIds)if(id!==ids[cursor++])throw Error('Segments must cover batch exactly once in order');
+  for(const id of segment.observationIds)if(id!==ids[cursor++])throw Error(`Segments must cover batch exactly once in order. Expected next observation ID: ${JSON.stringify(ids[cursor-1])}; received ${JSON.stringify(id)}. Full batch IDs: ${JSON.stringify(ids)}`);
   const location=segment.assessment.location;
   if(!location||!location.sourceIds.includes(segment.observationIds.at(-1)!))throw Error('Segment must cite its tail source');
  }
- if(cursor!==ids.length)throw Error('Incomplete spatial batch coverage');
+ if(cursor!==ids.length)throw Error(`Incomplete spatial batch coverage. Covered ${cursor}/${ids.length}; remaining: ${JSON.stringify(ids.slice(cursor))}`);
  return structuredClone(segments);
 }

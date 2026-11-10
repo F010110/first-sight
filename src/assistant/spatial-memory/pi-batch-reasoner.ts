@@ -19,16 +19,39 @@ type Proposal={batch:SpatialEvidenceBatch;segments:SpatialBatchSegment[];checkpo
 const digest=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 export async function createPiBatchProcessor(root:string,memory:BatchSpatialMemory,request:V3Request,matcher:PlaceMatcher,options:{resume?:boolean;fastMs?:number;maxPlaces?:number;limit?:number;imagesPerPlace?:number;maxTurns?:number;requestTimeoutMs?:number;prefetch?:boolean}={}){
  await mkdir(join(root,'proposals'),{recursive:true});
- const evidence=new V3EvidenceTools(memory,memory.archive);let current:SpatialEvidenceBatch|null=null,revisit:any[]=[],proposed:SpatialBatchSegment[]|null=null,proposal:Proposal|null=null,historicalSupplies=0;
+ const evidence=new V3EvidenceTools(memory,memory.archive);let current:SpatialEvidenceBatch|null=null,revisit:any[]=[],proposed:SpatialBatchSegment[]|null=null,proposal:Proposal|null=null,historicalSupplies=0,knownRejections=0;
  let role:Awaited<ReturnType<typeof createV3Session>>;
  const pathFor=(id:string)=>join(root,'proposals',digest(id)+'.json');
- const propose:AgentHarnessTool<undefined>={name:'memory_propose',label:'memory_propose',description:'Validate and stage a complete ordered multi-segment assessment. Database commit follows real Session finalization; no partial memory mutation.',replay:'safe',parameters:Type.Object({segments:Type.Array(Type.Object({observationIds:Type.Array(Type.String(),{minItems:1}),assessment:Type.Unknown()}),{minItems:1,maxItems:64})}),execute:async(_id,args)=>{
-  if(!current)throw Error('No active batch');const segments=(args as any).segments as SpatialBatchSegment[];
+ const locationSchema=Type.Object({
+  status:Type.Union([Type.Literal('new'),Type.Literal('known'),Type.Literal('unknown')]),
+  placeId:Type.Union([Type.String(),Type.Null()]),
+  name:Type.String({maxLength:240}),
+  reason:Type.String({minLength:1,maxLength:1600}),
+  sourceIds:Type.Array(Type.String(),{minItems:1,maxItems:64}),
+  contextRefs:Type.Optional(Type.Array(Type.String(),{maxItems:10})),
+  boundary:Type.Optional(Type.Object({regions:Type.Array(Type.String({maxLength:240}),{minItems:2,maxItems:2})})),
+  regionChangeEvidence:Type.Optional(Type.Array(Type.String({minLength:1,maxLength:400}),{maxItems:4}))
+ });
+ const assessmentSchema=Type.Object({
+  location:locationSchema,
+  hypotheses:Type.Array(Type.String({maxLength:800}),{maxItems:8}),
+  unresolved:Type.Array(Type.String({maxLength:800}),{maxItems:8}),
+  relations:Type.Optional(Type.Unknown()),
+  revisions:Type.Optional(Type.Unknown()),
+  placeUpdates:Type.Optional(Type.Unknown()),
+  memoryNotes:Type.Optional(Type.Unknown()),
+  placeRename:Type.Optional(Type.Unknown())
+ });
+ const segmentsSchema=Type.Array(Type.Object({observationIds:Type.Array(Type.String(),{minItems:1,maxItems:64}),assessment:assessmentSchema}),{minItems:1,maxItems:64});
+ const normalizeAssessment=(value:any)=>{const a=structuredClone(value??{});a.location=a.location??{};a.hypotheses=Array.isArray(a.hypotheses)?a.hypotheses:[];a.unresolved=Array.isArray(a.unresolved)?a.unresolved:[];a.relations=Array.isArray(a.relations)?a.relations:[];return a;};
+ const normalizeSegments=(value:any)=>((Array.isArray(value)?value:[]).map((segment:any)=>({observationIds:Array.isArray(segment?.observationIds)?segment.observationIds:[],assessment:normalizeAssessment(segment?.assessment)})));
+ const propose:AgentHarnessTool<undefined>={name:'memory_propose',label:'memory_propose',description:'Validate and stage a complete ordered multi-segment assessment. Database commit follows real Session finalization; no partial memory mutation.',replay:'safe',parameters:Type.Object({segments:segmentsSchema}),execute:async(_id,args)=>{
+  if(!current)throw Error('No active batch');const segments=normalizeSegments((args as any).segments) as SpatialBatchSegment[];
   memory.validate(current,segments,evidence.delivered,evidence.inspected);proposed=structuredClone(segments);
   return {content:toolText({kind:'validated-proposal',batchId:current.id,segments:segments.length,committed:false}),details:{},terminate:true};
  }};
- const add:AgentHarnessTool<undefined>={name:'memory_add',label:'memory_add',description:'Atomically commit the complete ordered segment assessments and return actual durable place IDs, visit IDs and versions. Continue using read-only tools afterward; call memory_finish when finished.',replay:'safe',parameters:Type.Object({segments:Type.Array(Type.Object({observationIds:Type.Array(Type.String(),{minItems:1}),assessment:Type.Unknown()}),{minItems:1,maxItems:64})}),execute:async(_id,args,_update,_context,invocation)=>{
-  if(!current)throw Error('No active batch');let segments=(args as any).segments as SpatialBatchSegment[];
+ const add:AgentHarnessTool<undefined>={name:'memory_add',label:'memory_add',description:'Atomically commit the complete ordered segment assessments and return actual durable place IDs, visit IDs and versions. Continue using read-only tools afterward; call memory_finish when finished.',replay:'safe',parameters:Type.Object({segments:segmentsSchema}),execute:async(_id,args,_update,_context,invocation)=>{
+  if(!current)throw Error('No active batch');let segments=normalizeSegments((args as any).segments) as SpatialBatchSegment[];
   // Idempotent tool replay: the database effect may already be committed even
   // though the Pi tool result was not durably written before a crash.
   const already=memory.receipt(current.id);
@@ -39,21 +62,20 @@ export async function createPiBatchProcessor(root:string,memory:BatchSpatialMemo
   if(!memory.receipt(current.id)&&historicalSupplies<3){
    const context=memory.context(current),refs=[...context.recent,...context.anchors],history=memory.history(current.observations[0]!.atMs-0.000001),byId=new Map<string,HistoryRecord>();
    for(const record of history){byId.set(record.observationId,record);for(const member of record.window?.observations??[])byId.set(member.id,record);}
-   const imageIds:string[]=[];let claimedPlace:string|null=null;
+   const historicalIds=new Set<string>(),currentIds=new Set<string>(),batchIds=new Set(current.observations.map(o=>o.id));let claimedPlace:string|null=null;
    for(const segment of segments){
     const a=segment.assessment,loc=a.location,tail=segment.observationIds.at(-1)!;
     if(loc.status!=='known'||!loc.placeId)continue;
-    const contextSupport=loc.contextRefs?.some(id=>refs.some(r=>r.observationId===id&&r.assessment.location.placeId===loc.placeId));
+    const contextSupport=loc.contextRefs?.some(id=>refs.some(r=>r.observationId===id&&r.assessment.location.placeId===loc.placeId))||refs.some(r=>r.assessment.location.placeId===loc.placeId);
     const inspectedSupport=loc.sourceIds.some(id=>id!==tail&&evidence.inspected.has(id)&&byId.get(id)?.location.placeId===loc.placeId);
     if(contextSupport||inspectedSupport)continue;
-    const ids=new Set<string>();
-    for(const id of loc.sourceIds)if(id!==tail&&evidence.delivered.has(id)&&!evidence.inspected.has(id))ids.add(id);
-    const prior=history.filter(r=>r.location.placeId===loc.placeId);if(prior.at(-1))ids.add(prior.at(-1)!.observationId);
-    for(const range of revisit)for(const candidate of range.candidates??[])if(candidate.placeId===loc.placeId){ids.add(candidate.matchedObservationId);for(const imageId of candidate.imageIds??[])if(imageId!==candidate.matchedObservationId)ids.add(imageId);}
-    if(!ids.size)continue;
-    claimedPlace=loc.placeId;for(const id of [...ids,...segment.observationIds.slice(-1)])if(!imageIds.includes(id)&&imageIds.length<3)imageIds.push(id);
+    currentIds.add(tail);
+    for(const id of loc.sourceIds)if(id!==tail&&evidence.delivered.has(id)&&!evidence.inspected.has(id)&&!batchIds.has(id))historicalIds.add(id);
+    const prior=history.filter(r=>r.location.placeId===loc.placeId);if(prior.at(-1)&&!batchIds.has(prior.at(-1)!.observationId))historicalIds.add(prior.at(-1)!.observationId);
+    for(const range of revisit)for(const candidate of range.candidates??[])if(candidate.placeId===loc.placeId){if(!batchIds.has(candidate.matchedObservationId))historicalIds.add(candidate.matchedObservationId);for(const imageId of candidate.imageIds??[])if(imageId!==candidate.matchedObservationId&&!batchIds.has(imageId))historicalIds.add(imageId);}
+    claimedPlace=loc.placeId;
    }
-   if(claimedPlace&&imageIds.length){historicalSupplies++;evidence.images=memory.originals(imageIds);return {content:toolText({kind:'historical-evidence-inspection',placeId:claimedPlace,observationIds:imageIds,imageCount:evidence.images.length,note:'Newest prior window and matcher candidate windows were supplied with the current segment tail. Compare specific layout/signage; cite an inspected historical source if it supports the same place, or submit a different identity. No identity was accepted automatically.'}),details:{}};}
+   if(claimedPlace&&historicalIds.size){historicalSupplies++;const historical=[...historicalIds].slice(0,3),current=[...currentIds].slice(0,3),imageIds=[...current,...historical];evidence.candidates(historical);evidence.images=memory.originals(imageIds);return {content:toolText({kind:'historical-evidence-inspection',placeId:claimedPlace,historicalObservationIds:historical,currentObservationIds:current,imageCount:evidence.images.length,note:'Historical prior/candidate windows and the current segment tail were supplied. Compare specific layout/signage; cite an inspected HISTORICAL observation ID if it supports the same place, or submit a different identity. No identity was accepted automatically.'}),details:{}};}
   }
   const checkpoint:AgentCheckpoint={sessionId:role.session.metadata.id,tipId:invocation.invocationId,skillVersions:role.skillVersions};
   const p:Proposal={batch:structuredClone(current),segments:structuredClone(segments),checkpoint,delivered:[...evidence.delivered],inspected:[...evidence.inspected]};
@@ -67,8 +89,11 @@ export async function createPiBatchProcessor(root:string,memory:BatchSpatialMemo
    if(/Undelivered working context reference/i.test(message)){
     const repaired=segments.map(segment=>{const assessment=structuredClone(segment.assessment);delete assessment.location.contextRefs;return {...segment,assessment};});states=commitOnce(repaired);segments=repaired;
    }else if(/relations|revisions|memory notes|placeUpdates|rename/i.test(message)){
-    const repaired=segments.map(segment=>{const assessment=structuredClone(segment.assessment);assessment.relations=[];assessment.memoryNotes=[];delete assessment.placeUpdates;delete assessment.revisions;delete assessment.placeRename;return {...segment,assessment};});
-    try{states=commitOnce(repaired);segments=repaired;}catch(second){console.error('ADDERR2',String(second).slice(0,220));throw second;}
+    const repaired=segments.map(segment=>{const assessment=structuredClone(segment.assessment);assessment.relations=[];assessment.memoryNotes=[];delete assessment.placeUpdates;delete assessment.revisions;delete assessment.placeRename;return {...segment,assessment};});states=commitOnce(repaired);segments=repaired;
+   }else if(/Known identity requires/i.test(message)){
+    knownRejections++;
+    if(knownRejections>=2)throw Error('Known identity is unavailable for this batch after repeated missing evidence. Submit a new place with positive regionChangeEvidence, a boundary transition, or an unknown segment where facts are missing; do not repeat the same known claim.');
+    throw Error(message+' This known claim was rejected; cite one of the listed historical observation IDs that you actually inspected, or submit new/boundary.');
    }else throw error;
   }
   proposal={...p,segments:structuredClone(segments)};proposed=structuredClone(segments);
@@ -78,9 +103,9 @@ export async function createPiBatchProcessor(root:string,memory:BatchSpatialMemo
  const finish:AgentHarnessTool<undefined>={name:'memory_finish',label:'memory_finish',description:'Finish this spatial operation after memory_add has succeeded and you have completed any desired retrieval or checks.',replay:'safe',parameters:Type.Object({}),execute:async()=>{
   if(!current||!memory.receipt(current.id))throw Error('Commit spatial judgment with memory_add before finishing');return {content:toolText({kind:'spatial-operation-finished',batchId:current.id}),details:{},terminate:true};
  }};
- const revise:AgentHarnessTool<undefined>={name:'memory_revise',label:'memory_revise',description:'Append an evidence-backed current-place assessment, name/notes/attributes/relations or historical reassignments after memory_add. Keeps the current place and visit; returns the real new version. You may continue investigating.',replay:'safe',parameters:Type.Object({assessment:Type.Unknown()}),execute:async(_id,args,_update,_context,invocation)=>{
+ const revise:AgentHarnessTool<undefined>={name:'memory_revise',label:'memory_revise',description:'Append an evidence-backed current-place assessment, name/notes/attributes/relations or historical reassignments after memory_add. Keeps the current place and visit; returns the real new version. You may continue investigating.',replay:'safe',parameters:Type.Object({assessment:assessmentSchema}),execute:async(_id,args,_update,_context,invocation)=>{
   if(!current||!memory.receipt(current.id))throw Error('memory_add must commit this batch before maintenance');
-  const assessment=(args as any).assessment,checkpoint:AgentCheckpoint={sessionId:role.session.metadata.id,tipId:invocation.invocationId,skillVersions:role.skillVersions};
+  const assessment=normalizeAssessment((args as any).assessment),checkpoint:AgentCheckpoint={sessionId:role.session.metadata.id,tipId:invocation.invocationId,skillVersions:role.skillVersions};
   const old=await invocation.getMemo('spatial-maintenance') as any;
   const memo=old??{batchId:current.id,assessment,checkpoint,delivered:[...evidence.delivered],inspected:[...evidence.inspected]};
   if(memo.batchId!==current.id||digest(memo.assessment)!==digest(assessment)||digest(memo.checkpoint)!==digest(checkpoint))throw Error('Spatial maintenance memo mismatch');

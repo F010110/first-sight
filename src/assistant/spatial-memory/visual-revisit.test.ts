@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {imageIndexPlaceMatcher} from './visual-revisit.js';
+import {imageIndexPlaceMatcher,ulvnPlaceMatcher} from './visual-revisit.js';
 
 test('persistent matcher bounds in-flight work, times out the real process and closes pending requests',async()=>{
  const root=mkdtempSync(join(tmpdir(),'matcher-timeout-')),script=join(root,'hung.cjs');writeFileSync(script,"require('node:readline').createInterface({input:process.stdin}).on('line',()=>{});");
@@ -21,4 +21,18 @@ test('content-deduplicated image paths cannot steal another place candidate sour
  writeFileSync(script,"require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);if(r.op==='close')process.exit(0);console.log(JSON.stringify({id:r.id,ok:true,best:null,nearest:null,results:r.places.map(p=>({id:p.placeId,path:p.members[0].path,inliers:3,similarity:0.1}))}));});");
  const matcher=imageIndexPlaceMatcher(script,{python:process.execPath,timeoutMs:5000}),image={direction:'front',path:'same-content-addressed-image',sha256:'same'};
  try{const result=await matcher.match([{...image,id:'current'}],[{placeId:'place-a',image:{...image,id:'old-a'}},{placeId:'place-b',image:{...image,id:'old-b'}}]);assert.deepEqual(result.results.map(r=>[r.placeId,r.observationId]),[['place-a','old-a'],['place-b','old-b']]);}finally{await matcher.close!();rmSync(root,{recursive:true,force:true});}
+});
+
+test('ULVN bridge retains exact current/history image pair and backend metrics',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'ulvn-pair-')),script=join(root,'reply.cjs');
+ writeFileSync(script,"require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);if(r.op==='close')process.exit(0);console.log(JSON.stringify({id:r.id,ok:true,results:r.places.map(p=>({id:p.placeId,path:p.members[0].path,queryPath:r.queries[0].path,inliers:29,similarity:0.8})),stats:{geometryPairs:1}}));});");
+ const matcher=ulvnPlaceMatcher({script,python:process.execPath,timeoutMs:5000});
+ try{const result=await matcher.match([{id:'middle',direction:'right',path:'current.png',sha256:'x'}],[{placeId:'place',image:{id:'old',direction:'left',path:'old.png',sha256:'y'}}]);assert.equal(result.ok,true);assert.equal(result.method,'megaloc-lightglue-ransac');assert.equal(result.results[0]!.queryPath,'current.png');assert.equal(result.results[0]!.observationId,'old');assert.equal(result.stats!.geometryPairs,1);}finally{await matcher.close?.();rmSync(root,{recursive:true,force:true});}
+});
+
+test('ULVN dependency failure is unavailable, never silently replaced by legacy scores',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'ulvn-failure-')),script=join(root,'reply.cjs');
+ writeFileSync(script,"require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);if(r.op==='close')process.exit(0);console.log(JSON.stringify({id:r.id,ok:false,error:'No module named torch'}));});");
+ const matcher=ulvnPlaceMatcher({script,python:process.execPath,timeoutMs:5000}),image={id:'a',direction:'front',path:'a',sha256:'x'};
+ try{const r=await matcher.match([image],[{placeId:'p',image}]);assert.equal(r.ok,false);assert.equal(r.method,'megaloc-lightglue-ransac');assert.match(r.error!,/torch/);}finally{await matcher.close?.();rmSync(root,{recursive:true,force:true});}
 });
