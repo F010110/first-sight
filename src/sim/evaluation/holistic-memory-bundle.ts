@@ -35,11 +35,18 @@ export async function prepareHolisticBundle(runArg:string,referencePath:string,o
   const covered=(db.prepare('SELECT observation_id FROM window_members').all() as any[]).map(r=>r.observation_id);
   const skippedMembers=(db.prepare('SELECT observation_id FROM skipped_members').all() as any[]).map(r=>r.observation_id);
   const counts=Object.fromEntries(['checkpoints','checkpoint_bindings','revisions','skipped_windows'].map(t=>[t,db.prepare('SELECT count(*) AS n FROM '+t).get()!.n]));
-  const skippedWindows=Number(counts.skipped_windows);
+   const skippedWindows=Number(counts.skipped_windows);
+   let schedulingUnits=states.length;
+   if(complete.batchMs){
+    const batches=db.prepare('SELECT raw FROM spatial_batches').all().map(r=>JSON.parse(r.raw as string));
+    const versions=batches.flatMap(b=>b.segmentVersions as number[]);
+    if(batches.length!==complete.plannedBatches-skippedWindows||new Set(versions).size!==states.length||versions.length!==states.length||states.some(s=>!versions.includes(s.version))||batches.some(b=>!b.segmentVersions.length||b.segmentVersions.some((v:number,i:number)=>{const s=states.find(s=>s.version===v);return !s||s.window?.batch?.id!==b.batchId||s.window.batch.segmentIndex!==i||s.window.batch.segmentCount!==b.segmentVersions.length;})))throw Error('Incomplete batch/segment coverage');
+    schedulingUnits=batches.length;
+   }
   const fullCoverage=skippedWindows===0&&skippedMembers.length===0&&covered.length===observations.length;
   // A run may explicitly skip whole windows (busy/budget). Those observations are durable evidence
   // but have no location claim; they are excluded from judged-window scores, never treated as missing data.
-  if(observations.length!==complete.planned||states.length+skippedWindows!==complete.plannedStates||counts.checkpoints!==states.length||counts.checkpoint_bindings!==states.length||covered.length!==complete.coveredObservations||covered.length+skippedMembers.length!==observations.length||new Set(covered).size!==covered.length||new Set(skippedMembers).size!==skippedMembers.length||covered.some(id=>skippedMembers.includes(id))||observations.some(o=>!o.facts)||observations.some(o=>!covered.includes(o.id)&&!skippedMembers.includes(o.id))||covered.some(id=>!observations.some(o=>o.id===id))||skippedMembers.some(id=>!observations.some(o=>o.id===id)))throw Error('Incomplete observation/window/checkpoint coverage');
+   if(observations.length!==complete.planned||schedulingUnits+skippedWindows!==complete.plannedStates||counts.checkpoints!==states.length||counts.checkpoint_bindings!==states.length||covered.length!==complete.coveredObservations||covered.length+skippedMembers.length!==observations.length||new Set(covered).size!==covered.length||new Set(skippedMembers).size!==skippedMembers.length||covered.some(id=>skippedMembers.includes(id))||observations.some(o=>!o.facts)||observations.some(o=>!covered.includes(o.id)&&!skippedMembers.includes(o.id))||covered.some(id=>!observations.some(o=>o.id===id))||skippedMembers.some(id=>!observations.some(o=>o.id===id)))throw Error('Incomplete observation/window/checkpoint coverage');
   const reference=[];
   for(const [i,o] of observations.entries()){
    const source=publicInput.observations[i],f=sample.frames.find((f:any)=>f.id===o.id);

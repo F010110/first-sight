@@ -3,8 +3,12 @@ import {join,resolve} from 'node:path';
 import {spatialJsonVlm} from '../../agent/spatial-json-vlm.js';
 import {sha} from './holistic-memory-bundle.js';
 import {selectRevisitImagePairs} from '../../assistant/spatial-memory/revisit-candidates.js';
+import {replaceProbeEvidence} from './revisit-probe-evidence.js';
 const [dest,confirm,resumeFlag]=process.argv.slice(2),resume=resumeFlag==='--resume',timeline=resumeFlag==='--timeline',identitycheck=resumeFlag==='--identitycheck',corroborate=resumeFlag==='--corroborate',paircheck=resumeFlag==='--paircheck'||corroborate||identitycheck,supply=resumeFlag==='--supply'||paircheck;
 const backendComparison=process.argv.includes('--backend-comparison');
+const finalTestArg=process.argv.find(f=>f.startsWith('--final-test=')),finalTest=finalTestArg?Number(finalTestArg.split('=')[1]):0;
+if(finalTestArg&&(![1,2].includes(finalTest)||!backendComparison||!identitycheck||resume))throw Error('Final test requires --identitycheck --backend-comparison, test=1|2, no resume');
+const repetitions=finalTest?1:3,requestCap=finalTest?18:60,costCapUSD=finalTest?0.8:2,thinkingBudget=finalTest===2?1024:128;
 const arms=backendComparison?['legacy','ulvn']:identitycheck?['surface-versus-place-identity']:corroborate?['pair-plus-place-anchor']:paircheck?['explicit-pair-checks']:supply?['paired-continuity-supply']:timeline?['timeline-evidence-3pairs']:['baseline-3pairs','evidence-bound-3pairs'];
 if(!dest||confirm!=='--confirm-paid')throw Error('Usage: repeat-revisit-probe NEW-OUTPUT --confirm-paid');
 const out=resolve(dest),base='run/unioncity-batch40-paired-budget-sweep-v2';
@@ -12,14 +16,14 @@ const bundle=JSON.parse(await readFile('run/unioncity-batch40-realtime813-v1-gro
 const owner=new Map<string,string|null>();for(const s of bundle.states)for(const id of s.memberIds)owner.set(id,s.assessment.location.placeId);
 const cases=[{slot:'0022',request:'0001',target:'10536570-e9df-4e37-9148-6160cc8269b3',ids:[322,323,324]},{slot:'0025',request:'0004',target:'f9607749-034c-4749-9276-44c2724cbcd5',ids:[376,377,378,379,380]},{slot:'0051',request:'0007',target:'10536570-e9df-4e37-9148-6160cc8269b3',ids:[675,676,677,678,679,680]}];
 if(!resume){await mkdir(out,{recursive:false});
-await writeFile(join(out,'plan.json'),JSON.stringify({arms,repetitions:3,cases,turnCap:3,requestCap:60,costCapUSD:2,outputTokens:timeline?3000:2000,scope:'Frozen-context bounded protocol/inspect simulator. No durable commits or production Pi Session restoration. Targets are evaluation-only and never sent to model. All attempts retained; finite experiment, not test-until-lucky.',bundleSHA256:sha(await readFile('run/unioncity-batch40-realtime813-v1-grounded-review-v1/bundle.json'))},null,2),{flag:'wx'});}
+await writeFile(join(out,'plan.json'),JSON.stringify({arms,repetitions,cases,turnCap:3,requestCap,costCapUSD,thinkingBudget,finalTest,outputTokens:timeline||supply?3000:2000,scope:'Frozen-context bounded protocol/inspect simulator. No durable commits or production Pi Session restoration. Targets are evaluation-only and never sent to model. All attempts retained; finite experiment, not test-until-lucky.',bundleSHA256:sha(await readFile('run/unioncity-batch40-realtime813-v1-grounded-review-v1/bundle.json'))},null,2),{flag:'wx'});}
 else {const plan=JSON.parse(await readFile(join(out,'plan.json'),'utf8'));if(plan.bundleSHA256!==sha(await readFile('run/unioncity-batch40-realtime813-v1-grounded-review-v1/bundle.json')))throw Error('Changed frozen bundle');}
 let interruptedFailure:string|null=null;
 if(resume){const slots=(await readdir(join(out,'requests'))).filter(n=>/^\d+$/.test(n)).sort();const last=slots.at(-1);if(last)try{interruptedFailure=await readFile(join(out,'requests',last,'failure.json'),'utf8');}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}}
-const request=spatialJsonVlm(join(out,'requests'),60,2,true,timeline||supply?3000:2000,{thinkingBudget:128,extendedOutput:timeline||supply});
+const request=spatialJsonVlm(join(out,'requests'),requestCap,costCapUSD,true,timeline||supply?3000:2000,{thinkingBudget,extendedOutput:timeline||supply});
 const results:any[]=[];
 if(backendComparison)await writeFile(join(out,'backend-comparison-policy.json'),JSON.stringify({backends:arms,matcherResults:'run/ulvn-visual-prefix-probe-v1/*-1.json',pairBudget:3,initialImageBudget:8,selection:'Shared production selectRevisitImagePairs; same batch-head/tail front views',prompt:'Same identitycheck instructions for both backends',limitations:'Frozen-context tool simulator, not persistent Pi/SQLite system test; target recovery is not semantic correctness',semanticAuditRequired:true},null,2),{flag:'wx'});
-for(let repetition=0;repetition<3;repetition++)for(const c of cases)for(const arm of repetition%2?[...arms].reverse():arms){
+for(let repetition=0;repetition<repetitions;repetition++)for(const c of cases)for(const arm of repetition%2?[...arms].reverse():arms){
  const outcomePath=join(out,`${c.slot}-${arm}-${repetition}.json`);
  if(resume){try{results.push(JSON.parse(await readFile(outcomePath,'utf8')));continue;}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}}
  if(interruptedFailure){const failure={slot:c.slot,arm,repetition,valid:false,recoveredMembers:0,targetMembers:c.ids.length,fullTargetRecovery:false,turns:1,elapsedMs:null,segments:[],trace:[{error:interruptedFailure}],note:'Interrupted trial preserved as failure; not rerun'};await writeFile(outcomePath,JSON.stringify(failure,null,2),{flag:'wx'});results.push(failure);interruptedFailure=null;continue;}
@@ -39,7 +43,7 @@ for(let repetition=0;repetition<3;repetition++)for(const c of cases)for(const ar
     if(!probe.result.ok)throw Error('Unavailable frozen matcher result: '+probePath);
     selected=selectRevisitImagePairs(probe.recall,batchIds,3);
     if(!selected.length)throw Error('No matched image pairs: '+probePath);
-    rt.revisit=probe.recall;
+    const replacement=replaceProbeEvidence(input.prompt,probe.recall,selected);input.prompt=replacement.prompt;rt.revisit=replacement.revisit;
     const tails=[batchIds[0],batchIds.at(-1)].map(id=>bundle.observations.find((o:any)=>o.id===id)?.views.find((v:any)=>v.direction==='front')).filter(Boolean);
     input.images=[...selected.flatMap((p:any)=>[p.current,p.historical]),...tails].filter((v:any,i:number,a:any[])=>a.findIndex(x=>x.path===v.path)===i);
     rt.inspectedIds=[...new Set(input.images.map((v:any)=>v.id))];rt.deliveredIds=[...new Set([...batchIds,...input.images.map((v:any)=>v.id)])];

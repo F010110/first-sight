@@ -18,6 +18,8 @@ description: Consolidate facts-first time batches into durable spatial memory wi
 
 ## 多片段与提交
 
+严格按工具协议输出，每次只返回一个JSON对象：{"tool":"工具名","arguments":{...}}。不要直接返回segments或assessment裸对象。location必须使用status（new/known/unknown），不是type；known必须有placeId，new/unknown的placeId为null；reason/sourceIds必填。
+
 使用memory_add提交segments，每项{observationIds:[连续输入ID],assessment:{location,hypotheses,unresolved,relations,...可选属性/修订/记忆笔记/改名}}。所有输入ID必须按原顺序覆盖恰好一次，不重叠不漏项；先核对段首段尾，不把40秒强行归为一个地点，不虚构转场时刻。location.sourceIds必须含该段尾ID，当前事实可引用；历史身份来源必须本轮实际inspect并引用。未知视角不等于新地点，单独unknown不作最终答案；真实跨两侧可unknown+boundary.regions（两侧暂名，placeId=null），不认证连通或已进入。
 
 known的placeId须复制真实ID；new为null由库生成。同批先新建后又返回，可以known引用"batch:0"（0基的先前new片段序号），同时引用那段来源；不能引用未来片段或虚构ID。不为更新名字新建地点。

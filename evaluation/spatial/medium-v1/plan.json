@@ -1,0 +1,23 @@
+{
+  "schema": "spatial-evaluation-plan-v1",
+  "inputPath": "run/unioncity-questions90-v2-run1/input.json",
+  "inputSHA256": "78735bd7e0b9ab61aaa27c984471db6a75751b616730ce900df113cb78c3ec40",
+  "mode": "source-state-replay",
+  "seed": {
+    "run": "run/unioncity-spatial-diagnostic-ledger-probe-v3",
+    "checkpointsSHA256": "16fa1a2f774c1770c06086a967c2a7a64cbd9ae2266c618f7bb4aba45d74e041",
+    "throughIndex": 2
+  },
+  "observationIds": [
+    "rerender-v2-000163", "rerender-v2-000164",
+    "rerender-v2-000179", "rerender-v2-000180",
+    "rerender-v2-000249", "rerender-v2-000250",
+    "rerender-v2-000385",
+    "rerender-v2-000792", "rerender-v2-000793", "rerender-v2-000794"
+  ],
+  "probeIds": ["rerender-v2-000385", "rerender-v2-000793"],
+  "maxInferenceCalls": 64,
+  "maxReviewCalls": 12,
+  "reviewSpecPath": "evaluation/spatial/medium-v1/evaluation-only/review-spec.json",
+  "reviewSpecSHA256": "e35aa61f8feec022b02a6af86fb6d8c08b751eba0d6481ff7c2b52992db2e564"
+}

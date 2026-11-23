@@ -12,6 +12,6 @@ if(truth.publicInputSha256!==undefined){
  if(truth.publicInputSha256!==frozen.inputSha256)throw Error('Private labels do not bind to this public inference input');
  sourceBinding='private-label-public-input-hash-matched';
 }
-const evaluatorBytes=await readFile(new URL('../agent/spatial-acceptance.js',import.meta.url));
+const evaluatorBytes=await readFile(new URL('../../agent/spatial-acceptance.js',import.meta.url));
 const report={...spatialAcceptance(truth.labels,run.predictions,truth.revisits),runId:run.runId,sourceBinding,evaluatorSha256:createHash('sha256').update(evaluatorBytes).digest('hex'),labelsSha256:createHash('sha256').update(labelsRaw).digest('hex'),predictionsSha256:createHash('sha256').update(predictionRaw).digest('hex')};
 await writeFile(outputPath,JSON.stringify(report,null,2),{flag:'wx'});console.log(JSON.stringify({runId:run.runId,passed:report.passed,gates:report.gates}));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -29,6 +29,13 @@ test('incomplete packages and duplicated views are not advertised as ready',asyn
   assert.equal((await listSimulations(f.samples)).length,1);
   await writeFile(join(f.base,'observations.jsonl'),JSON.stringify({id:'o',sourceAtMs:0,frames:[f.frames[0],{...f.frames[0],view:'left'}]}));
   assert.equal((await listSimulations(f.samples)).length,0);
+ }finally{await rm(f.root,{recursive:true,force:true});}
+});
+test('TartanGround replay preserves its own source without projecting private metadata',async()=>{
+ const f=await fixture();try{
+  const path=join(f.base,'manifest.json'),manifest=JSON.parse(await readFile(path,'utf8'));
+  manifest.source='TartanGround';await writeFile(path,JSON.stringify(manifest));
+  assert.equal((await readSimulation(f.samples,'sampleA')).provenance.source,'TartanGround');
  }finally{await rm(f.root,{recursive:true,force:true});}
 });
 test('one HTTP origin serves home, real/synthetic playback and images without exposing oracle or starting a session',async()=>{

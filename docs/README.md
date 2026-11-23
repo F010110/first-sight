@@ -1,12 +1,18 @@
 # 文档导航
 
-> **本页下方为历史导航。架构及设计理由：[active/README.md](active/README.md)；当前状态、待办和维护：[TODO.md](../TODO.md)。旧同步区的“当前”不代表现在，原始证据与代码仍保留。**
-
-信息同步总入口：**[项目信息同步区](project-sync/README.md)**（最新决策、实现、数据、成绩、未知项及交接规则；用于区分下面的历史版本信息）。
-
-当前版本：**[V2 / v2.0.0](./releases/v2.0.0.md)**，单摄校园网实时原型，接受已知断联限制。历史[v1.2.0](./releases/v1.2.0.md)、v1.0.0手机基线及v1.1测试记录保留，不覆盖。
+更新：2026-11-10。**架构及设计理由：[active/README.md](active/README.md)；当前状态、待办和维护：[TODO.md](../TODO.md)。** 两者职责分开，旧同步区不再维护为“最新决策”入口。
 
 ## 当前入口
+
+- [项目总览与运行导航](../README.md)
+- [空间记忆架构契约](active/01-spatial-memory-architecture.md) · [设计理由](active/02-design-rationale.md) · [实施计划](active/03-implementation-plan.md)
+- [ULVN实验接入状态](notes/ulvn-integration-status-2026-11-10.md) · [v10失败原因及测试混杂](notes/ulvn-v10-cause-analysis-2026-11-10.md)
+- [ULVN安装和匹配对照](../scripts/media/ULVN-MATCHER.md)
+- [工作区整理记录与剩余工作](maintenance/workspace-review-2026-11-10.md) · [仓库组织规则](maintenance/repository-layout.md)
+
+## 既有产品手册与历史入口
+
+以下按各自日期/实现链路理解，不代表当前空间研究全部已完成。旧[项目信息同步区](project-sync/README.md)只供溯源。**[v2.0.0](releases/v2.0.0.md)**是单摄校园网原型发布，不是当前空间记忆完成声明。
 
 - [更真实样本：建议11官方来源核查、已收集资产与接入边界](research/realistic-sample-source-survey-2026-10-24.md)
 
@@ -65,8 +71,9 @@
 
 |目录|用途|
 |---|---|
-|`application/`|手机试用、产品与应用记忆设计；本轮不接入三视图研究|
-|`research/`|当前视觉记忆架构、功能清单与评测协议|
+|`active/`|有效架构、理由和实施方向；当前进度仍看TODO|
+|`application/`|各代应用设计与操作手册，按日期/链路区分|
+|`research/`|研究资料与各阶段协议，不覆盖active；不是独立根research工作区|
 |`archive/`|早期设计、方法对照和失败诊断，仅作历史参考|
 |`experiments/`|数值报告与标签，原路径保留便于复现|
 |`references/`|参考资料与评审|

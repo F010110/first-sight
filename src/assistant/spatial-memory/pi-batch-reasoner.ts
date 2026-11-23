@@ -14,13 +14,17 @@ import type {PlaceMatcher} from './revisit-candidates.js';
 import {recallBatchRevisits} from './batch-revisit.js';
 import {sessionBranch} from './pi-checkpoint.js';
 import {spatialStateHead} from './context-projection.js';
+import {directBatchRevisits,enforceDirectRevisits} from './direct-revisit-batch.js';
+import type {UlvnRevisitDecision} from './ulvn-revisit-decision.js';
 
 type Proposal={batch:SpatialEvidenceBatch;segments:SpatialBatchSegment[];checkpoint:AgentCheckpoint;delivered:string[];inspected:string[]};
 const digest=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
-export async function createPiBatchProcessor(root:string,memory:BatchSpatialMemory,request:V3Request,matcher:PlaceMatcher,options:{resume?:boolean;fastMs?:number;maxPlaces?:number;limit?:number;imagesPerPlace?:number;maxTurns?:number;requestTimeoutMs?:number;prefetch?:boolean}={}){
+export async function createPiBatchProcessor(root:string,memory:BatchSpatialMemory,request:V3Request,matcher:PlaceMatcher,options:{resume?:boolean;fastMs?:number;maxPlaces?:number;limit?:number;imagesPerPlace?:number;maxTurns?:number;requestTimeoutMs?:number;prefetch?:boolean;directRevisit?:boolean}={}){
  await mkdir(join(root,'proposals'),{recursive:true});
  const evidence=new V3EvidenceTools(memory,memory.archive);let current:SpatialEvidenceBatch|null=null,revisit:any[]=[],proposed:SpatialBatchSegment[]|null=null,proposal:Proposal|null=null,historicalSupplies=0,knownRejections=0;
  let role:Awaited<ReturnType<typeof createV3Session>>;
+ let direct:{previousPlaceId:string|null;decisions:UlvnRevisitDecision[]}={previousPlaceId:null,decisions:[]};
+ const authorize=(segments:SpatialBatchSegment[])=>{if(options.directRevisit)enforceDirectRevisits(segments,direct.decisions,direct.previousPlaceId);};
  const pathFor=(id:string)=>join(root,'proposals',digest(id)+'.json');
  const locationSchema=Type.Object({
   status:Type.Union([Type.Literal('new'),Type.Literal('known'),Type.Literal('unknown')]),
@@ -47,7 +51,7 @@ export async function createPiBatchProcessor(root:string,memory:BatchSpatialMemo
  const normalizeSegments=(value:any)=>((Array.isArray(value)?value:[]).map((segment:any)=>({observationIds:Array.isArray(segment?.observationIds)?segment.observationIds:[],assessment:normalizeAssessment(segment?.assessment)})));
  const propose:AgentHarnessTool<undefined>={name:'memory_propose',label:'memory_propose',description:'Validate and stage a complete ordered multi-segment assessment. Database commit follows real Session finalization; no partial memory mutation.',replay:'safe',parameters:Type.Object({segments:segmentsSchema}),execute:async(_id,args)=>{
   if(!current)throw Error('No active batch');const segments=normalizeSegments((args as any).segments) as SpatialBatchSegment[];
-  memory.validate(current,segments,evidence.delivered,evidence.inspected);proposed=structuredClone(segments);
+  authorize(segments);memory.validate(current,segments,evidence.delivered,evidence.inspected);proposed=structuredClone(segments);
   return {content:toolText({kind:'validated-proposal',batchId:current.id,segments:segments.length,committed:false}),details:{},terminate:true};
  }};
  const add:AgentHarnessTool<undefined>={name:'memory_add',label:'memory_add',description:'Atomically commit the complete ordered segment assessments and return actual durable place IDs, visit IDs and versions. Continue using read-only tools afterward; call memory_finish when finished.',replay:'safe',parameters:Type.Object({segments:segmentsSchema}),execute:async(_id,args,_update,_context,invocation)=>{
@@ -59,7 +63,8 @@ export async function createPiBatchProcessor(root:string,memory:BatchSpatialMemo
   // A non-adjacent known claim is a revisit hypothesis. Before commit, give the
   // same agent the claimed place newest window AND its matcher candidate windows
   // (plus any cited-but-uninspected sources). Nothing is auto-cited.
-  if(!memory.receipt(current.id)&&historicalSupplies<3){
+  authorize(segments);
+  if(!options.directRevisit&&!memory.receipt(current.id)&&historicalSupplies<3){
    const context=memory.context(current),refs=[...context.recent,...context.anchors],history=memory.history(current.observations[0]!.atMs-0.000001),byId=new Map<string,HistoryRecord>();
    for(const record of history){byId.set(record.observationId,record);for(const member of record.window?.observations??[])byId.set(member.id,record);}
    const historicalIds=new Set<string>(),currentIds=new Set<string>(),batchIds=new Set(current.observations.map(o=>o.id));let claimedPlace:string|null=null;
@@ -174,10 +179,13 @@ export async function createPiBatchProcessor(root:string,memory:BatchSpatialMemo
    }catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
    const recovered=await recoverCompletedProposal(batch);
    if(recovered){proposal=recovered;const file=pathFor(batch.id);await writeFile(file+'.tmp',JSON.stringify(recovered));await rename(file+'.tmp',file);return structuredClone(recovered.segments);}
-   revisit=await recallBatchRevisits(memory,batch,matcher,{fastMs:options.fastMs??6000,maxPlaces:options.maxPlaces??100,limit:options.limit??20,imagesPerPlace:options.imagesPerPlace??6},signal);
+    if(options.directRevisit){
+     direct=await directBatchRevisits(memory,batch,matcher,signal);
+     revisit=[];evidence.candidates(direct.decisions.map(d=>d.historicalObservationId));
+    }else revisit=await recallBatchRevisits(memory,batch,matcher,{fastMs:options.fastMs??6000,maxPlaces:options.maxPlaces??100,limit:options.limit??20,imagesPerPlace:options.imagesPerPlace??6},signal);
    for(const range of revisit)evidence.candidates(range.candidates.map((c:any)=>c.matchedObservationId));
    const revision=batch.revisionOfVersions;
-   const checkpoint=await role.prompt({role:'spatial-batch',batch,revisit,...revision?{revisionOfVersions:revision,revision:'late independent facts are now available. Reassess the original segments and append a revision; do not rewrite old snapshots or treat this as a new visit.'}:{},stateHead:spatialStateHead(memory.context(batch)),evidencePolicy:'Facts first; inspect current/historical originals as needed. Check revisits for every evidence range. No image is initially inspected. A coverage gap forbids assuming adjacent continuity.'},signal);
+    const checkpoint=await role.prompt({role:'spatial-batch',batch,revisit,...options.directRevisit?{revisitAuthority:{...direct,instruction:'ULVN alone decides non-continuous historical revisits. These are binding decisions, not candidates for your visual vote. Keep all normal spatial duties. Segment at detected identity changes and use the supplied real placeId; inspect/cite the supplied historical source for provenance, not to approve identity. No detected match is NOT evidence of new: keep normal continuity/new/boundary judgments. Without a binding decision you cannot choose another historical ID. No first-anchor requirement or continuity expiry.'}}:{},...revision?{revisionOfVersions:revision,revision:'late independent facts are now available. Reassess the original segments and append a revision; do not rewrite old snapshots or treat this as a new visit.'}:{},stateHead:spatialStateHead(memory.context(batch)),evidencePolicy:'Facts first; inspect current/historical originals as needed. Check revisits for every evidence range. No image is initially inspected. A coverage gap forbids assuming adjacent continuity.'},signal);
    if(proposal&&memory.receipt(batch.id))return structuredClone(proposal.segments);
    if(!proposed){const recovered=await recoverCompletedProposal(batch);if(!recovered)throw Error('Pi completed without spatial proposal');proposal=recovered;const file=pathFor(batch.id);await writeFile(file+'.tmp',JSON.stringify(recovered));await rename(file+'.tmp',file);return structuredClone(recovered.segments);}
    proposal={batch:structuredClone(batch),segments:proposed,checkpoint,delivered:[...evidence.delivered],inspected:[...evidence.inspected]};

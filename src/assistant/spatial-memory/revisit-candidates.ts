@@ -1,7 +1,7 @@
 export type RevisitMember={observationId:string;atMs:number;path:string;sha256:string;direction:string};
 export type RevisitPlace={placeId:string;name:string;members:RevisitMember[]};
 export type RevisitImage={id:string;direction:string;path:string;sha256:string};
-export type RevisitMatchEntry={placeId:string;observationId:string;path?:string;queryObservationId?:string;queryPath?:string;inliers:number;similarity:number};
+export type RevisitMatchEntry={placeId:string;observationId:string;path?:string;queryObservationId?:string;queryPath?:string;inliers:number;similarity:number;ratio?:number;queryDirection?:string;historicalDirection?:string;querySHA256?:string;historicalSHA256?:string};
 export type RevisitMatchResult={ok:boolean;best:RevisitMatchEntry|null;nearest:RevisitMatchEntry|null;results:RevisitMatchEntry[];error?:string;stats?:Record<string,unknown>;method?:'sift-ransac-plus-global-layout'|'megaloc-lightglue-ransac'};
 
 /** Local visual matcher (SIFT+RANSAC). Scores only propose candidates; they never accept identity. */

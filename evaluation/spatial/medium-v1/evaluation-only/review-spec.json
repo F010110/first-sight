@@ -1,0 +1,20 @@
+{
+  "schema": "spatial-review-spec-v1",
+  "split": "development",
+  "associations": [
+    {
+      "id": "known-revisit-385-71",
+      "currentId": "rerender-v2-000385",
+      "referenceIds": ["rerender-v2-000071", "rerender-v2-000180"],
+      "positiveTargetId": "rerender-v2-000071",
+      "expectation": "Development regression: front originals71/385 show matching green table, wood counter, noticeboard and empty shelving arrangement. Look for source71-backed revisit candidate; generic similarity with180 is not a substitute. Same visible room candidate is supported; exact building/path is not certified. Prepared before this new run, based on prior inspected originals."
+    },
+    {
+      "id": "uncertain-rooftop-793",
+      "currentId": "rerender-v2-000793",
+      "referenceIds": ["rerender-v2-000164", "rerender-v2-000250"],
+      "positiveTargetId": null,
+      "expectation": "Do not certify a connection to earlier ground-level interiors from shared red brick, trees or metal grids. Building identity/path is unknown, not a negative same-building label. Cautious description of similarity alone is acceptable."
+    }
+  ]
+}

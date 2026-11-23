@@ -12,6 +12,8 @@ import {CampusSource} from '../assistant/campus-source.js';
 import {PreparedMemory} from '../assistant/prepared-memory.js';
 import {QuestionAgent,QuestionMemoryService} from '../assistant/question-agent.js';
 import type {ObservationService} from '../assistant/contracts.js';
+import {createThreeAgentService} from '../assistant/three-agent-factory.js';
+import {ThreeAgentService} from '../assistant/three-agent-service.js';
 import {latestQuestionTimeline} from '../assistant/playback-timeline.js';
 
 /** Parse JPEG dimensions, without trusting browser-provided MIME/dimensions. */
@@ -246,21 +248,23 @@ export function desktopServer(runtime:AssistantRuntime,journal:FileJournal,root:
 
 async function main(){
  const enabled=process.argv.includes('--confirm-paid');
- if(process.argv.slice(2).some(a=>a!=='--confirm-paid'))throw Error('Only --confirm-paid is supported');
+  const threeAgent=process.argv.includes('--three-agent');
+  if(process.argv.slice(2).some(a=>!['--confirm-paid','--three-agent'].includes(a)))throw Error('Supported: --confirm-paid --three-agent');
  if(enabled&&(!process.env.QWEN_API_KEY||!process.env.QWEN_BASE_URL))throw Error('Missing Qwen configuration');
  const port=Number(process.env.FIRST_SIGHT_DESKTOP_PORT??8880);if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid desktop port');
  const root=resolve('run/assistant-desktop',new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));await mkdir(root,{recursive:true});
  const journal=new FileJournal(root);
  let preparedRoot=process.env.FIRST_SIGHT_PREPARED_MEMORY;
  if(!preparedRoot){try{for(const name of (await readdir(resolve('run/campus-spatial-memory'))).sort().reverse()){const candidate=resolve('run/campus-spatial-memory',name);try{await readFile(join(candidate,'complete.json'));preparedRoot=candidate;break;}catch{}}}catch{}}
- const prepared=preparedRoot?await PreparedMemory.open(resolve(preparedRoot)):null;
+  const prepared=!threeAgent&&preparedRoot?await PreparedMemory.open(resolve(preparedRoot)):null;
  const unavailable=()=>{throw Error('请先运行独立空间建模，完成后重启服务；问答不会自动重新建模。');};
- const memory:ObservationService=prepared?new QuestionMemoryService(prepared,new QuestionAgent(prepared,join(root,'question-requests'),enabled)):{async observe(){unavailable();},async question(){return unavailable();},discardPending(){},close(){}};
- const capabilities=assistantCapabilities(memory,enabled).map(capability=>!prepared&&['visual.current','memory.query','task.watch','task.find'].includes(capability.id)?{...capability,available:false,reason:'独立空间记忆尚未准备好，问答不触发空间建模。'}:capability);
- const runtime=new AssistantRuntime(new QwenPlanner(join(root,'dialogue-requests'),enabled),memory,journal,capabilities,enabled);
- await journal.append('session-created',{state:runtime.view(),root,preparedRoot:preparedRoot??null,modelEnabled:enabled,spatialModelCalls:0,questionBudgetUSD:.25,dialogueMaxCalls:64});
+  const memory:ObservationService=threeAgent?await createThreeAgentService(resolve(process.env.FIRST_SIGHT_THREE_AGENT_ROOT??join(root,'three-agent')),enabled):prepared?new QuestionMemoryService(prepared,new QuestionAgent(prepared,join(root,'question-requests'),enabled)):{async observe(){unavailable();},async question(){return unavailable();},discardPending(){},close(){}};
+  const capabilities=assistantCapabilities(memory,enabled).map(capability=>(!prepared&&!threeAgent&&['visual.current','memory.query','task.watch','task.find'].includes(capability.id))||(threeAgent&&['task.watch','task.find'].includes(capability.id))?{...capability,available:false,reason:threeAgent?'三Agent实验尚未接入持续目标关注。':'独立空间记忆尚未准备好，问答不触发空间建模。'}:capability);
+  const planner=new QwenPlanner(join(root,'dialogue-requests'),enabled);
+  const runtime=new AssistantRuntime(memory instanceof ThreeAgentService?{plan:(...args)=>memory.scheduleInteraction(()=>planner.plan(...args))}:planner,memory,journal,capabilities,enabled);
+  await journal.append('session-created',{state:runtime.view(),root,preparedRoot:preparedRoot??null,modelEnabled:enabled,architecture:threeAgent?'three-agent-v1':'prepared-memory',spatialModelCalls:0,questionBudgetUSD:threeAgent?.15:.25,dialogueMaxCalls:64});
  const server=desktopServer(runtime,journal,root,port,!!prepared,prepared?.positionTimeline()??[]);
- server.listen(port,'127.0.0.1',()=>console.log(`First Sight 桌面助手：http://127.0.0.1:${port}\n模型：${enabled?'仅问答模型已授权；本进程不运行空间建模':'未启用；可看连续视频和已有回放'}\n独立空间记忆：${preparedRoot??'尚未准备好'}\n本地记录：${root}`));
+  server.listen(port,'127.0.0.1',()=>console.log(`First Sight 桌面助手：http://127.0.0.1:${port}\n模型：${enabled?threeAgent?'三Agent实验：即时观察/经历记忆/按需交互':'仅问答模型已授权；本进程不运行空间建模':'未启用；可看连续视频和已有回放'}\n独立空间记忆：${preparedRoot??'尚未准备好'}\n本地记录：${root}`));
  const shutdown=()=>{server.close();void runtime.close().then(()=>journal.snapshot(runtime.view())).then(()=>process.exit(0));};
  process.once('SIGINT',shutdown);process.once('SIGTERM',shutdown);
 }

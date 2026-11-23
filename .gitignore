@@ -10,7 +10,7 @@ __pycache__/
 *.py[cod]
 
 # Local datasets, screenshots, and experiments
-datasets/
+/datasets/
 run/
 frames/
 observations/

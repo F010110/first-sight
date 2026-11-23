@@ -1,0 +1,20 @@
+{
+  "schema": "spatial-evaluation-plan-v1",
+  "inputPath": "run/unioncity-questions90-v2-run1/input.json",
+  "inputSHA256": "78735bd7e0b9ab61aaa27c984471db6a75751b616730ce900df113cb78c3ec40",
+  "mode": "fresh-sequence",
+  "observationIds": [
+    "rerender-v2-000066", "rerender-v2-000067", "rerender-v2-000068", "rerender-v2-000069", "rerender-v2-000070", "rerender-v2-000071",
+    "rerender-v2-000085", "rerender-v2-000086", "rerender-v2-000087", "rerender-v2-000088", "rerender-v2-000089", "rerender-v2-000090",
+    "rerender-v2-000159", "rerender-v2-000160", "rerender-v2-000161", "rerender-v2-000162", "rerender-v2-000163", "rerender-v2-000164",
+    "rerender-v2-000175", "rerender-v2-000176", "rerender-v2-000177", "rerender-v2-000178", "rerender-v2-000179", "rerender-v2-000180",
+    "rerender-v2-000245", "rerender-v2-000246", "rerender-v2-000247", "rerender-v2-000248", "rerender-v2-000249", "rerender-v2-000250",
+    "rerender-v2-000380", "rerender-v2-000381", "rerender-v2-000382", "rerender-v2-000383", "rerender-v2-000384", "rerender-v2-000385",
+    "rerender-v2-000789", "rerender-v2-000790", "rerender-v2-000791", "rerender-v2-000792", "rerender-v2-000793", "rerender-v2-000794"
+  ],
+  "probeIds": ["rerender-v2-000385", "rerender-v2-000793"],
+  "maxInferenceCalls": 240,
+  "maxReviewCalls": 48,
+  "reviewSpecPath": "evaluation/spatial/medium-v1/evaluation-only/review-spec.json",
+  "reviewSpecSHA256": "e35aa61f8feec022b02a6af86fb6d8c08b751eba0d6481ff7c2b52992db2e564"
+}

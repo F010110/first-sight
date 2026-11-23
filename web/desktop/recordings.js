@@ -59,12 +59,12 @@ function next(){if(!recording||index>=recording.frames.length){stop();return;}co
 async function load(id){
   const token=++loading,kind=source();clear();if(!id)return;
    try{const originalVideo=kind==='real'&&id.startsWith('video:');let value;
-    if(kind==='simulation'&&id.startsWith('campus-video:')){const data=await get('/api/videos'),episode=data.episodes.find(e=>String(e.episodeNumber)===id.slice(13));if(!episode)throw Error('历史模拟视频不可用');const durationMs=Math.round(episode.durationSeconds*1000);value={kind:'original-video',durationMs,scope:'TartanGround AbandonedSchool · 历史模拟显示视频，仅此片段实际时长；非完整校园生活、非真实录像；无模型调用。',clips:[{url:episode.src,startMs:0,durationMs}]};}
+    if(kind==='simulation'&&id.startsWith('campus-video:')){const data=await get('/api/videos'),episode=data.episodes.find(e=>String(e.episodeNumber)===id.slice(13));if(!episode)throw Error('模拟视频不可用');const durationMs=Math.round(episode.durationSeconds*1000);value={kind:'original-video',durationMs,scope:episode.scope??'TartanGround AbandonedSchool · 历史模拟显示视频，仅此片段实际时长；非完整校园生活、非真实录像；无模型调用。',clips:[{url:episode.src,startMs:0,durationMs}]};}
     else value=await get((kind==='simulation'?'/api/replay/simulation':originalVideo?'/api/replay/real-video':'/api/live/recording')+'?id='+encodeURIComponent(originalVideo?id.slice(6):id));if(token!==loading||source()!==kind)return;
    if(value.kind==='original-video'){
-    recording=value;$('real-video').hidden=false;$('empty').hidden=true;$('play').hidden=true;$('fullscreen').hidden=true;
+    recording=value;$('real-video').hidden=false;$('empty').hidden=true;$('play').hidden=true;$('fullscreen').hidden=true;$('view-mode').hidden=true;
     $('seek').max=String(value.durationMs);$('seek').disabled=false;$('sample-scope').textContent=value.scope;
-     $('status').textContent=`${elapsed(value.durationMs)} · ${kind==='simulation'?'历史模拟视频':'单摄真实原片'} · 无模型调用`;
+     $('status').textContent=`${elapsed(value.durationMs)} · ${kind==='simulation'?'模拟采集视频':'单摄真实原片'} · 无模型调用`;
      $('skip-pause').hidden=true;
      $('location').textContent='仅播放已保存画面；没有模型判断或问答结果，不展示位姿、答案及未来证据。';
     openVideoClip(0);renderVideoTime();return;
@@ -77,7 +77,7 @@ async function load(id){
 async function refresh(){
  const token=++refreshing,kind=source(),current=$('recording-select').value||initialRecording;++loading;clear();$('recording-select').replaceChildren();$('status').textContent='读取列表中…';
    try{const [data,videos,campus]=await Promise.all([get(kind==='simulation'?'/api/replay/simulations':'/api/live/recordings'),kind==='real'?get('/api/replay/real-videos'):Promise.resolve({recordings:[]}),kind==='simulation'?get('/api/videos'):Promise.resolve({episodes:[]})]);if(token!==refreshing||source()!==kind)return;
-    for(const e of campus.episodes){const option=document.createElement('option');option.value='campus-video:'+e.episodeNumber;option.textContent=`TartanGround 废弃学校 · 轨迹${e.episodeNumber} · ${elapsed(Math.round(e.durationSeconds*1000))} · 历史显示片段`;$('recording-select').append(option);}
+    for(const e of campus.episodes){const option=document.createElement('option');option.value='campus-video:'+e.episodeNumber;option.textContent=`${e.title??`TartanGround 废弃学校 · 轨迹${e.episodeNumber}`} · ${elapsed(Math.round(e.durationSeconds*1000))} · 只读视频`;$('recording-select').append(option);}
    for(const v of videos.recordings){const option=document.createElement('option');option.value='video:'+v.id;option.textContent=`${v.title} · ${elapsed(v.durationMs)} · 单摄原片`;$('recording-select').append(option);}
   for(const r of data.recordings){const option=document.createElement('option');option.value=r.id;option.textContent=kind==='simulation'?`${r.title} · ${r.frames}帧 · 跨度${elapsed(r.durationMs)}`:`开启 ${wallStamp(r.startedAtMs??r.startMs)} · ${r.stoppedAtMs?'关闭 '+wallStamp(r.stoppedAtMs):'未记录关闭'} · ${r.frames}张`;$('recording-select').append(option);}
     if(!data.recordings.length&&!videos.recordings.length&&!campus.episodes.length){clear(kind==='simulation'?'暂无完成的模拟样本；生成失败或尚未完成的包不会冒充可用样本':'暂无已记录画面或完成下载的真实原片');$('status').textContent='暂无可用记录';return;}

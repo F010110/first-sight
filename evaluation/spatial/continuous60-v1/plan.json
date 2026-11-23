@@ -1,0 +1,20 @@
+{
+  "schema": "spatial-evaluation-plan-v1",
+  "inputPath": "run/unioncity-questions90-v2-run1/input.json",
+  "inputSHA256": "78735bd7e0b9ab61aaa27c984471db6a75751b616730ce900df113cb78c3ec40",
+  "mode": "fresh-sequence",
+  "requireContiguous": true,
+  "observationIds": [
+    "rerender-v2-000060", "rerender-v2-000061", "rerender-v2-000062", "rerender-v2-000063", "rerender-v2-000064", "rerender-v2-000065", "rerender-v2-000066", "rerender-v2-000067", "rerender-v2-000068", "rerender-v2-000069",
+    "rerender-v2-000070", "rerender-v2-000071", "rerender-v2-000072", "rerender-v2-000073", "rerender-v2-000074", "rerender-v2-000075", "rerender-v2-000076", "rerender-v2-000077", "rerender-v2-000078", "rerender-v2-000079",
+    "rerender-v2-000080", "rerender-v2-000081", "rerender-v2-000082", "rerender-v2-000083", "rerender-v2-000084", "rerender-v2-000085", "rerender-v2-000086", "rerender-v2-000087", "rerender-v2-000088", "rerender-v2-000089",
+    "rerender-v2-000090", "rerender-v2-000091", "rerender-v2-000092", "rerender-v2-000093", "rerender-v2-000094", "rerender-v2-000095", "rerender-v2-000096", "rerender-v2-000097", "rerender-v2-000098", "rerender-v2-000099",
+    "rerender-v2-000100", "rerender-v2-000101", "rerender-v2-000102", "rerender-v2-000103", "rerender-v2-000104", "rerender-v2-000105", "rerender-v2-000106", "rerender-v2-000107", "rerender-v2-000108", "rerender-v2-000109",
+    "rerender-v2-000110", "rerender-v2-000111", "rerender-v2-000112", "rerender-v2-000113", "rerender-v2-000114", "rerender-v2-000115", "rerender-v2-000116", "rerender-v2-000117", "rerender-v2-000118", "rerender-v2-000119"
+  ],
+  "probeIds": ["rerender-v2-000072", "rerender-v2-000090", "rerender-v2-000101"],
+  "maxInferenceCalls": 320,
+  "maxReviewCalls": 72,
+  "reviewSpecPath": "evaluation/spatial/continuous60-v1/evaluation-only/review-spec.json",
+  "reviewSpecSHA256": "515ff8899b1dda58118a0ebc87d1ae33c2a3052a46acb4e35658356f2955cd0f"
+}

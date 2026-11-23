@@ -6,7 +6,13 @@ export interface GroupPageAnswer {groupId:string;version:number;pageIndex:number
 const nonempty=(v:unknown):v is string=>typeof v==='string'&&!!v.trim();
 export function parsePlaceScope(value:unknown,members:GroupMember[]):PlaceScope{
  const v=value as any;
- if(!v||!nonempty(v.name)||v.name.length>80||!nonempty(v.definition)||v.definition.length>400||!Array.isArray(v.boundaryRules)||v.boundaryRules.length<1||v.boundaryRules.length>4||!v.boundaryRules.every((r:unknown)=>nonempty(r)&&r.length<=240)||!Array.isArray(v.sourceIds)||v.sourceIds.length!==members.length||new Set(v.sourceIds).size!==members.length||members.some(m=>!v.sourceIds.includes(m.id)))throw Error('Place scope needs a fixed name, concrete definition, boundaryRules and every seed original.');
+  const errors:string[]=[];
+  if(!nonempty(v?.name)||v.name.length>80)errors.push(`name must be nonempty and <=80 characters; actual=${typeof v?.name==='string'?v.name.length:'not-string'}`);
+  if(!nonempty(v?.definition)||v.definition.length>400)errors.push(`definition must be nonempty and <=400 characters; actual=${typeof v?.definition==='string'?v.definition.length:'not-string'}; summarize visible boundaries without changing facts`);
+  if(!Array.isArray(v?.boundaryRules)||v.boundaryRules.length<1||v.boundaryRules.length>4)errors.push('boundaryRules must contain 1..4 rules');
+  else for(const [i,rule] of v.boundaryRules.entries())if(!nonempty(rule)||rule.length>240)errors.push(`boundaryRules[${i}] must be nonempty and <=240 characters; actual=${typeof rule==='string'?rule.length:'not-string'}`);
+  if(!Array.isArray(v?.sourceIds)||v.sourceIds.length!==members.length||new Set(v.sourceIds).size!==members.length||members.some(m=>!v.sourceIds.includes(m.id)))errors.push('sourceIds must contain each seed exactly once: '+JSON.stringify(members.map(m=>m.id)));
+  if(errors.length)throw Error('Place scope needs a fixed name, concrete definition, boundaryRules and every seed original. '+errors.join('; '));
  return {name:v.name,definition:v.definition,boundaryRules:[...v.boundaryRules],sourceIds:[...v.sourceIds]};
 }
 /** Opt-in candidate group. All members are retained, never replaced by the last image.

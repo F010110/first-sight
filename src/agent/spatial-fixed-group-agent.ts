@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {FixedScopePlaceGroup,parsePlaceScope,groupMembershipPrompt,type GroupMember,type PlaceScope} from './spatial-place-contract.js';
+import {boundedSpatialProtocol} from './spatial-protocol-retry.js';
 export function fixedGroupPagePrompt(version:number,pageIndex:number){
  if(!Number.isInteger(version)||version<1||!Number.isInteger(pageIndex)||pageIndex<0)throw Error('Invalid group version/page');
  return groupMembershipPrompt.replace('"version":1,"pageIndex":0',`"version":${version},"pageIndex":${pageIndex}`)+' version和pageIndex必须逐字复制INPUT数值。不声称围栏两侧无法互通，不推断未见路径。';
@@ -10,7 +11,7 @@ export interface FixedGroupModels {
  perceive?(current:GroupMember):Promise<unknown>;
  createScope(current:GroupMember,perception?:unknown):Promise<unknown>;
   checkPage(input:{current:GroupMember;groupId:string;version:number;pageIndex:number;scope:PlaceScope;memberIds:string[];perception?:unknown;protocolFeedback?:string}):Promise<unknown>;
- disambiguate?(input:{current:GroupMember;groups:ReturnType<FixedScopePlaceGroup['snapshot']>[]}):Promise<unknown>;
+  disambiguate?(input:{current:GroupMember;groups:ReturnType<FixedScopePlaceGroup['snapshot']>[];protocolFeedback?:string}):Promise<unknown>;
 }
 /** Experimental causal online grouping. No temporal same shortcut or mutable name.
  * All groups/all member pages are checked; budget exhaustion must stop the run. */
@@ -34,15 +35,12 @@ export class FixedGroupSpatialAgent {
      for(const [pageIndex,page] of plan.pages.entries()){
       const attempts=this.model.protocolAttempts??1;
       if(!Number.isInteger(attempts)||attempts<1||attempts>3)throw Error('Invalid protocol retry bound');
-      let feedback:string|undefined;
-      for(let attempt=0;attempt<attempts;attempt++){
-       const answer=await this.model.checkPage({current:structuredClone(current),groupId:group.id,version:snapshot.version,pageIndex,scope:snapshot.scope,memberIds:page.map(m=>m.id),...perception===undefined?{}:{perception:structuredClone(perception)},...feedback?{protocolFeedback:feedback}:{}});
+       const answer=await boundedSpatialProtocol(attempts,feedback=>this.model.checkPage({current:structuredClone(current),groupId:group.id,version:snapshot.version,pageIndex,scope:snapshot.scope,memberIds:page.map(m=>m.id),...perception===undefined?{}:{perception:structuredClone(perception)},...feedback?{protocolFeedback:feedback}:{}}),answer=>{
        const v=answer as any;
        const valid=v&&v.groupId===group.id&&v.version===snapshot.version&&v.pageIndex===pageIndex&&v.currentId===current.id&&['yes','no','uncertain'].includes(v.scopeMatch)&&typeof v.reason==='string'&&v.reason.trim()&&Array.isArray(v.memberChecks)&&v.memberChecks.length===page.length&&new Set(v.memberChecks.map((c:any)=>c?.id)).size===page.length&&v.memberChecks.every((c:any)=>c&&page.some(m=>m.id===c.id)&&['compatible','conflict','unobservable'].includes(c.relation)&&typeof c.evidence==='string'&&c.evidence.trim())&&Array.isArray(v.sourceIds)&&[current.id,...page.map(m=>m.id)].every(id=>v.sourceIds.includes(id))&&v.sourceIds.every((id:unknown)=>id===current.id||page.some(m=>m.id===id));
-       if(valid){answers.push(answer);break;}
-       if(attempt+1===attempts)throw Error('Group page protocol invalid after bounded attempts');
-       feedback='上次返回未通过协议校验。请重新检查全部原图并输出完整JSON；groupId/version/pageIndex/currentId必须与INPUT完全一致，每个本页member必须逐项比较及引用。不得为通过校验改变或隐瞒视觉冲突。';
-      }
+        if(!valid){const errors=[];if(v?.groupId!==group.id)errors.push('groupId must equal '+group.id);if(v?.version!==snapshot.version)errors.push('version must equal '+snapshot.version);if(v?.pageIndex!==pageIndex)errors.push('pageIndex must equal '+pageIndex);if(v?.currentId!==current.id)errors.push('currentId must equal '+current.id);const expected=[current.id,...page.map(m=>m.id)];errors.push('required sourceIds='+JSON.stringify(expected)+'; missing='+JSON.stringify(expected.filter(id=>!v?.sourceIds?.includes?.(id))));throw Error('Group page protocol invalid after bounded attempts: '+errors.join('; ')+'; every member needs one valid relation and nonempty evidence');}
+        return answer;
+       });answers.push(answer);
      }
     reviews.push({group,plan,answers,evaluation:group.evaluate(plan,answers)});
    }
@@ -51,19 +49,26 @@ export class FixedGroupSpatialAgent {
    let resolvedId:string|null=null;
    if(matches.length>=1&&reviews.filter(r=>r.evaluation.verdict!=='different').length>1&&this.model.disambiguate){
     const options=reviews.filter(r=>r.evaluation.verdict!=='different');
-    resolution=await this.model.disambiguate({current:structuredClone(current),groups:options.map(r=>r.group.snapshot())});
-    const answer=resolution as any;
-    const sourceIds=new Set([current.id,...options.flatMap(r=>r.plan.pages.flat().map(m=>m.id))]);
-    if(!answer||(answer.selectedGroupId!==null&&!matches.some(r=>r.group.id===answer.selectedGroupId))||!Array.isArray(answer.groupChecks)||answer.groupChecks.length!==options.length||new Set(answer.groupChecks.map((c:any)=>c?.groupId)).size!==options.length||!Array.isArray(answer.sourceIds)||new Set(answer.sourceIds).size!==sourceIds.size||answer.sourceIds.some((id:unknown)=>!sourceIds.has(id as string)))throw Error('Invalid comparative identity resolution');
+     const sourceIds=new Set([current.id,...options.flatMap(r=>r.plan.pages.flat().map(m=>m.id))]);
+     const answer=await boundedSpatialProtocol(this.model.protocolAttempts??1,feedback=>this.model.disambiguate!({current:structuredClone(current),groups:options.map(r=>r.group.snapshot()),...feedback?{protocolFeedback:feedback}:{}}),raw=>{
+     const answer=raw as any;
+     if(!answer||typeof answer!=='object')throw Error('Comparative resolution must be an object');
+     if(answer.selectedGroupId!==null&&!matches.some(r=>r.group.id===answer.selectedGroupId))throw Error('selectedGroupId must be null or an eligible candidate group ID');
+     if(!Array.isArray(answer.sourceIds))throw Error('sourceIds must list CURRENT and every delivered MEMBER ID');
+     const missing=[...sourceIds].filter(id=>!answer.sourceIds.includes(id)),extra=answer.sourceIds.filter((id:unknown)=>!sourceIds.has(id as string));
+     if(missing.length||extra.length||new Set(answer.sourceIds).size!==answer.sourceIds.length)throw Error(`Invalid comparative identity resolution: missing sourceIds=${JSON.stringify(missing)}; unexpected=${JSON.stringify(extra)}; duplicate references forbidden`);
+     if(!Array.isArray(answer.groupChecks)||answer.groupChecks.length!==options.length||new Set(answer.groupChecks.map((c:any)=>c?.groupId)).size!==options.length)throw Error('groupChecks must contain each candidate exactly once');
     for(const option of options){
      const c=answer.groupChecks.find((c:any)=>c.groupId===option.group.id);
-     if(!c||!['instance-supported','shared-appearance-only','conflict','uncertain'].includes(c.support)||typeof c.evidence!=='string'||!c.evidence.trim())throw Error('Comparative resolution needs every candidate with original evidence');
+      if(!c||!['instance-supported','shared-appearance-only','conflict','uncertain'].includes(c.support)||typeof c.evidence!=='string'||!c.evidence.trim())throw Error(`Comparative resolution needs candidate ${option.group.id} with valid support and nonempty original evidence`);
     }
     if(answer.selectedGroupId!==null){
      const selected=answer.groupChecks.find((c:any)=>c.groupId===answer.selectedGroupId);
      if(selected.support!=='instance-supported'||answer.groupChecks.some((c:any)=>c.groupId!==answer.selectedGroupId&&!['shared-appearance-only','conflict'].includes(c.support)))throw Error('Do not resolve competing positive identities by arbitrary preference');
-     resolvedId=answer.selectedGroupId;
-    }
+     }
+     return answer;
+     });
+     resolution=answer;resolvedId=answer.selectedGroupId;
    }
    let placeId:string|null=null,action:'join'|'new'|'unknown'='unknown';
    // Competing memberships or an unruled-out group do not justify duplication.

@@ -8,11 +8,13 @@ import {listRecordings,readRecording,recordingImage} from './live-recordings.js'
 import {listSimulations,readSimulation,simulationImage} from './simulation-recordings.js';
 import {campusReplay} from './campus-replay.js';
 import {realVideoReplay} from './real-video-replay.js';
+import {egoLifeEvaluation} from './egolife-evaluation.js';
 async function jsonBody(req:IncomingMessage){
  if(req.headers['content-type']!=='application/json')throw Error('Require application/json');let size=0;const chunks:Buffer[]=[];
  for await(const chunk of req){size+=chunk.length;if(size>5000)throw Error('Body too large');chunks.push(chunk);}return JSON.parse(Buffer.concat(chunks).toString());
 }
 export function realtimeServer(root:string,port=8884,allowPaid=false,autoReceive=false,simulationRoot=resolve(process.env.FIRST_SIGHT_SIMULATION_REPLAYS??'run/replicacad-pilot')){
+ const evaluation=egoLifeEvaluation();
  let current:RealtimeSession|null=null,starting:Promise<void>|null=null;const sessions:RealtimeSession[]=[];
  async function ensureReceiver(){if(current)return;if(starting)return starting;starting=(async()=>{const session=new RealtimeSession(root,false);await session.start();current=session;sessions.push(session);})();try{await starting;}finally{starting=null;}}
  const server=createServer(async(req,res)=>{
@@ -23,7 +25,8 @@ export function realtimeServer(root:string,port=8884,allowPaid=false,autoReceive
    const actual=(server.address() as {port:number}|null)?.port??port,host=req.headers.host;
    if(![`127.0.0.1:${actual}`,`localhost:${actual}`].includes(host??''))return reply(403,{error:'Loopback host required'});
    if(req.headers.origin&&req.headers.origin!==`http://${host}`||req.method==='POST'&&req.headers.origin!==`http://${host}`)return reply(403,{error:'Same-origin required'});
-     const url=new URL(req.url??'/',`http://${host}`);
+      const url=new URL(req.url??'/',`http://${host}`);
+      if(await evaluation(req,res,url))return;
      if(await realVideoReplay(req,res,url))return;
     if(req.method==='GET'&&url.pathname==='/api/replay/simulations')return reply(200,{recordings:await listSimulations(simulationRoot)});
     if(req.method==='GET'&&url.pathname==='/api/replay/simulation'){
@@ -68,7 +71,8 @@ export function realtimeServer(root:string,port=8884,allowPaid=false,autoReceive
     files['/three-camera.css']=['three-camera.css','text/css'];
     files['/camera-orientation.css']=['camera-orientation.css','text/css'];
     files['/home.css']=['home.css','text/css'];
-    files['/recordings.html']=['recordings.html','text/html'];files['/recordings.js']=['recordings.js','text/javascript'];files['/recordings.css']=['recordings.css','text/css'];
+     files['/recordings.html']=['recordings.html','text/html'];files['/recordings.js']=['recordings.js','text/javascript'];files['/recordings.css']=['recordings.css','text/css'];
+     files['/egolife.html']=['egolife.html','text/html'];files['/egolife.js']=['egolife.js','text/javascript'];files['/egolife.css']=['egolife.css','text/css'];
     files['/campus.html']=['index.html','text/html'];
     if(req.method==='GET'&&['/campus-prototype/','/campus-prototype/index.html','/campus-prototype/prototype.js','/campus-prototype/prototype.css'].includes(url.pathname)){
      const source=await readFile(resolve('sim/capture/campus-prototype.html'),'utf8');

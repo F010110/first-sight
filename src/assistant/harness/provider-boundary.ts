@@ -26,9 +26,14 @@ export function accountedPiProvider(options:{request:(r:SpatialJsonRequest)=>Pro
      const response=await options.request({phase:'identity',prompt:(context.systemPrompt??'')+(feedback?'\nLATEST TOOL ERROR — correct before continuing:\n'+JSON.stringify(feedback):''),data:{current:view.current,role:'pi-harness',runtimeContext,messages,tools:context.tools,transport:{singleToolArgumentsAllowed:options.singleToolArguments===true}},images:view.images,...view.windowSources?{windowSources:view.windowSources}:{},textOnlyIdentity:view.images.length===0,includeUsage:true}) as any;
     streamOptions?.signal?.throwIfAborted();
     const wire=response.output??response,usage=response.usage;
+    // Some OpenAI-compatible transports return the arguments object without the
+    // explicit {tool,arguments} envelope. Only unambiguous top-level fields are
+    // wrapped; the tool schema still validates every value and no field is invented.
+    const bareEnvelope=wire&&typeof wire==='object'&&!Array.isArray(wire)&&!('tool' in wire)&&!('arguments' in wire);
+    const inferred=bareEnvelope&&Array.isArray((wire as any).segments)&&context.tools?.some(t=>t.name==='memory_add')?{tool:'memory_add',arguments:wire}:bareEnvelope&&(wire as any).assessment&&context.tools?.some(t=>t.name==='memory_revise')?{tool:'memory_revise',arguments:wire}:wire;
     // Explicit single-tool wire format: wrapping arguments adds no semantic fields,
     // guesses no target and repairs no sources. Pi still validates the full schema.
-    const raw=options.singleToolArguments&&context.tools.length===1&&wire&&typeof wire==='object'&&!Array.isArray(wire)&&!('tool' in wire)&&!('arguments' in wire)?{tool:context.tools[0]!.name,arguments:wire}:wire;
+    const raw=options.singleToolArguments&&context.tools.length===1&&wire&&typeof wire==='object'&&!Array.isArray(wire)&&!('tool' in wire)&&!('arguments' in wire)?{tool:context.tools[0]!.name,arguments:wire}:inferred;
     if(!usage||!Number.isFinite(usage.prompt_tokens)||!Number.isFinite(usage.completion_tokens))throw Error('Pi transport missing accounted usage');
     if(usage){message.usage.input=usage.prompt_tokens;message.usage.output=usage.completion_tokens;message.usage.totalTokens=usage.prompt_tokens+usage.completion_tokens;message.usage.cost={input:usage.prompt_tokens*.1356/1e6,output:usage.completion_tokens*.4584/1e6,cacheRead:0,cacheWrite:0,total:(usage.prompt_tokens*.1356+usage.completion_tokens*.4584)/1e6};}
     if(typeof raw.tool!=='string'||!raw.arguments||typeof raw.arguments!=='object'||!context.tools?.some(t=>t.name===raw.tool))throw Error('Invalid declared Pi tool call');

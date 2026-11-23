@@ -10,6 +10,7 @@ import {aliasedSpatialRequest} from '../../agent/spatial-reference-aliases.js';
 import {SpatialCandidateRecall} from '../../agent/spatial-candidate-recall.js';
 import {SpatialVisitTopology} from '../../agent/spatial-visit-topology.js';
 import {guardedGraphContext} from '../../agent/spatial-guarded-graph.js';
+import {boundedSpatialProtocol} from '../../agent/spatial-protocol-retry.js';
 // Public replay input only: never load evaluation labels or expected group membership.
 const inputPath=process.argv[2];
 if(!inputPath||!process.argv.includes('--confirm-paid'))throw Error('Usage: run-spatial-fixed-evaluation PUBLIC-input.json --confirm-paid; max 128 calls, estimated USD0.50');
@@ -17,6 +18,7 @@ const callFlag=process.argv.find(arg=>arg.startsWith('--max-calls='));
 const maxCalls=callFlag?Number(callFlag.slice('--max-calls='.length)):128;
 if(!Number.isInteger(maxCalls)||maxCalls<1||maxCalls>256)throw Error('Experimental call limit must be an integer from 1 to 256; cost cap remains USD0.50');
 const inputRaw=await readFile(inputPath),input=JSON.parse(inputRaw.toString());
+const frontOnly=process.argv.includes('--front-only-diagnostic');
 if(Object.keys(input).some(k=>!['schema','observations'].includes(k))||!Array.isArray(input.observations)||!input.observations.length)throw Error('Public input must contain only schema/observations, never labels');
 type Row={id:string;scene:string;atMs:number;views:Array<{direction:string;path:string;sha256:string}>};
 const rows=input.observations as Row[],seen=new Set<string>(),last=new Map<string,number>();
@@ -35,19 +37,20 @@ let recall:SpatialCandidateRecall|null=null;
 if(featuresRaw){
  const file=JSON.parse(featuresRaw.toString());
  if(file.schema!=='spatial-candidate-features-v1'||file.inputSha256!==createHash('sha256').update(inputRaw).digest('hex')||file.rows.length!==rows.length||file.rows.some((r:{id:string})=>!rows.some(o=>o.id===r.id)))throw Error('Recall descriptors do not bind to public replay');
- recall=new SpatialCandidateRecall(file.rows,2,2);
+  recall=new SpatialCandidateRecall(frontOnly?file.rows.map((r:any)=>({...r,features:r.features.slice(0,1)})):file.rows,2,2,frontOnly?1:3);
 }
 if(visitContext&&!recall)throw Error('Visit context trial requires fixed recent-plus-visual recall');
 const scaleInstruction=' 本轮区域粒度为一个具体连续物理空间，不是每件家具前的局部站位：同一房间内转向、从一种家具走向另一种家具、开放空间内更换功能角落通常仍属同区，不能只因换了近处物体或功能名就拆分。需要原图可见的实墙/门洞空间隔断、围栏两侧等正面区域边界依据。反过来，隔门可见的物体和同款地板不能证明属于同一房间；不知道完整边界时说明限制，不补画看不见的连通或隔断。固定范围不能锁死拍摄朝向或仅仅距某个物体的远近。';
 for(const r of rows){if(Object.keys(r).some(k=>!['id','scene','atMs','views'].includes(k))||!r.id||seen.has(r.id)||!r.scene||!Number.isFinite(r.atMs)||r.atMs<=(last.get(r.scene)??-Infinity)||!Array.isArray(r.views)||r.views.length!==3||new Set(r.views.map(v=>v.direction)).size!==3||r.views.some(v=>!['front','left','right'].includes(v.direction)||!/^[a-f0-9]{64}$/.test(v.sha256)))throw Error('Invalid causal public replay row');seen.add(r.id);last.set(r.scene,r.atMs);}
 const root=resolve('run/spatial-fixed-evaluation',new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));await mkdir(root,{recursive:true});console.log(root);
 const sourceFiles=['src/sim/evaluation/run-spatial-fixed-evaluation.ts','src/agent/spatial-fixed-group-agent.ts','src/agent/spatial-place-contract.ts','src/agent/spatial-json-vlm.ts','src/agent/bounded-network-retry.ts','src/agent/spatial-ground-first.ts','src/agent/spatial-separated-protocol.ts','src/agent/spatial-fixed-prompts.ts','src/agent/spatial-reference-aliases.ts','src/agent/spatial-candidate-recall.ts','src/agent/spatial-visual-recall.ts','src/agent/spatial-visit-topology.ts','src/agent/spatial-guarded-graph.ts'];
-await writeFile(join(root,'frozen.json'),JSON.stringify({schema:'spatial-fixed-online-v1',inputSha256:createHash('sha256').update(inputRaw).digest('hex'),sourceHashes:Object.fromEntries(await Promise.all(sourceFiles.map(async p=>[p,createHash('sha256').update(await readFile(p)).digest('hex')]))),model:'qwen3.8-flash',enableThinking:false,maxCalls,maxEstimatedUSD:.5,scope:'Empty memory per scene, no seed labels, every candidate group and all member originals checked. No paid automatic resume or splice.'},null,2));
-await writeFile(join(root,'strategy.json'),JSON.stringify({groundFirst,comparative,regionScale,shortReferences,visitContext,guardedGraph,candidateRecall:recall?{recent:2,visual:2,descriptor:'rgb-layout-v1',sha256:createHash('sha256').update(featuresRaw!).digest('hex')}:null,scope:'Explicit experimental opt-in; not default frontend memory'}));
+ sourceFiles.push('src/agent/spatial-protocol-retry.ts');
+ await writeFile(join(root,'frozen.json'),JSON.stringify({schema:'spatial-fixed-online-v1',inputSha256:createHash('sha256').update(inputRaw).digest('hex'),sourceHashes:Object.fromEntries(await Promise.all(sourceFiles.map(async p=>[p,createHash('sha256').update(await readFile(p)).digest('hex')]))),model:'qwen3.8-flash',enableThinking:false,maxCalls,maxEstimatedUSD:.5,scope:'Empty memory per scene, no seed labels, every candidate group and all member originals checked. No paid automatic resume or splice.'},null,2));
+ await writeFile(join(root,'strategy.json'),JSON.stringify({groundFirst,comparative,regionScale,shortReferences,visitContext,guardedGraph,frontOnlyDiagnostic:frontOnly,candidateRecall:recall?{recent:2,visual:2,descriptor:'rgb-layout-v1',sha256:createHash('sha256').update(featuresRaw!).digest('hex')}:null,scope:'Explicit experimental opt-in; not default frontend memory'}));
 if(featuresRaw)await writeFile(join(root,'candidate-features.json'),featuresRaw);
 await writeFile(join(root,'public-input.json'),inputRaw);
 const byId=new Map(rows.map(r=>[r.id,r])),providerRequest=spatialJsonVlm(join(root,'requests'),maxCalls,.5),request=shortReferences?aliasedSpatialRequest(providerRequest):providerRequest;
-const images=(ids:string[],current:Row):SpatialJsonImage[]=>ids.flatMap(id=>{const r=byId.get(id);if(!r||r.scene!==current.scene||r.atMs>current.atMs||id!==current.id&&r.atMs>=current.atMs)throw Error('Cross-scene/future image blocked');return r.views.map(v=>({id,direction:v.direction,path:v.path,sha256:v.sha256}));});
+ const images=(ids:string[],current:Row):SpatialJsonImage[]=>ids.flatMap(id=>{const r=byId.get(id);if(!r||r.scene!==current.scene||r.atMs>current.atMs||id!==current.id&&r.atMs>=current.atMs)throw Error('Cross-scene/future image blocked');return r.views.filter(v=>!frontOnly||v.direction==='front').map(v=>({id,direction:v.direction,path:v.path,sha256:v.sha256}));});
 const agents=new Map<string,FixedGroupSpatialAgent>();let error:string|null=null;const predictions:Array<{id:string;placeId:string|null;status:'completed'|'failed'|'pending'}>=rows.map(r=>({id:r.id,placeId:null,status:'pending'}));
 const graphs=new Map<string,SpatialVisitTopology>();
 for(const [index,row] of rows.entries()){
@@ -59,21 +62,10 @@ for(const [index,row] of rows.entries()){
    agent=new FixedGroupSpatialAgent({
    ...recall?{selectCandidates:async(input:Parameters<NonNullable<import('../../agent/spatial-fixed-group-agent.js').FixedGroupModels['selectCandidates']>>[0])=>{const selection=recall!.select(input.current,input.groups);recalledIds=selection.groupIds;return selection;}}:{},
    ...groundFirst?{perceive:async(current:{id:string;atMs:number})=>{
-    let feedback:string|undefined;
-    for(let attempt=0;attempt<2;attempt++){
-     const raw=await request({phase:'perception',prompt:groundFirstSpatialPrompt,data:{current,...feedback?{feedback}:{}},images:images([current.id],byId.get(current.id)!)});
-     try{return parseSpatialPerception(raw,current.id);}catch(error){if(attempt===1)throw error;feedback=String(error)+' Return ALL required fields including observationId, region, clearRegion, layoutEvidence, uncertainties, retrievalQueries, sourceIds; do not return layoutEvidence alone.';}
-    }
-    throw Error('Unreachable perception repair');
+     return boundedSpatialProtocol(3,feedback=>request({phase:'perception',prompt:groundFirstSpatialPrompt,data:{current,...feedback?{feedback}:{}},images:images([current.id],byId.get(current.id)!)}),raw=>parseSpatialPerception(raw,current.id));
    }}:{},
    createScope:async(current,perception)=>{
-    let feedback:string|undefined;
-    for(let attempt=0;attempt<2;attempt++){
-     const raw=await request({phase:'identity',prompt:fixedScopeCreationPrompt(current.id)+(regionScale?scaleInstruction:''),data:{current,...perception===undefined?{}:{perception},...feedback?{feedback}:{}},images:images([current.id],byId.get(current.id)!)});
-     try{const value=raw as any;if(!value||typeof value.coherent!=='boolean')throw Error('coherent must be boolean');if(value.coherent)parsePlaceScope(value.scope,[current]);return value;}
-     catch(error){if(attempt===1)throw error;feedback=String(error);}
-    }
-    throw Error('Unreachable scope repair');
+     return boundedSpatialProtocol(3,feedback=>request({phase:'identity',prompt:fixedScopeCreationPrompt(current.id)+(regionScale?scaleInstruction:''),data:{current,...perception===undefined?{}:{perception},...feedback?{feedback}:{}},images:images([current.id],byId.get(current.id)!)}),raw=>{const value=raw as any;if(!value||typeof value.coherent!=='boolean')throw Error('coherent must be boolean');if(value.coherent)parsePlaceScope(value.scope,[current]);return value;});
    },
     protocolAttempts:3,
     checkPage:async data=>request({phase:'identity',prompt:fixedGroupPagePrompt(data.version,data.pageIndex)+(regionScale?scaleInstruction:''),data:{...data,...history(data.current)},images:images([data.current.id,...data.memberIds],byId.get(data.current.id)!)}),

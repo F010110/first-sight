@@ -69,17 +69,17 @@ export function imageIndexPlaceMatcher(script=resolve('scripts','media','image_i
     if(pending.size)return {ok:false,best:null,nearest:null,results:[],error:'image index already has an in-flight request'};
    if(!current.length||!candidates.length)return {ok:true,best:null,nearest:null,results:[]};
    if(!existsSync(script))return {ok:false,best:null,nearest:null,results:[],error:'image index script not found'};
-   const places=new Map<string,{placeId:string;name:string;members:Array<{observationId:string;atMs:number;path:string;direction:string}>}>();
+    const places=new Map<string,{placeId:string;name:string;members:Array<{observationId:string;atMs:number;path:string;direction:string;sha256:string}>}>();
    for(const candidate of candidates){
     const entry=places.get(candidate.placeId)??{placeId:candidate.placeId,name:candidate.placeId,members:[]};
-    entry.members.push({observationId:candidate.image.id,atMs:0,path:candidate.image.path,direction:candidate.image.direction});
+     entry.members.push({observationId:candidate.image.id,atMs:0,path:candidate.image.path,direction:candidate.image.direction,sha256:candidate.image.sha256});
     places.set(candidate.placeId,entry);
    }
    const process=start(),id=++sequence;
    return await new Promise<RevisitMatchResult>(resolve=>{
      const timer=setTimeout(()=>{if(child===process){finishAll('image index request deadline exceeded');child=null;try{process.kill();}catch{}}},options.timeoutMs??20000);
      pending.set(id,{resolve,candidates,timer});
-    process.stdin.write(JSON.stringify({op:'match',id,queries:current.map(image=>({path:image.path})),places:[...places.values()],imagesPerPlace:options.imagesPerPlace??4,shortlistPlaces:options.shortlistPlaces??8,siftImagesPerPlace:options.siftImagesPerPlace??2,minInliers:options.minInliers??20,maxDim:options.maxDim??640,ratio:options.ratio??0.75})+ '\n');
+     process.stdin.write(JSON.stringify({op:'match',id,queries:current.map(image=>({...image})),places:[...places.values()],imagesPerPlace:options.imagesPerPlace??4,shortlistPlaces:options.shortlistPlaces??8,siftImagesPerPlace:options.siftImagesPerPlace??2,minInliers:options.minInliers??20,maxDim:options.maxDim??640,ratio:options.ratio??0.75})+ '\n');
    });
   },
   async close(){

@@ -32,7 +32,7 @@ export async function readSimulation(root:string,id:string){
   frames.push({id:row.id,atMs:row.sourceAtMs,views});
  }
  return {id,title:typeof manifest.title==='string'?manifest.title:'ReplicaCAD · 三摄渲染验证',scope:typeof manifest.scope==='string'?manifest.scope:'技术渲染小样本；非10分钟生活事件或空间准确率验收',clock:'synthetic',readOnly:true,frames,
-  provenance:{source:'ReplicaCAD',synthetic:true,hardwareCalibration:false,modelCalls:0,scoreEligible:false},base};
+   provenance:{source:manifest.source==='TartanGround'?'TartanGround':'ReplicaCAD',synthetic:true,hardwareCalibration:false,modelCalls:0,scoreEligible:false},base};
 }
 export async function listSimulations(root:string){
  let entries;try{entries=await readdir(root,{withFileTypes:true});}catch(e){if((e as NodeJS.ErrnoException).code==='ENOENT')return [];throw e;}

@@ -8,6 +8,7 @@ import {visualDistance} from '../agent/spatial-visual-recall.js';
 import {SpatialVisitTopology} from '../agent/spatial-visit-topology.js';
 import type {SpatialJsonRequest} from '../agent/spatial-json-vlm.js';
 import type {LiveOriginal} from './realtime-memory.js';
+import {boundedSpatialProtocol} from '../agent/spatial-protocol-retry.js';
 const single=' 当前只有一张真实前方图，左右视图缺失，不能补画看不到的边界。空间粒度为具体连续区域，不是每件物体前的站位；只有可见实墙、门洞、围栏两侧等正面证据才拆分。同区转向或家具变化不自动新建地点，范围不清明确uncertain。';
 /** Method2 semantics with genuinely ONE feature/image view; never duplicate into three. */
 export class RealtimeMethod2{
@@ -25,16 +26,10 @@ export class RealtimeMethod2{
     return {groupIds:this.recalled,method:'method2-single-view/recent2-visual2-sequence6',omittedGroups:groups.length-this.recalled.length};
    },
    perceive:async current=>{
-    let feedback='';for(let attempt=0;attempt<2;attempt++){
-     const raw=await request({phase:'perception',prompt:groundFirstSpatialPrompt+single,data:{current,...feedback?{feedback}:{}},images:images([current.id],current.atMs)});
-     try{return parseSpatialPerception(raw,current.id);}catch(error){if(attempt===1)throw error;feedback=String(error);}
-    }throw Error('Perception exhausted');
+     return boundedSpatialProtocol(3,feedback=>request({phase:'perception',prompt:groundFirstSpatialPrompt+single,data:{current,...feedback?{feedback}:{}},images:images([current.id],current.atMs)}),raw=>parseSpatialPerception(raw,current.id));
    },
    createScope:async(current,perception)=>{
-    let feedback='';for(let attempt=0;attempt<2;attempt++){
-     const raw=await request({phase:'identity',prompt:fixedScopeCreationPrompt(current.id)+single,data:{current,perception,...feedback?{feedback}:{}},images:images([current.id],current.atMs)}) as any;
-     try{if(typeof raw?.coherent!=='boolean')throw Error('coherent must be boolean');if(raw.coherent)parsePlaceScope(raw.scope,[current]);return raw;}catch(error){if(attempt===1)throw error;feedback=String(error);}
-    }throw Error('Scope exhausted');
+     return boundedSpatialProtocol(3,feedback=>request({phase:'identity',prompt:fixedScopeCreationPrompt(current.id)+single,data:{current,perception,...feedback?{feedback}:{}},images:images([current.id],current.atMs)}),raw=>{const value=raw as any;if(typeof value?.coherent!=='boolean')throw Error('coherent must be boolean');if(value.coherent)parsePlaceScope(value.scope,[current]);return value;});
    },
    checkPage:async data=>request({phase:'identity',prompt:fixedGroupPagePrompt(data.version,data.pageIndex)+single,data:{...data,visitMemory:this.graph.context(data.current.atMs,this.recalled,false)},images:images([data.current.id,...data.memberIds],data.current.atMs)}),
    disambiguate:async data=>{

@@ -33,17 +33,17 @@ function exclusiveRoot(root:string,resume:boolean){
 
 /** Production integration: independent request ledgers/slots, same-session Pi,
  * durable facts/jobs, one spatial writer, and a question Session ready at version 0. */
-export async function createLayeredApplication(rootArg:string,requests:{perception:V3Request;spatial:V3Request;question:V3Request},options:{resume?:boolean;archiveMaxBytes?:number;runtime?:LayeredRuntimeOptions;matcher?:PlaceMatcher;questionMatcher?:PlaceMatcher;retryFailures?:boolean;prefetch?:boolean}={}){
+export async function createLayeredApplication(rootArg:string,requests:{perception:V3Request;spatial:V3Request;question:V3Request},options:{resume?:boolean;archiveMaxBytes?:number;runtime?:LayeredRuntimeOptions;matcher?:PlaceMatcher;questionMatcher?:PlaceMatcher;retryFailures?:boolean;prefetch?:boolean;directRevisit?:boolean}={}){
  const root=resolve(rootArg),unlock=exclusiveRoot(root,options.resume??false),config=options.runtime??defaultLayeredOptions;
  let archive:ObservationArchive|undefined,memory:BatchSpatialMemory|undefined,space:Awaited<ReturnType<typeof createPiBatchProcessor>>|undefined,question:Awaited<ReturnType<typeof createV3QuestionAgent>>|undefined;
  const matcher=options.matcher??imageIndexPlaceMatcher(undefined,{imagesPerPlace:6,shortlistPlaces:100});
- const questionMatcher=options.questionMatcher??options.matcher??imageIndexPlaceMatcher(undefined,{imagesPerPlace:6,shortlistPlaces:100});
+  const questionMatcher=options.questionMatcher??(options.directRevisit?undefined:options.matcher)??imageIndexPlaceMatcher(undefined,{imagesPerPlace:6,shortlistPlaces:100});
  try{
   if(!options.resume&&['evidence/observations.sqlite','memory/spatial.sqlite','space-session/session.json','question-session/session.json'].some(path=>existsSync(join(root,path))))throw Error('Existing evidence or Session requires explicit resume');
   archive=new ObservationArchive(join(root,'evidence'),options.archiveMaxBytes??10*1024*1024*1024);memory=new BatchSpatialMemory(join(root,'memory'),archive);
   if(options.resume)memory.restore();
   const slots=new V3RequestSlots();
-  space=await createPiBatchProcessor(join(root,'space-session'),memory,slots.wrap('spatial',requests.spatial),matcher,{resume:existsSync(join(root,'space-session','session.json')),fastMs:config.perceptionMs,requestTimeoutMs:config.requestTimeoutMs??120000,prefetch:options.prefetch??false});
+   space=await createPiBatchProcessor(join(root,'space-session'),memory,slots.wrap('spatial',requests.spatial),matcher,{resume:existsSync(join(root,'space-session','session.json')),fastMs:config.perceptionMs,requestTimeoutMs:config.requestTimeoutMs??120000,prefetch:options.prefetch??false,directRevisit:options.directRevisit??false});
   question=await createV3QuestionAgent(join(root,'question-session'),memory,slots.wrap('question',requests.question),{resume:existsSync(join(root,'question-session','session.json')),matcher:questionMatcher,fastMs:config.perceptionMs});
   const runtime=new LayeredMemoryRuntime(archive,fastPerceptionV3(slots.wrap('perception',requests.perception)),space,config,{retryFailures:options.retryFailures??false});
   let sourceClock:number|null=archive.latest()?.observation.atMs??null,wallClock=Date.now(),closed=false;

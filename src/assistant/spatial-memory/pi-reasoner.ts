@@ -150,8 +150,12 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
   revisions:Type.Optional(Type.Unknown())
  });
   const addBatch=async(a:any,invocation:Invocation)=>{
-   const batch=batchInput!;const segs=a.segments;
-   if(!Array.isArray(segs)||!segs.length)throw Error('Batch memory_add requires segments[] covering every batch observation exactly once in order');
+    const batch=batchInput!;let segs=a.segments;
+    if(!Array.isArray(segs)||!segs.length)throw Error('Batch memory_add requires segments[] covering every batch observation exactly once in order');
+    if(batch.projectRevisits){
+     const normalized=segs.map((s:any)=>({observationIds:s.observationIds,assessment:{...s.assessment,memoryNotes:s.notes??[],...s.rename?{placeRename:s.rename}:{}}}));
+     segs=batch.projectRevisits(normalized).map(s=>({observationIds:s.observationIds,assessment:s.assessment,notes:s.assessment.memoryNotes??[],...s.assessment.placeRename?{rename:s.assessment.placeRename}:{}}));
+    }
    // Delivery rule: a source that exists in committed history is deliverable on
    // demand. If the model cites such a source before it has been delivered in
    // this judgment, fetch that exact source first instead of rejecting the whole
@@ -160,7 +164,7 @@ export async function createPiSpatialReasoner(rootArg:string,request:(r:SpatialJ
    const batchIdsForDelivery=new Set(batch.rows.map(r=>r.id));
    const historyForDelivery=new Set<string>();
    for(const r of batch.history){historyForDelivery.add(r.observationId);for(const o of r.window?.observations??[])historyForDelivery.add(o.id);}
-   const citedHistorical=[...new Set(segs.flatMap((s:any)=>Array.isArray(s?.assessment?.location?.sourceIds)?s.assessment.location.sourceIds as string[]:[]))]
+    const citedHistorical=[...new Set<string>(segs.flatMap((s:any)=>Array.isArray(s?.assessment?.location?.sourceIds)?s.assessment.location.sourceIds as string[]:[]))]
     .filter((id:string)=>typeof id==='string'&&!batchIdsForDelivery.has(id)&&!inspected.has(id)&&historyForDelivery.has(id));
    if(historicalSupplies<2&&citedHistorical.length){
     historicalSupplies++;

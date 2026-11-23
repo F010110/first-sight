@@ -215,7 +215,8 @@ def main():
 
     # ---- online checkpoints: coarse group of the committed window claim ----
     online=[]
-    for v in range(5,96,5):
+    checkpoints=sorted(states)
+    for v in checkpoints[4::5]:
         st=states[v];dist=collections.Counter(coarse_of(o) for o in st['memberIds'])
         refg=dist.most_common(1)[0][0]
         agentg=name_coarse(st['assessment']['location'].get('name'))

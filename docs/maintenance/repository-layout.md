@@ -1,6 +1,12 @@
 # 仓库组织与保留规则
 
-## 三层职责
+## 当前职责（2026-11-10整理）
+
+- 空间记忆主线：`src/assistant/spatial-memory/`＋持续Pi Session＋长期库；架构依据为[active](../active/README.md)，当前状态为[TODO](../../TODO.md)。此目录不可再整体称为历史视频应用。
+- 实时硬件/桌面产品链路与离线连续评测入口分别维护；测试模拟器不等于真实服务全链路。
+- 本次整理范围、未提交工作分类及保留边界见[工作区整理记录](workspace-review-2026-11-10.md)。不扫描私有`cam/local/`或独立`research/`，不自动移动、忽略、发布未跟踪文件。
+
+## 历史V2整理时的三层职责
 
 - 当前V2实现：`cam/src/network_camera.h`→`cam/host/push_stream.py`→`src/hardware/realtime-*`→`src/desktop/realtime-server.ts`／`live-recordings.ts`→`web/desktop/realtime.*`／`recordings.*`；[架构图](../product/v2-system-map.md)。`src/agent`是共享协议／空间推理及历史算法集合，`src/sim/evaluation`属于评测，不是实时服务。
 - 研究工具：`sim`下按学校／HSSD／采集／审核／分组等分类，不混进核心默认路径。
@@ -45,7 +51,7 @@ V2实际脚本分类与55条迁移清单见[V2整理验证](v2-layout-validation
 
 本次完整验证记录见[v1.2.0整理验证](./v1.2.0-layout-validation.md)。本地产物索引可用`python scripts/maintenance/index-local-artifacts.py`重新生成，只写INDEX，不搬迁或删除证据。
 
-1. README只写当前状态与入口；实验过程放报告，完成历史不要继续堆进TODO。
+1. README只写项目概览与当前入口；架构和理由以active为准，动态状态/待办/维护以TODO为准。历史实验报告按原路径保留，不再建立另一份“当前状态”文档覆盖TODO。
 2. 实验版本和失败保持独立目录；不为“整理”重写原回执中的绝对路径与hash。
 3. 搬迁必须核验导入、模板路径、subprocess命令、构建与文档链接。
 4. 新测试不依赖冻结旧dist可偶然命中；使用当前构建路径。

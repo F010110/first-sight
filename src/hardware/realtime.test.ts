@@ -4,7 +4,10 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {RealtimeMemory,type LiveOriginal} from './realtime-memory.js';
-import {answerRealtimeQuestion} from './realtime-question.js';
+import {answerRealtimeQuestion as nativeAnswer} from './realtime-question.js';
+import type {SpatialJsonRequest} from '../agent/spatial-json-vlm.js';
+// Protocol fixtures explicitly mock evidence review, never benchmark accuracy.
+const answerRealtimeQuestion=(snapshot:Parameters<typeof nativeAnswer>[0],text:string,request:(input:SpatialJsonRequest)=>Promise<unknown>,active=true)=>nativeAnswer(snapshot,text,input=>(input.data as any).operation==='verify-history-evidence'?Promise.resolve({supported:true,reason:'unit-test fixture only',sourceIds:(input.data as any).candidate.sourceIds}):request(input),active);
 import {realtimeServer} from '../desktop/realtime-server.js';
 import {RealtimeMethod2} from './realtime-method2.js';
 const row=(id:string,atMs:number):LiveOriginal=>({id,atMs,requestWallTimeMs:atMs,receivedAtMs:atMs+100,jpegPath:id+'.jpg',jpegSha256:'hash',pngPath:id+'.png',pngSha256:'hash'});
@@ -35,7 +38,7 @@ test('question during JPEG preparation uses the latest ready causal image',async
  const snapshot={asOfMs:5000,rows:[{original:row('ready',4900),judgment:null,availableAtMs:null},{original:pending,judgment:null,availableAtMs:null}]};
  const result=await answerRealtimeQuestion(snapshot,'眼前有什么',async input=>{assert.deepEqual(input.images.map(i=>i.id),['ready']);return {kind:'answer',text:'图中可见物体',sourceIds:['ready'],abstained:false};});assert.equal(result.abstained,false);
 });
-test('historical answer requires searched and inspected originals from the fixed snapshot',async()=>{
+test('unviewed historical citations fail; search and inspect remains a supported evidence path',async()=>{
  const snapshot={asOfMs:5000,rows:[{original:row('old',1000),judgment:null,availableAtMs:null},{original:row('now',4900),judgment:null,availableAtMs:null}]};
  let calls=0;const result=await answerRealtimeQuestion(snapshot,'刚才看见什么',async input=>{
   calls++;if(calls===1)return {kind:'answer',text:'unsupported',sourceIds:['old'],abstained:false};

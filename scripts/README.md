@@ -15,6 +15,17 @@
 
 ## 常用入口
 
+空间记忆研究的当前状态以[TODO](../TODO.md)为准，不以历史V2入口替代：
+
+|入口|输入/输出与副作用|
+|---|---|
+|[ULVN匹配说明](media/ULVN-MATCHER.md)|隔离Python3.11；首次下载权重，本地GPU推理；不调用付费VLM|
+|`src/sim/evaluation/run-spatial-memory.ts`|耐久连续空间服务运行器；原始public input→新run目录，须明确付费确认|
+|`src/sim/evaluation/repeat-revisit-probe.ts`|冻结Context诊断，有界付费调用；不是持久Session全链路|
+|`evaluation/diagnose-revisit-backend-probe.py`|只读指定实验，stdout输出轨迹核查，不联网、不付费、不自动改分组|
+
+脚本文件存在不代表当前默认启用；不要批量执行evaluation/datasets下的所有工具。
+
 ```powershell
 npm.cmd test
 npm.cmd run test:docs
@@ -27,3 +38,5 @@ cam/.venv/Scripts/python.exe -m unittest discover -s cam/host -p "test_*.py"
 硬件主机侧脚本在[cam/host](../cam/host/README.md)，离线Python研究工具仍由`python -m sim --list`登记。当前工具文件清单与职责由本索引、各目录和[迁移清单](../docs/maintenance/v2-layout-map.json)共同定位；不要另造同名包装入口。
 
 新增工具须选择目录、说明输入／输出和是否可能联网、付费、改变设备或进程。测试放tests或邻接源码；运行数据、凭据、录像、模型原始响应不得写入scripts。
+
+`datasets/collect-realism-sources.py`收集官方来源快照，按显式选项取得ReplicaCAD和少量EgoLife原始样本；会联网并写新datasets目录，220MiB资产规划上限，不付费、不运行模型。详见[来源核查](../docs/research/realistic-sample-source-survey-2026-10-24.md)。

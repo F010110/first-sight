@@ -422,6 +422,7 @@
     "probe_thor_runtime": "sim.capture.probe_thor_runtime",
     "probe_window_vlm_speed": "sim.context.probe_window_vlm_speed",
     "record_episode": "sim.capture.record_episode",
+    "replicacad_smoke": "sim.capture.replicacad_smoke",
     "record_hssd": "sim.hssd.record_hssd",
     "render_side_views": "sim.capture.render_side_views",
     "render_spatial_run_review": "sim.review.render_spatial_run_review",

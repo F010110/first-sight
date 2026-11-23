@@ -6,9 +6,9 @@ export interface RecallFeatures {id:string;features:number[][]}
  * Linear local scan for this prototype; bounded VLM context, not ANN-scale latency. */
 export class SpatialCandidateRecall {
  private features=new Map<string,number[][]>();
- constructor(rows:RecallFeatures[],readonly recentLimit=2,readonly visualLimit=2){
+  constructor(rows:RecallFeatures[],readonly recentLimit=2,readonly visualLimit=2,viewCount:1|3=3){
   if(!Number.isInteger(recentLimit)||recentLimit<1||recentLimit>8||!Number.isInteger(visualLimit)||visualLimit<1||visualLimit>8)throw Error('Invalid recall limits');
-  for(const row of rows){if(!row.id||this.features.has(row.id)||row.features.length!==3||row.features.some(v=>v.length!==72||v.some(n=>!Number.isFinite(n)||n<0||n>1)))throw Error('Invalid RGB recall features');this.features.set(row.id,structuredClone(row.features));}
+   for(const row of rows){if(!row.id||this.features.has(row.id)||row.features.length!==viewCount||row.features.some(v=>v.length!==72||v.some(n=>!Number.isFinite(n)||n<0||n>1)))throw Error('Invalid RGB recall features');this.features.set(row.id,structuredClone(row.features));}
  }
  select(current:GroupMember,groups:RecallGroup[]){
   const query=this.features.get(current.id);if(!query)throw Error('Missing current visual descriptor');

@@ -7,10 +7,32 @@ import {createHash} from 'node:crypto';
 import {createPiSpatialReasoner} from './pi-reasoner.js';
 import {SpatialMemoryService} from './service.js';
 import type {Observation,Assessment,BatchSegment,SpatialReasoner} from './contracts.js';
+import {withDirectUlvnRevisits} from './direct-revisit-reasoner.js';
 
 const usage={prompt_tokens:100,completion_tokens:20};
 const facts=(row:Observation)=>({summary:'facts '+row.id,details:['visible '+row.id]});
 const newPlace=(id:string,name:string):Assessment=>({location:{status:'new',placeId:null,name,reason:'current layout '+id,sourceIds:[id],regionChangeEvidence:['layout changed']},hypotheses:[],unresolved:[],relations:[]});
+
+test('direct ULVN revisit is applied inside real Pi tool despite VLM continuity proposal, with real receipt',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'opencode/direct-revisit-pi-'));let service:SpatialMemoryService|undefined;
+ try{
+  const data=await rows(dir,60);let oldId:string|null=null;
+  const request=async(input:any)=>{
+   const rt=input.data.runtimeContext,ids=rt.batch.observations.map((o:any)=>o.id) as string[],tail=ids.at(-1)!;
+   if(rt.previousRegion?.placeId&&ids[0]==='b20')oldId=rt.previousRegion.placeId;
+   const assessment=ids[0]==='b40'?{...newPlace(tail,'B'),location:{status:'known' as const,placeId:rt.previousRegion.placeId,name:'B',reason:'normal VLM continuity',sourceIds:[tail],contextRefs:[rt.previousRegion.observationId]}}:newPlace(tail,ids[0]==='b00'?'A':'B');
+   return {output:{tool:'memory_add',arguments:{segments:[{observationIds:ids,assessment}]}},usage};
+  };
+  const original=await createPiSpatialReasoner(join(dir,'pi'),request,{skillName:'spatial-memory-v2-batch'});
+  const matcher={async match(current:any[],candidates:any[]){const old=candidates.find(c=>c.image.id==='b00');const results=current[0]?.id==='b42'&&old?['left','right'].map(direction=>({placeId:old.placeId,observationId:'b00',queryObservationId:'b42',queryDirection:direction,historicalDirection:direction,querySHA256:'q'+direction,historicalSHA256:'h'+direction,inliers:100,ratio:.5,similarity:.8})):[];return {ok:true,best:null,nearest:null,results};}};
+  const reasoner=withDirectUlvnRevisits(original,matcher,async ids=>data.filter(r=>ids.includes(r.id)).flatMap(r=>r.views));
+  service=await SpatialMemoryService.create(join(dir,'memory'),{async perceive(r){return facts(r);},async perceiveWindow(list){return list.map(r=>({id:r.id,facts:facts(r)}));}},{reasoner,batchMs:40000,perceptionMs:6000,maxPending:64,busyPolicy:'queue'});
+  for(const row of data)await service.observe(row);const progress=await service.finishInput();assert.equal(service.progress().failure,null);assert.equal(progress.coveredObservations,60);
+  const states=Array.from({length:progress.stateVersions},(_,i)=>service!.snapshotAt(i+1,Number.MAX_SAFE_INTEGER).state);const revisit=states.find(s=>s.window?.observations.some(o=>o.id==='b42'))!;assert.equal(revisit.assessment.location.placeId,oldId);assert.match(revisit.assessment.location.reason,/ULVN direct revisit/);
+  assert.equal(states.at(-1)!.assessment.location.placeId,oldId,'default continuity follows the applied revisit without another VLM vote');
+  const checks=(await readFile(join(dir,'pi','pi-checkpoints.jsonl'),'utf8')).trim().split('\n');assert.equal(checks.length,progress.stateVersions);
+ }finally{await service?.close().catch(()=>{});await rm(dir,{recursive:true,force:true});}
+});
 
 async function rows(dir:string,count=20):Promise<Observation[]>{
  const out:Observation[]=[];

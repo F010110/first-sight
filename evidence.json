@@ -1,0 +1,101 @@
+{
+  "currentOrdinal": 633,
+  "historicalOrdinal": 303,
+  "evidence": {
+    "historicalOrdinal": 303,
+    "supported": true,
+    "pairs": [
+      {
+        "inliers": 88,
+        "good": 120,
+        "ratio": 0.7333333333333333,
+        "currentDirection": "left",
+        "historicalDirection": "right",
+        "currentSHA256": "e4e60be8ba12548ad93ef27ca711fa0aa2e095af96178a3583c70c95ef8e69cb",
+        "historicalSHA256": "03908606598d9dca58ea84d7af6f01e6aefc2155b556d7eb470eaa80e77bd265",
+        "similarity": 0.16392794251441956
+      },
+      {
+        "inliers": 61,
+        "good": 88,
+        "ratio": 0.6931818181818182,
+        "currentDirection": "front",
+        "historicalDirection": "right",
+        "currentSHA256": "6fbfa03ad8397ba15fbf9d96282d2f057da0030e5fd57e48cdc059e4fe71e955",
+        "historicalSHA256": "03908606598d9dca58ea84d7af6f01e6aefc2155b556d7eb470eaa80e77bd265",
+        "similarity": 0.13742154836654663
+      },
+      {
+        "inliers": 10,
+        "good": 21,
+        "ratio": 0.47619047619047616,
+        "currentDirection": "left",
+        "historicalDirection": "front",
+        "currentSHA256": "e4e60be8ba12548ad93ef27ca711fa0aa2e095af96178a3583c70c95ef8e69cb",
+        "historicalSHA256": "772dacd98950529c554eb3d1ad74346c78ce90807a24530c6a4cead830fbccee",
+        "similarity": 0.11703601479530334
+      },
+      {
+        "inliers": 142,
+        "good": 221,
+        "ratio": 0.6425339366515838,
+        "currentDirection": "front",
+        "historicalDirection": "front",
+        "currentSHA256": "6fbfa03ad8397ba15fbf9d96282d2f057da0030e5fd57e48cdc059e4fe71e955",
+        "historicalSHA256": "772dacd98950529c554eb3d1ad74346c78ce90807a24530c6a4cead830fbccee",
+        "similarity": 0.08381110429763794
+      }
+    ],
+    "channel": "local-refinement",
+    "representativeOrdinal": 303
+  },
+  "budgetExhausted": false,
+  "sources": [
+    {
+      "ordinal": 633,
+      "direction": "front",
+      "path": "D:\\Projects\\Projects2026\\VLM\\run\\gmod-annotated-rerender-v2-final\\model-png\\rerender-v2-000633-front.png",
+      "sha256": "6fbfa03ad8397ba15fbf9d96282d2f057da0030e5fd57e48cdc059e4fe71e955"
+    },
+    {
+      "ordinal": 633,
+      "direction": "left",
+      "path": "D:\\Projects\\Projects2026\\VLM\\run\\gmod-annotated-rerender-v2-final\\model-png\\rerender-v2-000633-left.png",
+      "sha256": "e4e60be8ba12548ad93ef27ca711fa0aa2e095af96178a3583c70c95ef8e69cb"
+    },
+    {
+      "ordinal": 633,
+      "direction": "right",
+      "path": "D:\\Projects\\Projects2026\\VLM\\run\\gmod-annotated-rerender-v2-final\\model-png\\rerender-v2-000633-right.png",
+      "sha256": "826e0f00fd6930c29799fc04001b68db25c24db05ff80fc00e52ba9bf2a093a1"
+    },
+    {
+      "ordinal": 303,
+      "direction": "front",
+      "path": "D:\\Projects\\Projects2026\\VLM\\run\\gmod-annotated-rerender-v2-final\\model-png\\rerender-v2-000303-front.png",
+      "sha256": "772dacd98950529c554eb3d1ad74346c78ce90807a24530c6a4cead830fbccee"
+    },
+    {
+      "ordinal": 303,
+      "direction": "left",
+      "path": "D:\\Projects\\Projects2026\\VLM\\run\\gmod-annotated-rerender-v2-final\\model-png\\rerender-v2-000303-left.png",
+      "sha256": "499a6dccd0873df4247bab25758d416ecc0c117e667356b5cd13284b330b8102"
+    },
+    {
+      "ordinal": 303,
+      "direction": "right",
+      "path": "D:\\Projects\\Projects2026\\VLM\\run\\gmod-annotated-rerender-v2-final\\model-png\\rerender-v2-000303-right.png",
+      "sha256": "03908606598d9dca58ea84d7af6f01e6aefc2155b556d7eb470eaa80e77bd265"
+    }
+  ],
+  "current-633-triplet": {
+    "path": "D:\\Projects\\Projects2026\\VLM\\run\\revisit-case-633-303-20261117\\current-633-triplet.png",
+    "sha256": "8f6993d0a9455d3742b99caf1863dffc9564b8b7059f7e170065328ff4b2fc22",
+    "derivation": "Full640x480originals,left-to-rightfront/left/right,noresizeorcrop;40pxcaptionadded."
+  },
+  "historical-303-triplet": {
+    "path": "D:\\Projects\\Projects2026\\VLM\\run\\revisit-case-633-303-20261117\\historical-303-triplet.png",
+    "sha256": "e6d894744abf34a7bc3f0eb081ed70679263da1669392b58ea177624e6bececf",
+    "derivation": "Full640x480originals,left-to-rightfront/left/right,noresizeorcrop;40pxcaptionadded."
+  }
+}
