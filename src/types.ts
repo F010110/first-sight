@@ -96,7 +96,9 @@ export interface WatchTask {
   createdAtMs: number;
   expiresAtMs: number;
   checks: number;
+  hitCount: number;
   lastCheckedAtMs: number | null;
+  lastAlertAtMs: number | null;
   alert: WatchAlertRecord | null;
   error: string | null;
 }

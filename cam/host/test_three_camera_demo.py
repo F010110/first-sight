@@ -196,10 +196,37 @@ class TestThreeCameraDemo(unittest.TestCase):
                 finally:
                     stop_udp.set()
                     t.join(timeout=1.0)
+
+            # Fast batch TCP port scanner detects open local port and skips closed one
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as closed_probe:
+                closed_probe.bind(("127.0.0.1", 0))
+                closed_port = closed_probe.getsockname()[1]
+            self.assertEqual(tcd.scan_tcp_port_open_batch(["127.0.0.1"], port=cam_f.port, timeout=0.4), ["127.0.0.1"])
+            self.assertEqual(tcd.scan_tcp_port_open_batch(["127.0.0.1"], port=closed_port, timeout=0.2), [])
         finally:
             cam_f.close()
             cam_l.close()
             cam_r.close()
+
+    def test_campus_ipconfig_and_slash18_subnet_parsing(self) -> None:
+        sample = (
+            "Ethernet adapter vEthernet (WSL):\n"
+            "   IPv4 Address. . . . . . . . . . . : 172.25.16.1\n"
+            "   Subnet Mask . . . . . . . . . . . : 255.255.240.0\n"
+            "Wireless LAN adapter WLAN:\n"
+            "   IPv4 地址 . . . . . . . . . . . . : 10.122.202.64\n"
+            "   子网掩码  . . . . . . . . . . . . : 255.255.192.0\n"
+        )
+        nets = tcd.parse_ipconfig_networks(sample)
+        self.assertEqual(len(nets), 2)
+        self.assertEqual(nets[0][0], "10.122.202.64")
+        self.assertEqual(str(nets[0][1]), "10.122.192.0/18")
+        self.assertEqual(nets[1][0], "172.25.16.1")
+
+        hosts_18 = tcd.parse_subnet_spec("10.122.192.0/18")
+        self.assertEqual(len(hosts_18), 16382)
+        with self.assertRaises(ValueError):
+            tcd.parse_subnet_spec("10.0.0.0/8")
 
 
 if __name__ == "__main__":

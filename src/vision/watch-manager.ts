@@ -6,6 +6,7 @@ import type { WatchAlertRecord, WatchCheckProvider, WatchTask } from '../types.j
 export interface WatchManagerOptions {
   intervalMs?: number;
   defaultTtlSeconds?: number;
+  alertCooldownMs?: number;
   tokenSuffix?: string;
   onUpdate?: () => void;
   onAlert?: (alert: WatchAlertRecord) => void;
@@ -14,6 +15,7 @@ export interface WatchManagerOptions {
 export class WatchManager {
   private readonly intervalMs: number;
   private readonly defaultTtlSeconds: number;
+  private readonly alertCooldownMs: number;
   private readonly tokenSuffix: string;
   private readonly onUpdate: (() => void) | undefined;
   private readonly onAlert: ((alert: WatchAlertRecord) => void) | undefined;
@@ -23,6 +25,7 @@ export class WatchManager {
   private epoch = 0;
   private checking = false;
   private lastFingerprint = '';
+  private consecutiveErrors = 0;
   private closed = false;
 
   constructor(
@@ -32,7 +35,8 @@ export class WatchManager {
     options: WatchManagerOptions = {},
   ) {
     this.intervalMs = options.intervalMs ?? 4000;
-    this.defaultTtlSeconds = options.defaultTtlSeconds ?? 90;
+    this.defaultTtlSeconds = options.defaultTtlSeconds ?? 600;
+    this.alertCooldownMs = options.alertCooldownMs ?? 12_000;
     this.tokenSuffix = options.tokenSuffix ?? '';
     this.onUpdate = options.onUpdate;
     this.onAlert = options.onAlert;
@@ -48,8 +52,8 @@ export class WatchManager {
     if (!target || target.length > 200) {
       throw new Error('关注目标长度必须在 1..200 字之间');
     }
-    if (!Number.isFinite(ttlSeconds) || ttlSeconds < 5 || ttlSeconds > 240) {
-      throw new Error('关注时长须在 5..240 秒之间');
+    if (!Number.isFinite(ttlSeconds) || ttlSeconds < 5 || ttlSeconds > 3600) {
+      throw new Error('关注时长须在 5..3600 秒之间');
     }
     if (!this.cameraHub.hasAvailableFrame()) {
       throw new Error('当前暂无相机画面，请先定位相机或注入测试图再开启关注');
@@ -58,6 +62,7 @@ export class WatchManager {
     this.clearTimer();
     this.epoch++;
     this.lastFingerprint = '';
+    this.consecutiveErrors = 0;
 
     const now = Date.now();
     this.task = {
@@ -67,7 +72,9 @@ export class WatchManager {
       createdAtMs: now,
       expiresAtMs: now + Math.round(ttlSeconds * 1000),
       checks: 0,
+      hitCount: 0,
       lastCheckedAtMs: null,
+      lastAlertAtMs: null,
       alert: null,
       error: null,
     };
@@ -148,6 +155,8 @@ export class WatchManager {
 
       const checkedAt = Date.now();
       this.lastFingerprint = fp;
+      this.consecutiveErrors = 0;
+      this.task.error = null;
       this.task.checks++;
       this.task.lastCheckedAtMs = checkedAt;
 
@@ -159,33 +168,44 @@ export class WatchManager {
       }
 
       if (result.found) {
-        const evidenceFiles = await this.cameraHub.persistEvidence(this.sessionStore, rawBuffers, checkedAt);
-        if (this.closed || runEpoch !== this.epoch || !this.task || this.task.status !== 'active') {
+        const cooldownElapsed =
+          this.task.lastAlertAtMs === null || checkedAt - this.task.lastAlertAtMs >= this.alertCooldownMs;
+        if (cooldownElapsed) {
+          const evidenceFiles = await this.cameraHub.persistEvidence(this.sessionStore, rawBuffers, checkedAt);
+          if (this.closed || runEpoch !== this.epoch || !this.task || this.task.status !== 'active') {
+            return;
+          }
+          const spokenText = `注意，在你的${result.direction}发现了${this.task.target}。${result.summary}`;
+          const alert: WatchAlertRecord = {
+            id: randomUUID(),
+            speakId: randomUUID(),
+            target: this.task.target,
+            direction: result.direction,
+            summary: result.summary,
+            spokenText,
+            model: result.model,
+            latencyMs: result.latencyMs,
+            evidenceUrls: evidenceFiles.map((e) => ({
+              direction: e.direction,
+              filename: e.filename,
+              url: `/api/evidence/${encodeURIComponent(e.filename)}${this.tokenSuffix}`,
+            })),
+            createdAtMs: checkedAt,
+          };
+          await this.sessionStore.appendWatchAlert(alert);
+          this.task.hitCount++;
+          this.task.lastAlertAtMs = checkedAt;
+          this.task.alert = alert;
+          this.onAlert?.(alert);
+        }
+        if (checkedAt >= this.task.expiresAtMs) {
+          this.task.status = 'expired';
+          this.clearTimer();
+          this.onUpdate?.();
           return;
         }
-        const spokenText = `注意，在你的${result.direction}发现了${this.task.target}。${result.summary}`;
-        const alert: WatchAlertRecord = {
-          id: randomUUID(),
-          speakId: randomUUID(),
-          target: this.task.target,
-          direction: result.direction,
-          summary: result.summary,
-          spokenText,
-          model: result.model,
-          latencyMs: result.latencyMs,
-          evidenceUrls: evidenceFiles.map((e) => ({
-            direction: e.direction,
-            filename: e.filename,
-            url: `/api/evidence/${encodeURIComponent(e.filename)}${this.tokenSuffix}`,
-          })),
-          createdAtMs: checkedAt,
-        };
-        await this.sessionStore.appendWatchAlert(alert);
-        this.task.status = 'triggered';
-        this.task.alert = alert;
-        this.clearTimer();
-        this.onAlert?.(alert);
         this.onUpdate?.();
+        this.scheduleNext(this.intervalMs, runEpoch);
         return;
       }
 
@@ -195,9 +215,14 @@ export class WatchManager {
       if (this.closed || runEpoch !== this.epoch || !this.task || this.task.status !== 'active') {
         return;
       }
-      this.task.status = 'failed';
+      this.consecutiveErrors++;
       this.task.error = error instanceof Error ? error.message : String(error);
-      this.clearTimer();
+      if (this.consecutiveErrors >= 3) {
+        this.task.status = 'failed';
+        this.clearTimer();
+      } else {
+        this.scheduleNext(this.intervalMs, runEpoch);
+      }
       this.onUpdate?.();
     } finally {
       this.checking = false;

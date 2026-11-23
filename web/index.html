@@ -1,229 +1,161 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>First Sight · 三摄硬件语音助手</title>
-  <link rel="stylesheet" href="/style.css">
-  <script type="module" src="/desktop.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>First Sight · 多视角视觉助手</title>
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <h1>First Sight</h1>
-      <span>三摄硬件 · 实时交互展示台</span>
-    </div>
-    <div class="status-pills">
-      <button id="btn-presentation" type="button" class="primary">演示模式</button>
-      <button id="btn-toggle-drawer" type="button">收起设备与扫码配置</button>
-      <a class="nav-link" href="/replay.html">历史回放 ↗</a>
-      <span id="pill-mobile" class="pill warn">手机端：0 台</span>
-      <span id="pill-qwen" class="pill warn">Qwen API：检查中…</span>
-    </div>
-  </header>
-
-  <section class="pipeline-bar" aria-label="系统运行链路">
-    <div id="stage-hw" class="stage-step warn">
-      <span class="stage-title">1. 硬件三摄采集</span>
-      <span id="stage-hw-detail" class="stage-detail">0 / 3 在线</span>
-    </div>
-    <div id="stage-compute" class="stage-step">
-      <span class="stage-title">2. 电脑计算调度</span>
-      <span id="stage-compute-detail" class="stage-detail">待命</span>
-    </div>
-    <div id="stage-web" class="stage-step">
-      <span class="stage-title">3. 网页画面与输出</span>
-      <span id="stage-web-detail" class="stage-detail">等待首次输出</span>
-    </div>
-    <div id="stage-phone" class="stage-step warn">
-      <span class="stage-title">4. 手机语音播报</span>
-      <span id="stage-phone-detail" class="stage-detail">等待手机扫码</span>
-    </div>
-  </section>
-
-  <section id="setup-drawer" class="setup-drawer">
-    <div class="setup-grid">
-      <article class="card">
-        <div class="section-title">
-          <h2>手机扫码语音配对</h2>
-          <button id="btn-test-voice" type="button" class="ok-btn">测试手机语音</button>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">FS</div>
+        <div>
+          <h1>First Sight</h1>
+          <div class="brand-sub">三视角实时感知 · 手机语音播报</div>
         </div>
-        <div class="pair-box">
-          <div class="qr-frame">
-            <img id="qr-img" alt="手机扫码打开语音页面">
-          </div>
-          <div class="pair-meta">
-            <select id="url-select" class="text-input"></select>
-            <div id="pair-url" class="url-box">--</div>
-            <label class="toggle-label">
-              <input type="checkbox" id="desktop-tts">
-              电脑端也同步朗读
-            </label>
-          </div>
-        </div>
-        <div id="tunnel-note" class="muted"></div>
-      </article>
-
-      <article class="card">
-        <div class="section-title">
-          <h2>三摄 IP 快速重定位</h2>
-          <span class="muted">不改 cam/local 配对密钥</span>
-        </div>
-        <div class="locate-row">
-          <input id="subnet-input" type="text" placeholder="可选网段，如 10.122.241.0/24">
-          <button id="btn-locate" type="button" class="primary">自动定位三摄</button>
-        </div>
-        <div id="locate-status" class="muted">等待状态…</div>
-        <form id="hosts-form" class="ip-row">
-          <label class="field">前摄 IP
-            <input id="host-front" type="text" placeholder="192.168.43.101">
-          </label>
-          <label class="field">左摄 IP
-            <input id="host-left" type="text" placeholder="192.168.43.102">
-          </label>
-          <label class="field">右摄 IP
-            <input id="host-right" type="text" placeholder="192.168.43.103">
-          </label>
-          <button type="submit">应用</button>
-        </form>
-      </article>
-
-      <article class="card">
-        <div class="section-title">
-          <h2>演示备用测试源</h2>
-          <span class="muted">明确标为“测试图”</span>
-        </div>
-        <div class="manual-controls">
-          <button id="btn-webcam" type="button">开启本机摄像头推流至正前方</button>
-        </div>
-        <div class="manual-controls">
-          <select id="manual-dir" class="text-input">
-            <option value="front">注入正前方 (front)</option>
-            <option value="left">注入左侧 (left)</option>
-            <option value="right">注入右侧 (right)</option>
-          </select>
-          <input id="manual-file" type="file" accept="image/jpeg">
-        </div>
-        <div class="muted">无硬件真机时，可用笔记本摄像头或本地 JPEG 测试整条 Qwen + 手机语音链路。</div>
-        <video id="webcam-video" hidden playsinline muted></video>
-      </article>
-    </div>
-  </section>
-
-  <main class="desktop-grid">
-    <section class="card">
-      <div class="section-title">
-        <h2>硬件三摄实时画面</h2>
-        <span id="cam-summary" class="muted">0 / 3 在线</span>
       </div>
 
-      <div id="offline-hint" class="offline-hint" hidden>
-        <span>当前尚无在线相机画面，可打开配置面板自动定位 IP 或启用测试图。</span>
-        <button id="btn-open-drawer-hint" type="button">打开设备配置</button>
+      <div class="status-pills">
+        <span id="pill-cameras" class="pill"><span class="dot"></span>相机 0/3</span>
+        <span id="pill-mobile" class="pill"><span class="dot"></span>手机语音 0</span>
+        <span id="pill-qwen" class="pill"><span class="dot"></span>Qwen</span>
       </div>
 
-      <div class="camera-stage">
-        <article class="cam-card front">
-          <div class="cam-viewport">
-            <img id="img-front" hidden alt="正前方相机画面">
-            <span id="empty-front" class="cam-placeholder">等待正前方 (Front) 相机信号…</span>
-            <div class="cam-hud">
-              <span class="hud-chip">正前方 · Front</span>
-              <span class="cam-badge waiting" id="badge-front">等待中</span>
+      <div class="top-actions">
+        <button id="btn-open-mobile" class="btn btn-soft">手机连接</button>
+        <button id="btn-open-devices" class="btn hide-in-present">设备管理</button>
+        <button id="btn-present" class="btn">演示模式</button>
+        <a class="btn hide-in-present" href="/replay.html">回放</a>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="camera-stage" aria-label="三路实时相机">
+        <div class="cam-card hero">
+          <img id="img-front" alt="正前方画面" hidden />
+          <div id="empty-front" class="cam-empty">正前方等待画面…</div>
+          <div id="badge-front" class="cam-badge"><span class="dot"></span>正前方</div>
+        </div>
+        <div class="cam-subgrid">
+          <div class="cam-card">
+            <img id="img-left" alt="左侧画面" hidden />
+            <div id="empty-left" class="cam-empty">左侧等待画面…</div>
+            <div id="badge-left" class="cam-badge"><span class="dot"></span>左侧</div>
+          </div>
+          <div class="cam-card">
+            <img id="img-right" alt="右侧画面" hidden />
+            <div id="empty-right" class="cam-empty">右侧等待画面…</div>
+            <div id="badge-right" class="cam-badge"><span class="dot"></span>右侧</div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel-stack">
+        <section class="card">
+          <div class="card-head">
+            <h2 class="card-title">AI 视觉回答</h2>
+            <span id="answer-meta" class="card-meta">等待提问</span>
+          </div>
+          <div id="answer-box" class="answer-box placeholder">点击下方快捷按钮或输入问题，系统将结合前/左/右三路最新画面回答并推送到手机语音播报。</div>
+          <div class="answer-actions">
+            <span id="speak-hint" class="card-meta"></span>
+            <div style="display:flex;gap:8px;">
+              <button id="btn-local-speak" class="btn btn-sm" disabled>本机朗读</button>
+              <button id="btn-push-speak" class="btn btn-sm btn-soft" disabled>推送手机播报</button>
             </div>
           </div>
-          <div class="cam-foot">
-            <span id="info-front">IP: 未定位</span>
-            <span id="age-front">--</span>
-          </div>
-        </article>
+        </section>
 
-        <article class="cam-card">
-          <div class="cam-viewport">
-            <img id="img-left" hidden alt="左侧相机画面">
-            <span id="empty-left" class="cam-placeholder">等待左侧 (Left) 相机信号…</span>
-            <div class="cam-hud">
-              <span class="hud-chip">左侧 · Left</span>
-              <span class="cam-badge waiting" id="badge-left">等待中</span>
-            </div>
+        <section class="card">
+          <div class="card-head">
+            <h2 class="card-title">实时问答</h2>
           </div>
-          <div class="cam-foot">
-            <span id="info-left">IP: 未定位</span>
-            <span id="age-left">--</span>
+          <div class="quick-row">
+            <button class="btn btn-primary" data-mode="describe">描述环境</button>
+            <button class="btn" data-mode="ocr">读取文字</button>
+            <button class="btn" data-mode="identify">识别物品</button>
           </div>
-        </article>
+          <form id="ask-form" class="input-row">
+            <input id="ask-input" class="input" type="text" placeholder="输入自定义问题，例如：我左边桌子上有什么？" maxlength="300" />
+            <button id="btn-ask-send" class="btn btn-primary" type="submit">提问</button>
+          </form>
+        </section>
 
-        <article class="cam-card">
-          <div class="cam-viewport">
-            <img id="img-right" hidden alt="右侧相机画面">
-            <span id="empty-right" class="cam-placeholder">等待右侧 (Right) 相机信号…</span>
-            <div class="cam-hud">
-              <span class="hud-chip">右侧 · Right</span>
-              <span class="cam-badge waiting" id="badge-right">等待中</span>
-            </div>
+        <section class="card">
+          <div class="card-head">
+            <h2 class="card-title">持续关注</h2>
+            <span class="card-meta">命中后继续监测</span>
           </div>
-          <div class="cam-foot">
-            <span id="info-right">IP: 未定位</span>
-            <span id="age-right">--</span>
+          <form id="watch-form" class="input-row">
+            <input id="watch-input" class="input" type="text" placeholder="关注目标，如：有人靠近 / 出现水杯" maxlength="200" />
+            <button id="btn-watch-start" class="btn btn-primary" type="submit">开始</button>
+            <button id="btn-watch-stop" class="btn btn-danger" type="button" hidden>停止</button>
+          </form>
+          <div id="watch-banner" class="watch-banner" hidden></div>
+        </section>
+
+        <section class="card hide-in-present">
+          <div class="card-head">
+            <h2 class="card-title">最近记录</h2>
+            <span id="history-count" class="card-meta">0 条</span>
           </div>
-        </article>
+          <div id="history-list" class="history-list">
+            <div class="card-meta">暂无问答记录</div>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Mobile Connection Modal -->
+  <div id="modal-mobile" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="card-head">
+        <h2 class="card-title">手机语音端连接</h2>
+        <button class="btn btn-sm" data-close-modal="modal-mobile">关闭</button>
       </div>
-    </section>
-
-    <section class="card">
-      <div class="section-title">
-        <h2>实时计算输出与交互控制</h2>
-        <span id="ask-status" class="muted">空闲</span>
-      </div>
-
-      <div id="error-banner" class="error-banner" hidden></div>
-
-      <div id="hero-output" class="hero-output">
-        <div class="hero-meta">
-          <span id="hero-meta-text">最新输出结果（同步推送至手机朗读）</span>
-          <button id="btn-hero-replay" type="button" hidden>重播到手机</button>
+      <div style="text-align:center;">
+        <div id="qr-container" class="qr-wrap"></div>
+        <div style="margin:10px 0;">
+          <span class="token-chip">配对码 Token: <span id="token-text">hjl</span></span>
         </div>
-        <div id="hero-text" class="hero-text">等待触发… 点击下方按钮或通过手机端发起视觉识别。</div>
-        <div id="hero-thumbs"></div>
+        <div id="mobile-url-text" class="card-meta" style="word-break:break-all;margin-bottom:12px;"></div>
+        <button id="btn-copy-url" class="btn btn-soft btn-sm">复制手机链接</button>
       </div>
+    </div>
+  </div>
 
-      <div class="action-buttons">
-        <button id="btn-describe" type="button" class="primary">多视角环境描述</button>
-        <button id="btn-ocr" type="button" class="primary">读眼前文字</button>
-        <button id="btn-identify" type="button" class="primary">识别物品</button>
+  <!-- Device Management Modal -->
+  <div id="modal-devices" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="card-head">
+        <h2 class="card-title">设备与相机管理</h2>
+        <button class="btn btn-sm" data-close-modal="modal-devices">关闭</button>
       </div>
-
-      <form id="ask-form" class="ask-form">
-        <input id="ask-input" class="text-input" type="text" maxlength="1000" placeholder="输入自由问题，例如：我左手边桌子上有什么？">
-        <button id="btn-ask" type="submit">提问</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+        <span id="locate-msg" class="card-meta">支持 mDNS 自动发现</span>
+        <button id="btn-locate" class="btn btn-primary btn-sm">自动定位相机</button>
+      </div>
+      <form id="hosts-form">
+        <div class="field-grid">
+          <label class="field-label" for="host-front">正前方</label>
+          <input id="host-front" class="input" placeholder="如 192.168.137.149" />
+          <label class="field-label" for="host-left">左侧</label>
+          <input id="host-left" class="input" placeholder="如 192.168.137.19" />
+          <label class="field-label" for="host-right">右侧</label>
+          <input id="host-right" class="input" placeholder="如 192.168.137.169" />
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+          <button class="btn btn-soft btn-sm" type="submit">保存 IP</button>
+        </div>
       </form>
+    </div>
+  </div>
 
-      <div id="watch-panel" class="watch-panel">
-        <div class="section-title">
-          <strong>持续目标关注（Watch 模式）</strong>
-          <span id="watch-badge" class="pill">未开启</span>
-        </div>
-        <form id="watch-form" class="watch-row">
-          <input id="watch-input" class="text-input" type="text" maxlength="200" placeholder="输入关注目标，例如：蓝色水杯 / 有人走近">
-          <select id="watch-ttl" class="text-input">
-            <option value="60">60 秒</option>
-            <option value="90" selected>90 秒</option>
-            <option value="180">180 秒</option>
-          </select>
-          <button id="btn-watch-start" type="submit" class="primary">开始关注</button>
-          <button id="btn-watch-cancel" type="button" class="danger" disabled>取消</button>
-        </form>
-        <div id="watch-status" class="muted">每 4 秒检查新画面（无新帧零调用），命中目标即刻推手机报警。</div>
-      </div>
+  <div id="toast" class="toast" hidden></div>
 
-      <div class="section-title">
-        <h2>历史问答与提醒流</h2>
-        <span class="muted">自动保存，可去“历史回放”回顾</span>
-      </div>
-      <div id="qa-feed" class="qa-feed">
-        <div class="muted">暂无历史记录。</div>
-      </div>
-    </section>
-  </main>
+  <script type="module" src="/desktop.js"></script>
 </body>
 </html>

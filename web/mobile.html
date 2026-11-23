@@ -1,96 +1,76 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <title>First Sight · 手机语音端</title>
-  <link rel="stylesheet" href="/style.css">
-  <script type="module" src="/mobile.js"></script>
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <h1>First Sight</h1>
-      <span>手机语音伴侣</span>
-    </div>
-    <span id="conn-pill" class="pill warn">正在连接…</span>
-  </header>
-
-  <main class="mobile-shell">
-    <section id="token-card" class="card" hidden>
-      <strong>请输入配对码 (Token)</strong>
-      <div class="ask-form">
-        <input id="token-input" class="text-input" type="text" placeholder="查看电脑端链接中的 token">
-        <button id="token-save" type="button" class="primary">连接</button>
-      </div>
-    </section>
-
-    <button id="btn-unlock" type="button" class="primary big-unlock-btn">
-      点击开启手机语音播报（iPhone / Android 必点一次）
-    </button>
-
-    <button id="btn-tap-speak" type="button" class="tap-speak-alert" hidden>
-      系统浏览器拦截了后台自动发声，点这里立即朗读最新回答
-    </button>
-
-    <section class="card">
-      <div class="section-title">
-        <h2>最新语音播报</h2>
-        <div class="qa-actions">
-          <span id="mobile-speaking-pill" class="pill">待命</span>
-          <button id="btn-replay-latest" type="button" disabled>重播</button>
+  <div class="mobile-shell">
+    <header class="topbar" style="margin-bottom:0;">
+      <div class="brand">
+        <div class="brand-mark">FS</div>
+        <div>
+          <h1>First Sight</h1>
+          <div class="brand-sub">手机语音播报端</div>
         </div>
       </div>
-      <div id="latest-text" class="mobile-latest">等待电脑端或手机端发起识别…</div>
-      <div class="voice-bar">
-        <label class="toggle-label">
-          <input type="checkbox" id="auto-speak" checked>
-          收到结果自动播报
-        </label>
-        <label class="toggle-label">
-          语速
-          <select id="rate-select" class="text-input">
-            <option value="0.9">0.9x</option>
-            <option value="1" selected>1.0x</option>
-            <option value="1.15">1.15x</option>
-            <option value="1.3">1.3x</option>
-          </select>
-        </label>
-        <button id="btn-stop-speech" type="button" class="danger">停止播报</button>
+      <span id="mobile-status" class="pill"><span class="dot"></span>未连接</span>
+    </header>
+
+    <section id="connect-card" class="card">
+      <div class="card-head">
+        <h2 class="card-title">配对连接</h2>
+        <span class="card-meta">默认配对码：hjl</span>
       </div>
-      <div id="voice-status" class="muted">请先点击上方蓝色按钮激活手机语音。</div>
+      <form id="token-form" class="input-row">
+        <input id="token-input" class="input" type="text" placeholder="输入配对码 (默认 hjl)" value="hjl" />
+        <button class="btn btn-primary" type="submit">连接</button>
+      </form>
+    </section>
+
+    <button id="btn-unlock-audio" class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;">
+      点击开启语音播报
+    </button>
+
+    <button id="btn-ios-fallback" class="ios-fallback" hidden>
+      浏览器拦截了自动朗读，点此立即播报
+    </button>
+
+    <section class="mobile-hero">
+      <div class="card-head">
+        <h2 class="card-title">实时语音字幕</h2>
+        <span id="subtitle-time" class="card-meta">等待播报</span>
+      </div>
+      <div id="subtitle-box" class="mobile-subtitle">连接后，电脑端的视觉回答与持续关注提醒都会在这里自动朗读。</div>
     </section>
 
     <section class="card">
-      <div class="section-title">
-        <h2>手机端快捷触发</h2>
-        <span id="cam-pill" class="pill warn">相机检测中…</span>
+      <div class="card-head">
+        <h2 class="card-title">快捷提问</h2>
       </div>
-      <div class="mobile-actions">
-        <button id="m-describe" type="button" class="primary">环境描述</button>
-        <button id="m-ocr" type="button" class="primary">读文字</button>
-        <button id="m-identify" type="button" class="primary">识物</button>
+      <div class="quick-row">
+        <button class="btn btn-soft" data-mode="describe">描述环境</button>
+        <button class="btn" data-mode="ocr">读文字</button>
+        <button class="btn" data-mode="identify">识物品</button>
       </div>
-      <form id="m-ask-form" class="ask-form">
-        <button id="m-mic" type="button" title="语音输入">🎤</button>
-        <input id="m-input" class="text-input" type="text" maxlength="1000" placeholder="输入或语音提问…">
-        <button id="m-send" type="submit" class="primary">发送</button>
-      </form>
-      <div id="mic-hint" class="muted"></div>
-
-      <form id="m-watch-form" class="watch-row">
-        <input id="m-watch-input" class="text-input" type="text" maxlength="200" placeholder="持续关注目标（如：水杯）">
-        <button id="m-watch-start" type="submit">关注</button>
-        <button id="m-watch-cancel" type="button" class="danger" disabled>取消</button>
-      </form>
-      <div id="m-watch-status" class="muted"></div>
-      <div id="m-error" class="error-banner" hidden></div>
     </section>
 
     <section class="card">
-      <h2>历史记录</h2>
-      <div id="m-history" class="qa-feed"></div>
+      <div class="card-head">
+        <h2 class="card-title">持续关注</h2>
+      </div>
+      <form id="m-watch-form" class="input-row">
+        <input id="m-watch-input" class="input" type="text" placeholder="关注目标，如：前方有人" />
+        <button id="m-watch-start" class="btn btn-primary" type="submit">开启</button>
+        <button id="m-watch-stop" class="btn btn-danger" type="button" hidden>停止</button>
+      </form>
+      <div id="m-watch-banner" class="watch-banner" hidden></div>
     </section>
-  </main>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="/mobile.js"></script>
 </body>
 </html>

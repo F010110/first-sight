@@ -70,7 +70,7 @@ async function readJsonBody(req: IncomingMessage, maxBytes = 2_500_000): Promise
 
 export async function createDemoServer(options: DemoServerOptions = {}) {
   const webRoot = resolve(options.webRoot ?? 'web');
-  const token = options.token || process.env.FIRST_SIGHT_DEMO_TOKEN || randomBytes(4).toString('hex');
+  const token = options.token || process.env.FIRST_SIGHT_DEMO_TOKEN || 'hjl';
   const tokenParam = `?token=${encodeURIComponent(token)}`;
   const sessionId = randomUUID();
   const dataRoot = resolve(options.hubOptions?.dataRoot ?? join('run', 'course-demo'));
@@ -354,6 +354,12 @@ export async function createDemoServer(options: DemoServerOptions = {}) {
           if (history.length > 40) history.splice(0, history.length - 40);
           await sessionStore.appendQa(record);
           sseHub.broadcast('answer', record);
+          sseHub.broadcast('speak', {
+            speakId: record.speakId,
+            answerId: record.id,
+            text: record.spokenText || record.answer,
+            createdAtMs: record.createdAtMs,
+          });
           sseHub.broadcast('state', buildStatePayloadSync());
           replyJson(200, record);
         } finally {

@@ -38,6 +38,7 @@ test('WatchManager deduplicates identical frames and triggers alert when new fra
     },
     {
       intervalMs: 40,
+      alertCooldownMs: 60,
       onAlert: (a) => alerts.push(a),
     },
   );
@@ -60,16 +61,24 @@ test('WatchManager deduplicates identical frames and triggers alert when new fra
   assert.equal(checks, 1);
   assert.equal(watch.status()?.status, 'active');
 
-  // Inject a new frame with found=true -> triggers alert and persists evidence
+  // Inject a new frame with found=true -> triggers alert, persists evidence, and KEEPS watching
   foundFlag = true;
   hub.injectManualFrame('front', FAKE_JPEG_2);
-  await sleep(120);
+  await sleep(100);
 
   assert.equal(checks, 2);
   assert.equal(alerts.length, 1);
-  assert.equal(watch.status()?.status, 'triggered');
+  assert.equal(watch.status()?.status, 'active');
+  assert.equal(watch.status()?.hitCount, 1);
   assert.match(alerts[0]!.spokenText, /正前方.*蓝色水杯/);
   assert.equal(alerts[0]!.evidenceUrls.length, 1);
+
+  // Inject another new frame after cooldown -> triggers a second alert while remaining active
+  hub.injectManualFrame('front', FAKE_JPEG_1);
+  await sleep(110);
+  assert.equal(alerts.length, 2);
+  assert.equal(watch.status()?.status, 'active');
+  assert.equal(watch.status()?.hitCount, 2);
 });
 
 test('WatchManager discards late async result after cancel and expires cleanly on TTL', async (t) => {

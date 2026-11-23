@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import base64
 import concurrent.futures
+import errno
 import hashlib
 import http.client
 import io
@@ -16,6 +17,7 @@ import ipaddress
 import json
 from pathlib import Path
 import re
+import select
 import socket
 import subprocess
 import sys
@@ -224,8 +226,8 @@ def parse_subnet_spec(spec: str) -> list[str]:
         net = ipaddress.IPv4Network(text, strict=False)
         if not is_allowed_lan_ip(net.network_address):
             raise ValueError(f"Subnet must be private/LAN: {spec}")
-        if net.num_addresses > 1024:
-            raise ValueError(f"Subnet too large (max /22 = 1024): {spec}")
+        if net.num_addresses > 16384:
+            raise ValueError(f"Subnet too large (max /18 = 16384): {spec}")
         return [str(ip) for ip in net.hosts()]
     ip_obj = ipaddress.IPv4Address(text)
     if not is_allowed_lan_ip(ip_obj):
@@ -234,51 +236,105 @@ def parse_subnet_spec(spec: str) -> list[str]:
     return [str(ip) for ip in net.hosts()]
 
 
-def get_local_private_ipv4s() -> list[str]:
-    found: list[str] = []
-    seen: set[str] = set()
+def parse_ipconfig_networks(text: str) -> list[tuple[str, ipaddress.IPv4Network]]:
+    results: list[tuple[str, ipaddress.IPv4Network, int]] = []
+    seen_ips: set[str] = set()
+    lines = text.splitlines()
+    adapter_virtual = False
 
-    def add_candidate(ip_str: str) -> None:
-        if ip_str in seen or ip_str.startswith(MASK_LIKE_PREFIXES):
-            return
+    def adapter_priority(ip_str: str, virtual: bool) -> int:
+        base = 100 if virtual else 0
+        if ip_str.startswith("192.168."):
+            return base + 0
+        if ip_str.startswith("10."):
+            return base + 1
+        return base + 2
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if stripped and not line.startswith((" ", "\t")) and stripped.endswith(":"):
+            lower = stripped.lower()
+            adapter_virtual = any(k in lower for k in ("vethernet", "vmware", "virtualbox", "wsl", "loopback", "hyper-v"))
+            i += 1
+            continue
+        if "255." in line:
+            i += 1
+            continue
+        matches = IPV4_RE.findall(line)
+        if not matches:
+            i += 1
+            continue
+        ip_str = matches[0]
+        if ip_str in seen_ips or ip_str.startswith(MASK_LIKE_PREFIXES):
+            i += 1
+            continue
         try:
             ip_obj = ipaddress.IPv4Address(ip_str)
         except ipaddress.AddressValueError:
-            return
-        if ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified:
-            return
-        if not ip_obj.is_private:
-            return
-        seen.add(ip_str)
-        found.append(ip_str)
+            i += 1
+            continue
+        if ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or not ip_obj.is_private:
+            i += 1
+            continue
 
-    try:
-        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
-            add_candidate(info[4][0])
-    except OSError:
-        pass
+        net: ipaddress.IPv4Network | None = None
+        if i + 1 < len(lines):
+            next_matches = IPV4_RE.findall(lines[i + 1])
+            if next_matches and next_matches[0].startswith(("255.", "254.", "252.", "248.", "240.", "224.", "192.")):
+                try:
+                    candidate = ipaddress.IPv4Network(f"{ip_str}/{next_matches[0]}", strict=False)
+                    if candidate.num_addresses <= 16384:
+                        net = candidate
+                except ValueError:
+                    net = None
+        if net is None:
+            net = ipaddress.IPv4Network(f"{ip_str}/24", strict=False)
+
+        seen_ips.add(ip_str)
+        results.append((ip_str, net, adapter_priority(ip_str, adapter_virtual)))
+        i += 1
+
+    results.sort(key=lambda item: (item[2], item[0]))
+    return [(ip_str, net) for ip_str, net, _ in results]
+
+
+def get_local_networks() -> list[tuple[str, ipaddress.IPv4Network]]:
+    networks: list[tuple[str, ipaddress.IPv4Network]] = []
+    seen_ips: set[str] = set()
 
     try:
         out = subprocess.check_output(["ipconfig"], stderr=subprocess.DEVNULL, timeout=3)
         text = out.decode("mbcs", errors="ignore")
-        for line in text.splitlines():
-            if "255." in line:
-                continue
-            for match in IPV4_RE.findall(line):
-                add_candidate(match)
+        for ip_str, net in parse_ipconfig_networks(text):
+            if ip_str not in seen_ips:
+                seen_ips.add(ip_str)
+                networks.append((ip_str, net))
     except (OSError, subprocess.SubprocessError):
         pass
 
-    # Prefer typical Wi-Fi / hotspot subnets first (192.168, 10, 172).
-    def priority(ip_str: str) -> tuple[int, str]:
-        if ip_str.startswith("192.168."):
-            return (0, ip_str)
-        if ip_str.startswith("10."):
-            return (1, ip_str)
-        return (2, ip_str)
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip_str = info[4][0]
+            if ip_str in seen_ips or ip_str.startswith(MASK_LIKE_PREFIXES):
+                continue
+            try:
+                ip_obj = ipaddress.IPv4Address(ip_str)
+            except ipaddress.AddressValueError:
+                continue
+            if ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_multicast or ip_obj.is_unspecified or not ip_obj.is_private:
+                continue
+            seen_ips.add(ip_str)
+            networks.append((ip_str, ipaddress.IPv4Network(f"{ip_str}/24", strict=False)))
+    except OSError:
+        pass
 
-    found.sort(key=priority)
-    return found
+    return networks
+
+
+def get_local_private_ipv4s() -> list[str]:
+    return [ip_str for ip_str, _ in get_local_networks()]
 
 
 def get_arp_private_ips() -> list[str]:
@@ -360,18 +416,75 @@ def discover_udp_cameras(
     return responders
 
 
-def tcp_port_open(ip: str, port: int = 80, timeout: float = 0.35) -> bool:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(timeout)
-    try:
-        return sock.connect_ex((ip, port)) == 0
-    except OSError:
-        return False
-    finally:
+_IN_PROGRESS_ERRNOS = {
+    errno.EINPROGRESS,
+    errno.EWOULDBLOCK,
+    errno.EAGAIN,
+    getattr(errno, "WSAEWOULDBLOCK", 10035),
+    getattr(errno, "WSAEINPROGRESS", 10036),
+}
+
+
+def scan_tcp_port_open_batch(
+    ips: list[str],
+    port: int = 80,
+    timeout: float = 0.28,
+    batch_size: int = 240,
+) -> list[str]:
+    open_ips: list[str] = []
+    batch_limit = max(1, min(batch_size, 240))
+    for idx in range(0, len(ips), batch_limit):
+        chunk = ips[idx : idx + batch_limit]
+        pending: dict[socket.socket, str] = {}
         try:
-            sock.close()
-        except OSError:
-            pass
+            for ip in chunk:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.setblocking(False)
+                try:
+                    err = sock.connect_ex((ip, port))
+                except OSError:
+                    sock.close()
+                    continue
+                if err == 0:
+                    open_ips.append(ip)
+                    sock.close()
+                elif err in _IN_PROGRESS_ERRNOS:
+                    pending[sock] = ip
+                else:
+                    sock.close()
+
+            deadline = time.monotonic() + timeout
+            while pending and time.monotonic() < deadline:
+                sockets = list(pending.keys())
+                try:
+                    _, writable, exceptional = select.select([], sockets, sockets, 0.04)
+                except (OSError, ValueError):
+                    break
+                for sock in writable:
+                    ip = pending.pop(sock, None)
+                    if ip is not None:
+                        try:
+                            if sock.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR) == 0:
+                                open_ips.append(ip)
+                        except OSError:
+                            pass
+                    try:
+                        sock.close()
+                    except OSError:
+                        pass
+                for sock in exceptional:
+                    pending.pop(sock, None)
+                    try:
+                        sock.close()
+                    except OSError:
+                        pass
+        finally:
+            for sock in pending:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+    return open_ips
 
 
 def locate_cameras(
@@ -387,137 +500,189 @@ def locate_cameras(
     found: dict[str, str] = {}
     missing = [r for r in ROLES if r in configs]
     checked_hosts_per_role: dict[str, set[str]] = {r: set() for r in missing}
+    probe_lock = threading.Lock()
 
-    def try_host_for_roles(host: str, roles: list[str]) -> str | None:
+    def try_host_for_roles(host: str, roles: list[str] | None = None) -> str | None:
         target = host if ":" in host or http_port == 80 else f"{host}:{http_port}"
-        for role in roles:
-            if role in found or target in checked_hosts_per_role[role]:
-                continue
-            checked_hosts_per_role[role].add(target)
-            status = probe_camera_status(target, configs[role], timeout=1.6)
+        role_list = roles if roles is not None else [r for r in missing]
+        for role in role_list:
+            with probe_lock:
+                if role in found or target in checked_hosts_per_role[role]:
+                    continue
+                checked_hosts_per_role[role].add(target)
+            status = probe_camera_status(target, configs[role], timeout=3.2)
             if status is not None:
-                found[role] = status["_resolvedHost"]
-                emit_fn({
-                    "kind": "locate_progress",
-                    "stage": "matched",
-                    "direction": role,
-                    "host": found[role],
-                    "message": f"已确认 {role} 相机 IP: {found[role]}",
-                })
+                with probe_lock:
+                    if role not in found:
+                        found[role] = status["_resolvedHost"]
+                        emit_fn({
+                            "kind": "locate_progress",
+                            "stage": "matched",
+                            "direction": role,
+                            "host": found[role],
+                            "message": f"已确认 {role} 相机 IP: {found[role]}",
+                        })
                 return role
         return None
 
-    # Tier 1: Existing saved hosts and config defaults.
+    def probe_candidates_parallel(ips: list[str]) -> None:
+        if not ips:
+            return
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
+            futs = [pool.submit(try_host_for_roles, ip, [r for r in missing if r not in found]) for ip in ips]
+            for fut in concurrent.futures.as_completed(futs):
+                try:
+                    fut.result()
+                except Exception:
+                    pass
+
+    # Tier 1: Existing saved hosts and config defaults (parallel).
     emit_fn({"kind": "locate_progress", "stage": "tier1", "message": "正在检查已知 IP..."})
+    tier1_jobs: list[tuple[str, list[str]]] = []
     for role in list(missing):
-        candidates = []
+        candidates: list[str] = []
         if role in current_hosts and current_hosts[role]:
             candidates.append(current_hosts[role])
         cfg_host = configs[role].get("host")
         if cfg_host and cfg_host not in candidates:
             candidates.append(cfg_host)
         for cand in candidates:
-            if role in found:
-                break
-            try_host_for_roles(cand, [role])
+            tier1_jobs.append((cand, [role]))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+        futs = [pool.submit(try_host_for_roles, cand, roles) for cand, roles in tier1_jobs]
+        for fut in concurrent.futures.as_completed(futs):
+            try:
+                fut.result()
+            except Exception:
+                pass
 
     remaining = [r for r in missing if r not in found]
     if not remaining:
         return found, 0
 
-    # Tier 2: mDNS (<cameraId>.local)
+    # Tier 2: mDNS (<cameraId>.local) - retry with generous timeout for hotspot wake-up
     emit_fn({"kind": "locate_progress", "stage": "tier2", "message": f"正在尝试 mDNS 查找 {', '.join(remaining)}..."})
     for role in list(remaining):
         mdns_host = f"{configs[role]['cameraId']}.local"
-        try_host_for_roles(mdns_host, [role])
+        for _ in range(2):
+            status = probe_camera_status(mdns_host, configs[role], timeout=6.0)
+            if status is not None:
+                with probe_lock:
+                    if role not in found:
+                        found[role] = status["_resolvedHost"]
+                        emit_fn({
+                            "kind": "locate_progress",
+                            "stage": "matched",
+                            "direction": role,
+                            "host": found[role],
+                            "message": f"已通过 mDNS 确认 {role} 相机 IP: {found[role]}",
+                        })
+                break
 
     remaining = [r for r in missing if r not in found]
     if not remaining:
         return found, 0
 
     # Tier 3: UDP broadcast discovery on port 33333
-    local_ips = get_local_private_ipv4s()
+    local_networks = get_local_networks()
+    local_ips = [ip for ip, _ in local_networks]
+    extra_bcasts = [str(net.broadcast_address) for _, net in local_networks]
     emit_fn({"kind": "locate_progress", "stage": "tier3", "message": "正在局域网 UDP 广播探测相机..."})
-    udp_ips = discover_udp_cameras(local_ips, udp_port=udp_port, wait_seconds=1.3)
-    for ip in udp_ips:
-        if not remaining:
-            break
-        try_host_for_roles(ip, remaining)
-        remaining = [r for r in missing if r not in found]
+    udp_ips = discover_udp_cameras(local_ips, udp_port=udp_port, wait_seconds=1.2, extra_targets=extra_bcasts)
+    probe_candidates_parallel(udp_ips)
 
+    remaining = [r for r in missing if r not in found]
     if not remaining or not enable_subnet_scan:
         return found, 0
 
-    # Tier 4: ARP cache + Fast TCP:80 scan across extra subnets & active local /24s
-    arp_ips = get_arp_private_ips()
-    scan_ips: list[str] = []
-    seen_ips: set[str] = set()
+    # Tier 4A: Priority fast scan (ARP + laptop /24 + previously known camera /24s + extra_subnets)
+    scanned_total = 0
+    local_set = set(local_ips)
+    scanned_set: set[str] = set(local_set)
+    priority_ips: list[str] = []
 
-    def add_ip(ip_str: str) -> None:
-        if ip_str not in seen_ips:
-            seen_ips.add(ip_str)
-            scan_ips.append(ip_str)
+    def queue_ip(ip_str: str, target_list: list[str]) -> None:
+        if ip_str not in scanned_set:
+            scanned_set.add(ip_str)
+            target_list.append(ip_str)
 
-    for ip in arp_ips:
-        add_ip(ip)
+    for ip in get_arp_private_ips():
+        queue_ip(ip, priority_ips)
 
-    subnet_sources: list[str] = []
+    priority_subnets: list[str] = []
     for sub in extra_subnets or []:
         if sub.strip():
-            subnet_sources.append(sub.strip())
+            priority_subnets.append(sub.strip())
     for ip in local_ips[:3]:
         octets = ip.split(".")
         if len(octets) == 4:
-            subnet_sources.append(f"{octets[0]}.{octets[1]}.{octets[2]}.0/24")
+            priority_subnets.append(f"{octets[0]}.{octets[1]}.{octets[2]}.0/24")
+    for role in remaining:
+        old_host = current_hosts.get(role) or configs[role].get("host", "")
+        old_ip = old_host.split(":")[0].strip()
+        if IPV4_RE.fullmatch(old_ip):
+            octets = old_ip.split(".")
+            priority_subnets.append(f"{octets[0]}.{octets[1]}.{octets[2]}.0/24")
 
-    for spec in subnet_sources:
+    for spec in priority_subnets:
         try:
             for ip in parse_subnet_spec(spec):
-                if len(scan_ips) >= 1024:
-                    break
-                add_ip(ip)
+                queue_ip(ip, priority_ips)
         except ValueError as err:
             emit_fn({"kind": "locate_progress", "stage": "tier4", "message": f"忽略无效网段 {spec}: {err}"})
-        if len(scan_ips) >= 1024:
-            break
 
-    # Skip own local IPs
-    local_set = set(local_ips)
-    scan_ips = [ip for ip in scan_ips if ip not in local_set]
-
-    if not scan_ips:
-        return found, 0
-
-    emit_fn({
-        "kind": "locate_progress",
-        "stage": "tier4",
-        "message": f"正在快速扫描局域网 {len(scan_ips)} 个地址的 80 端口...",
-    })
-
-    open_ips: list[str] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=64) as pool:
-        future_map = {pool.submit(tcp_port_open, ip, http_port, 0.35): ip for ip in scan_ips}
-        for fut in concurrent.futures.as_completed(future_map):
-            ip = future_map[fut]
-            try:
-                if fut.result():
-                    open_ips.append(ip)
-            except Exception:
-                pass
-
-    if open_ips:
+    if priority_ips:
         emit_fn({
             "kind": "locate_progress",
             "stage": "tier4",
-            "message": f"发现 {len(open_ips)} 台开启 80 端口的设备，正在校验相机密钥...",
+            "message": f"正在优先扫描相邻网段 {len(priority_ips)} 个地址...",
         })
-        for ip in open_ips:
+        open_ips = scan_tcp_port_open_batch(priority_ips, port=http_port, timeout=0.28)
+        scanned_total += len(priority_ips)
+        if open_ips:
+            emit_fn({
+                "kind": "locate_progress",
+                "stage": "tier4",
+                "message": f"优先网段发现 {len(open_ips)} 台开启 80 端口设备，正在校验相机密钥...",
+            })
+            probe_candidates_parallel(open_ips)
+
+    remaining = [r for r in missing if r not in found]
+    if not remaining:
+        return found, scanned_total
+
+    # Tier 4B: Full campus / larger local subnet scan (e.g., 10.122.192.0/18)
+    for _, net in local_networks[:2]:
+        if net.prefixlen >= 24 or net.num_addresses > 16384:
+            continue
+        broad_ips: list[str] = []
+        for ip_obj in net.hosts():
+            ip_str = str(ip_obj)
+            if ip_str not in scanned_set:
+                scanned_set.add(ip_str)
+                broad_ips.append(ip_str)
+        if not broad_ips:
+            continue
+
+        total_broad = len(broad_ips)
+        chunk_size = 1024
+        for offset in range(0, total_broad, chunk_size):
             remaining = [r for r in missing if r not in found]
             if not remaining:
                 break
-            try_host_for_roles(ip, remaining)
+            chunk = broad_ips[offset : offset + chunk_size]
+            done = min(offset + chunk_size, total_broad)
+            emit_fn({
+                "kind": "locate_progress",
+                "stage": "tier4_broad",
+                "message": f"正在并发扫描大网段 {net}（{done}/{total_broad}，已定位 {len(found)}/{len(missing)} 台）...",
+            })
+            open_ips = scan_tcp_port_open_batch(chunk, port=http_port, timeout=0.26)
+            scanned_total += len(chunk)
+            if open_ips:
+                probe_candidates_parallel(open_ips)
 
-    return found, len(scan_ips)
+    return found, scanned_total
 
 
 class ThreeCameraRunner:
@@ -630,12 +795,23 @@ class ThreeCameraRunner:
                     "status": "error",
                     "error": f"{type(err).__name__}: {err}",
                 })
+                if consecutive_failures >= 2:
+                    try:
+                        mdns_ip, mdns_port = validate_private_host(f"{cfg['cameraId']}.local")
+                        mdns_normalized = format_host_port(mdns_ip, mdns_port)
+                        if mdns_normalized != host:
+                            self.set_host(role, mdns_normalized)
+                            consecutive_failures = 0
+                            self.stop_event.wait(0.3)
+                            continue
+                    except (ValueError, OSError):
+                        pass
                 now = time.monotonic()
                 if (
                     self.auto_scan
                     and consecutive_failures >= 4
                     and not self.locate_busy
-                    and now - self.last_auto_locate > 45.0
+                    and now - self.last_auto_locate > 120.0
                 ):
                     self.last_auto_locate = now
                     self.trigger_locate(force=False)
