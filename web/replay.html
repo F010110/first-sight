@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>First Sight · 演示会话回放</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/replay.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>First Sight</h1>
+      <span>只读会话回放（零模型费用）</span>
+    </div>
+    <div class="status-pills">
+      <a class="nav-link" href="/">← 返回实时展示台</a>
+    </div>
+  </header>
+
+  <main class="replay-shell">
+    <section class="card">
+      <div class="section-title">
+        <h2>选择历史演示会话</h2>
+        <button id="btn-refresh" type="button">刷新列表</button>
+      </div>
+      <div class="locate-row">
+        <select id="session-select" class="text-input">
+          <option value="">正在加载…</option>
+        </select>
+        <span id="replay-summary" class="muted"></span>
+      </div>
+      <div id="replay-error" class="error-banner" hidden></div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <h2>多视角证据与问答记录</h2>
+        <span class="muted">支持一键重播到已连接手机</span>
+      </div>
+      <div id="replay-events" class="qa-feed">
+        <div class="muted">请选择一条会话查看记录。</div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,64 +1,27 @@
 {
   "name": "first-sight",
-  "version": "2.1.0",
+  "version": "2.2.0-course",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22.13"
   },
   "scripts": {
-    "evaluation:web": "npm run build && node dist/current/desktop/egolife-viewer-server.js",
-    "realtime:three": "npm run build && node dist/current/desktop/realtime-server.js --three-cameras",
-    "realtime": "npm run build && node dist/current/desktop/realtime-server.js --allow-paid",
-    "test:long-term-memory": "npm run build && node --test dist/current/agent/spatial-*.test.js",
-    "test:research-snapshot": "python -m tests.python.test_research_snapshot",
-    "test:helmet-capture": "npm run build && node --test dist/current/agent/helmet-capture.test.js",
-    "test:grouping-benchmark": "python -m unittest tests.python.test_grouping_benchmark",
-    "test:classification-standard": "python -m unittest tests.python.test_temporal_classification_standard",
-    "test:retrospective-repair": "npm run build && node --test dist/current/agent/retrospective-group-repair.test.js",
-    "test:visual-pipeline": "npm run build && node --test dist/current/agent/coherent-context-changes.test.js dist/current/agent/current-experience-grouping.test.js dist/current/agent/grouping-evaluation.test.js dist/current/agent/visual-experience-pipeline.test.js dist/current/agent/visual-experience-memory.test.js dist/current/agent/visual-change-boundaries.test.js dist/current/agent/region-interpretation.test.js dist/current/agent/revisable-region-hierarchy.test.js dist/current/agent/temporal-region-continuity.test.js dist/current/agent/rotation-compensated-motion.test.js dist/current/agent/device-camera-orientation.test.js dist/current/agent/segment-interpretation-store.test.js dist/current/agent/segment-association.test.js",
-    "sim:visual:pipeline": "npm run build && node dist/current/sim/replay/visual-experience-replay.js",
-    "sim:visual:scorecard": "npm run build && node dist/current/sim/replay/visual-pipeline-scorecard.js",
-    "test:memory": "npm run build && node --test dist/current/agent/place-memory.test.js dist/current/agent/scene-agent.test.js dist/current/agent/place-candidates.test.js dist/current/agent/topological-filter.test.js dist/current/agent/topological-grouping.test.js dist/current/agent/experience-graph.test.js dist/current/agent/experience-association.test.js dist/current/agent/experience-grouping.test.js dist/current/agent/region-partition.test.js dist/current/agent/region-evaluation.test.js dist/current/agent/region-core-evaluation.test.js dist/current/agent/place-benchmark.test.js dist/current/agent/experience-segments.test.js dist/current/agent/orientation-evidence.test.js dist/current/agent/segment-association.test.js dist/current/agent/region-event-evaluation.test.js dist/current/agent/region-online-evaluation.test.js dist/current/agent/region-partition-metrics.test.js",
-    "sim:regions:score": "npm run build && node dist/current/sim/replay/region-score.js",
-    "sim:experience": "npm run build && node dist/current/sim/replay/experience-revisable-eval.js",
-    "sim:regions": "npm run build && node dist/current/sim/replay/region-partition-eval.js",
-    "sim:regions:stress": "npm run build && node dist/current/sim/replay/region-partition-stress.js",
     "build": "tsc --noEmit false --outDir dist/current",
+    "typecheck": "tsc --noEmit",
     "test": "npm run build && node scripts/testing/test-typescript.mjs",
-    "test:python": "python -m unittest discover -s tests/python -t .",
+    "test:cam": "cam\\.venv\\Scripts\\python.exe -m unittest discover -s cam/host -p \"test_*.py\" -v",
     "test:docs": "python scripts/testing/check-doc-links.py",
-    "tools": "python -m sim --list",
-    "harness:sample": "npm run build && node --use-env-proxy dist/current/run-sample.js",
-    "harness:cases": "npm run build && node --use-env-proxy dist/current/run-cases.js",
-    "harness:feedback": "npm run build && node dist/current/record-feedback.js",
-    "harness:summary": "npm run build && node dist/current/summarize.js",
-    "trial:web": "npm run build && node --use-env-proxy dist/current/trial-server.js",
-    "assistant:web": "npm run build && node --use-env-proxy dist/current/desktop/server.js",
-    "review:memory": "npm run build && node dist/current/desktop/spatial-memory-review-server.js",
-    "assistant:pilot": "npm run build && node --use-env-proxy dist/current/desktop/run-campus-pilot.js",
-    "assistant:prepare-memory": "npm run build && node --use-env-proxy dist/current/desktop/prepare-campus-memory.js",
-    "assistant:questions": "npm run build && node --use-env-proxy dist/current/desktop/run-campus-questions.js",
-    "memory:layered": "npm run build && node --use-env-proxy dist/current/sim/evaluation/run-layered-memory.js",
-    "demo": "npm run build && node --use-env-proxy dist/current/course-demo/demo-server.js",
-    "demo:tunnel": "npm run build && node --use-env-proxy dist/current/course-demo/demo-server.js --tunnel",
-    "trial:qr": "npm run build && node --use-env-proxy dist/current/start-mobile-trial.js",
-    "motion:replay": "npm run build && node dist/current/motion-replay.js",
-    "motion:plot": "npm run build && node dist/current/plot-trajectory.js",
-    "vio:plot": "npm run build && node dist/current/plot-vio.js",
-    "sim:eval": "npm run build && node dist/current/sim/replay/replay-eval.js",
-    "eval:memory": "npm run build && node dist/current/sim/evaluation/run-spatial-evaluation-pipeline.js",
-    "motion:import": "npm run build && node dist/current/import-local-recording.js",
-    "typecheck": "tsc --noEmit"
+    "demo": "npm run build && node --use-env-proxy dist/current/index.js",
+    "demo:tunnel": "npm run build && node --use-env-proxy dist/current/index.js --tunnel",
+    "start": "npm run demo"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.85.1",
-    "@earendil-works/pi-ai": "0.85.1"
+    "cloudflared": "^0.7.3",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",
-    "cloudflared": "^0.7.3",
-    "qrcode": "^1.5.4",
     "typescript": "5.9.3"
   }
 }

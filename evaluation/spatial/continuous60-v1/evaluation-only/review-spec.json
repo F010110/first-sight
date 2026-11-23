@@ -1,9 +1,0 @@
-{
-  "schema": "spatial-review-spec-v1",
-  "split": "development",
-  "associations": [
-    {"id":"local-continuity-72-71","currentId":"rerender-v2-000072","referenceIds":["rerender-v2-000071"],"positiveTargetId":"rerender-v2-000071","expectation":"Original front images show matching wood counter, noticeboard, green table and shelving with a small viewpoint shift. This is local scene continuity, NOT an independent long-term revisit or distant-source recall test."},
-    {"id":"door-transition-90-89","currentId":"rerender-v2-000090","referenceIds":["rerender-v2-000089"],"positiveTargetId":"rerender-v2-000089","expectation":"Original front images support moving toward/through the same visible doorway looking onto the street. Different simultaneously captured directions may show indoors and outdoors. This is a local transition, NOT long-term recall."},
-    {"id":"street-versus-earlier-interior-101","currentId":"rerender-v2-000101","referenceIds":["rerender-v2-000071","rerender-v2-000090"],"positiveTargetId":null,"expectation":"Current front image shows a street rather than the earlier counter room. Do not substitute the room for current observations or certify building identity from generic textures. Actual source-backed path evidence from the intervening continuous sequence is allowed; unknown is not a false-label requiring rejection of all relationships. A relation to recent street frames may be valid."}
-  ]
-}

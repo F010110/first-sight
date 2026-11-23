@@ -3,16 +3,6 @@
 #ifdef FIRST_SIGHT_NETWORK
 #include "network_camera.h"
 #endif
-#ifdef FIRST_SIGHT_PORTAL
-#ifdef FIRST_SIGHT_KEEPALIVE
-#include "portal_camera_keepalive.h"
-#else
-#include "portal_camera.h"
-#endif
-#endif
-#ifdef FIRST_SIGHT_WIFI
-#include "wifi_transport.h"
-#endif
 
 bool ready = false;
 uint32_t serialBaud = 115200;
@@ -49,24 +39,10 @@ void setup() {
   networkCameraSetup();
 #endif
   Serial.println("READY: send c to capture");
-#ifdef FIRST_SIGHT_PORTAL
-  portalCameraSetup();
-#endif
-#ifdef FIRST_SIGHT_WIFI
-  wifiSetup();
-#endif
 }
 void loop() {
 #ifdef FIRST_SIGHT_NETWORK
   if(ready)networkCameraLoop();else delay(100);
-  return;
-#endif
-#ifdef FIRST_SIGHT_PORTAL
-  if(ready)portalCameraLoop();else delay(100);
-  return;
-#endif
-#ifdef FIRST_SIGHT_WIFI
-  if(ready)wifiLoop();else delay(100);
   return;
 #endif
   if(!Serial.available()) { delay(10); return; }
